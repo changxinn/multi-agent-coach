@@ -98,7 +98,7 @@ def print_help_hints():
 def print_user_line(text: str):
     print()
     print(_c("-" * WIDTH, DIM))
-    print(_c(f"  YOU", BOLD))
+    print(_c("  YOU", BOLD))
     for line in textwrap.wrap(text, WIDTH - 4):
         print(f"  {line}")
     print(_c("-" * WIDTH, DIM))
@@ -109,7 +109,11 @@ def print_backend(event: str, detail: str = "", agent_key: str = "system"):
     meta = AGENT_META.get(agent_key, AGENT_META["system"])
     label = f"{meta['icon']} {meta['short_name']}"
     if detail:
-        msg = f"  {label}  {event}  {DIM}({detail}){RESET}" if _use_color() else f"  {label}  {event}  ({detail})"
+        msg = (
+            f"  {label}  {event}  {DIM}({detail}){RESET}"
+            if _use_color()
+            else f"  {label}  {event}  ({detail})"
+        )
     else:
         msg = f"  {label}  {event}"
     print(_c(msg, meta["color"]) if _use_color() else msg)
@@ -169,11 +173,10 @@ def print_summary_block(summary: str):
     in_progress = False
     for line in body.splitlines():
         stripped = line.strip()
-        if stripped.startswith("Goal:") or stripped.startswith("Today ("):
-            if not in_progress:
-                print()
-                print(_c("  --- Logged This Session ---", BOLD))
-                in_progress = True
+        if stripped.startswith(("Goal:", "Today (")) and not in_progress:
+            print()
+            print(_c("  --- Logged This Session ---", BOLD))
+            in_progress = True
         if stripped:
             print(f"  {line}")
 

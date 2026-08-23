@@ -45,7 +45,9 @@ def get_progress_summary() -> str:
         lines.append("")
         lines.append("Today's sleep:")
         for s in today_sleep[-2:]:
-            lines.append(f"  - {s.get('hours', '?')}h, quality: {s.get('quality', '?')}")
+            lines.append(
+                f"  - {s.get('hours', '?')}h, quality: {s.get('quality', '?')}"
+            )
 
     recent_workouts = workouts[-5:]
     if recent_workouts:

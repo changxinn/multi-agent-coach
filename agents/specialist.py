@@ -1,17 +1,18 @@
-from tools import (
-    log_workout,
-    exercise_lookup,
-    log_meal,
-    log_sleep,
-    get_progress_summary,
-)
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-from utils import debug
-from tools.log_intent import intents_for_agent
-from display import print_backend
 import re
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+from display import print_backend
+from tools import (
+    exercise_lookup,
+    get_progress_summary,
+    log_meal,
+    log_sleep,
+    log_workout,
+)
+from tools.log_intent import intents_for_agent
+from utils import debug
 
 AGENTS = {
     "training_planner": {
@@ -95,10 +96,12 @@ def specialist(agent_id: str, state) -> dict:
     """
     if agent_id not in AGENTS:
         return {
-            "messages": [{
-                "role": "assistant",
-                "content": f"Unknown agent: {agent_id}",
-            }]
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": f"Unknown agent: {agent_id}",
+                }
+            ]
         }
 
     agent = AGENTS[agent_id]
@@ -113,13 +116,13 @@ def specialist(agent_id: str, state) -> dict:
     for tool in agent["tools"]:
         available_actions += f"\n\n{tool}:\n{TOOL_DESCRIPTIONS[tool]}"
 
-    system_prompt = f"""You are {agent['name']}, a {agent['role']}.
-Personality: {agent['personality']}
-Speech style: {agent['speech_style']}
+    system_prompt = f"""You are {agent["name"]}, a {agent["role"]}.
+Personality: {agent["personality"]}
+Speech style: {agent["speech_style"]}
 
 Athlete profile:
-- Goal: {profile.get('goal', 'general fitness')}
-- Fitness level: {profile.get('fitness_level', 'beginner')}
+- Goal: {profile.get("goal", "general fitness")}
+- Fitness level: {profile.get("fitness_level", "beginner")}
 
 You are part of a coaching team helping the athlete with training, nutrition, and recovery.
 
@@ -176,8 +179,7 @@ IMPORTANT:
         preflight_lines.append(f"- {tool_name} -> {observation}")
 
     internal_context = (
-        f"Recent conversation:\n{conversation_text}\n\n"
-        f"Respond as {agent['name']}.\n"
+        f"Recent conversation:\n{conversation_text}\n\nRespond as {agent['name']}.\n"
     )
 
     if preflight_lines:
@@ -194,10 +196,12 @@ IMPORTANT:
 
         try:
             llm = ChatOpenAI(model="gpt-5-nano", temperature=1, timeout=90)
-            response = llm.invoke([
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=internal_context),
-            ])
+            response = llm.invoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=internal_context),
+                ]
+            )
             content = str(response.content).strip()
             debug(f"LLM Response:\n{content}\n", agent["name"])
 
@@ -214,16 +218,22 @@ IMPORTANT:
                         )
                         continue
 
-                    print_backend("Response ready", f"{len(final_message.split())} words", agent_id)
+                    print_backend(
+                        "Response ready",
+                        f"{len(final_message.split())} words",
+                        agent_id,
+                    )
 
                     plain_for_history = f"{agent['name']}: {final_message}"
                     return {
                         "display_text": final_message,
-                        "messages": [{
-                            "role": "assistant",
-                            "name": agent["name"],
-                            "content": f"\n{plain_for_history}\n\n",
-                        }],
+                        "messages": [
+                            {
+                                "role": "assistant",
+                                "name": agent["name"],
+                                "content": f"\n{plain_for_history}\n\n",
+                            }
+                        ],
                     }
 
             if "Action:" in content:
@@ -237,14 +247,14 @@ IMPORTANT:
                     argument = (action_match.group(2) or "").strip()
 
                     if not _agent_allowed_tool(agent_id, tool_name):
-                        observation = (
-                            f"Access denied: {agent['name']} cannot use tool '{tool_name}'."
-                        )
+                        observation = f"Access denied: {agent['name']} cannot use tool '{tool_name}'."
                         print_backend("Tool blocked", tool_name, agent_id)
                     else:
                         arg_hint = f"{tool_name}: {argument}" if argument else tool_name
                         print_backend("Calling tool", arg_hint, agent_id)
-                        debug(f"Executing tool: {tool_name} | {argument}", agent["name"])
+                        debug(
+                            f"Executing tool: {tool_name} | {argument}", agent["name"]
+                        )
                         observation = execute_tool(tool_name, argument)
                         tools_called.add(tool_name)
                         preview = observation.replace("\n", " ")[:80]
@@ -261,19 +271,23 @@ IMPORTANT:
             fallback = "Sorry, I hit a snag — could you repeat that?"
             return {
                 "display_text": fallback,
-                "messages": [{
-                    "role": "assistant",
-                    "name": agent["name"],
-                    "content": f"{agent['name']}: {fallback}",
-                }],
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "name": agent["name"],
+                        "content": f"{agent['name']}: {fallback}",
+                    }
+                ],
             }
 
     fallback = "What's your main focus today?"
     return {
         "display_text": fallback,
-        "messages": [{
-            "role": "assistant",
-            "name": agent["name"],
-            "content": f"{agent['name']}: {fallback}",
-        }],
+        "messages": [
+            {
+                "role": "assistant",
+                "name": agent["name"],
+                "content": f"{agent['name']}: {fallback}",
+            }
+        ],
     }

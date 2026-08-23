@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -47,4 +47,4 @@ def reset_session_logs(profile: dict | None = None) -> None:
 
 
 def today_str() -> str:
-    return datetime.now().strftime("%Y-%m-%d")
+    return datetime.now(UTC).strftime("%Y-%m-%d")

@@ -1,20 +1,18 @@
 from dotenv import load_dotenv
-from langgraph.graph import StateGraph, START, END
-import os
+from langgraph.graph import END, START, StateGraph
 
-from state import State
 from agents import orchestrator
+from display import print_backend, print_banner, print_help_hints, print_profile_block
 from nodes import (
-    human_node,
     check_exit_condition,
+    human_node,
     orchestrator_routing,
     specialist_node,
     summarizer_node,
 )
-from tools.storage import reset_session_logs, load_data
-from display import print_banner, print_profile_block, print_help_hints, print_backend
+from state import State
+from tools.storage import load_data, reset_session_logs
 from utils import DEBUG
-
 
 load_dotenv(override=True)
 
@@ -83,7 +81,9 @@ def main():
     if DEBUG:
         print("  Verbose DEBUG is ON (raw LLM traces in .env)\n")
     else:
-        print("  Backend trace is ON (routing + tools). Set DEBUG=true for full LLM logs.\n")
+        print(
+            "  Backend trace is ON (routing + tools). Set DEBUG=true for full LLM logs.\n"
+        )
 
     profile = collect_profile()
 
@@ -93,7 +93,9 @@ def main():
     print_profile_block(profile)
     print_help_hints()
 
-    print_backend("Starting LangGraph session", "human -> orchestrator -> specialist", "system")
+    print_backend(
+        "Starting LangGraph session", "human -> orchestrator -> specialist", "system"
+    )
 
     graph = build_graph()
 
