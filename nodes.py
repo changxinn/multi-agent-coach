@@ -1,7 +1,13 @@
 from typing import Literal
+
+from agents import specialist, summarizer
+from display import (
+    print_agent_response,
+    print_backend,
+    print_summary_block,
+    print_user_line,
+)
 from state import State
-from agents import orchestrator, specialist, summarizer
-from display import print_agent_response, print_backend, print_summary_block, print_user_line
 
 
 def human_node(state: State) -> dict:
@@ -38,10 +44,12 @@ def human_node(state: State) -> dict:
     }
 
 
-def check_exit_condition(state: State) -> Literal["summarizer", "orchestrator", "human"]:
+def check_exit_condition(
+    state: State,
+) -> Literal["summarizer", "orchestrator", "human"]:
     """
-    Route to session summary when the user types exit.
-  Empty input loops back to human without calling the LLM.
+      Route to session summary when the user types exit.
+    Empty input loops back to human without calling the LLM.
     """
     messages = state.get("messages", [])
     if not messages:
@@ -91,7 +99,9 @@ def specialist_node(state: State) -> dict:
         if display_text:
             print_agent_response(next_agent, display_text)
         else:
-            print_backend("No response text", "check DEBUG=true for details", next_agent)
+            print_backend(
+                "No response text", "check DEBUG=true for details", next_agent
+            )
         return {"messages": result["messages"]}
 
     print_backend("Specialist returned no result", agent_key=next_agent)

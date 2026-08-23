@@ -1,13 +1,14 @@
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
+from display import AGENT_META, print_backend
 from utils import debug
-from display import print_backend, AGENT_META
 
 
 def orchestrator(state):
     """
-    Head Coach: route the conversation to the best specialist agent.
-  Updates next_agent and decrements volley_msg_left.
+      Head Coach: route the conversation to the best specialist agent.
+    Updates next_agent and decrements volley_msg_left.
     """
     volley_left = state.get("volley_msg_left", 0)
     debug(f"Volley messages left: {volley_left}", "HEAD COACH")
@@ -65,10 +66,12 @@ Which specialist should speak next?"""
 
     try:
         llm = ChatOpenAI(model="gpt-5-nano", temperature=1, timeout=90)
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
+        response = llm.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+        )
 
         if isinstance(response.content, list):
             selected = " ".join(str(item) for item in response.content).strip().lower()
@@ -79,11 +82,13 @@ Which specialist should speak next?"""
 
         if selected not in valid_agents:
             import random
+
             selected = random.choice(valid_agents)
             debug(f"Invalid agent, fallback to: {selected}", "HEAD COACH")
 
     except Exception:
         import random
+
         selected = random.choice(valid_agents)
         debug(f"LLM error, random selection: {selected}", "HEAD COACH")
 

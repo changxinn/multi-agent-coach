@@ -40,11 +40,15 @@ def parse_user_intents(user_text: str) -> list[tuple[str, str]]:
     if ate and re.search(r"\blog\b", lowered):
         intents.append(("log_meal", f"{ate.group(2).lower()} {ate.group(1).strip()}"))
 
-    if re.search(r"\blog\s+it\b", lowered) and not any(i[0] == "log_meal" for i in intents):
+    if re.search(r"\blog\s+it\b", lowered) and not any(
+        i[0] == "log_meal" for i in intents
+    ):
         if "mcdonald" in lowered:
             intents.append(("log_meal", "lunch McDonald's"))
         elif ate:
-            intents.append(("log_meal", f"{ate.group(2).lower()} {ate.group(1).strip()}"))
+            intents.append(
+                ("log_meal", f"{ate.group(2).lower()} {ate.group(1).strip()}")
+            )
 
     slept = re.search(
         r"(?:I\s+)?slept\s+(\d+(?:\.\d+)?)\s*hours?(?:\s*,\s*(.+))?",
@@ -72,7 +76,9 @@ def parse_user_intents(user_text: str) -> list[tuple[str, str]]:
     return intents
 
 
-def intents_for_agent(messages: list, agent_id: str, allowed_tools: list[str]) -> list[tuple[str, str]]:
+def intents_for_agent(
+    messages: list, agent_id: str, allowed_tools: list[str]
+) -> list[tuple[str, str]]:
     """
     Filter parsed intents to tools this agent may call.
     """

@@ -1,5 +1,6 @@
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+
 from tools import get_progress_summary
 
 
@@ -30,8 +31,8 @@ Write a concise session summary that includes:
 Keep it encouraging, practical, and under 200 words."""
 
     user_prompt = f"""Athlete profile:
-Goal: {profile.get('goal', 'general fitness')}
-Level: {profile.get('fitness_level', 'beginner')}
+Goal: {profile.get("goal", "general fitness")}
+Level: {profile.get("fitness_level", "beginner")}
 
 Conversation:
 {conversation_text}
@@ -43,10 +44,12 @@ Provide the session summary."""
 
     try:
         llm = ChatOpenAI(model="gpt-5-nano", temperature=1, timeout=90)
-        response = llm.invoke([
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ])
+        response = llm.invoke(
+            [
+                SystemMessage(content=system_prompt),
+                HumanMessage(content=user_prompt),
+            ]
+        )
 
         if isinstance(response.content, list):
             summary = " ".join(str(item) for item in response.content).strip()
@@ -56,7 +59,4 @@ Provide the session summary."""
         return f"{summary}\n\n---\n\n{progress}"
 
     except Exception:
-        return (
-            f"Session ended with {len(messages)} messages exchanged.\n\n"
-            f"{progress}"
-        )
+        return f"Session ended with {len(messages)} messages exchanged.\n\n{progress}"

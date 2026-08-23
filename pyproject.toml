@@ -11,3 +11,12 @@ dependencies = [
     "python-dotenv>=1.1.1",
     "pytz>=2025.2",
 ]
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.11",
+]
+
+[tool.ruff.lint]
+ignore = ["BLE001"]
