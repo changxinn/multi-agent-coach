@@ -1,0 +1,445 @@
+@import './styles/fonts.css';
+
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@utility container {
+  margin-inline: auto;
+  padding-inline: 2rem;
+  @media (width >= --theme(--breakpoint-sm)) {
+    max-width: none;
+  }
+  @media (width >= 1400px) {
+    max-width: 1400px;
+  }
+}
+
+/* Apple Glass Theme - moved before @theme so variables are available */
+:root {
+  /* Apple Glass Theme */
+  --background: 240 5% 96%;
+  --foreground: 240 10% 10%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 10%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 10%;
+
+  /* Apple Blue Primary */
+  --primary: 211 100% 50%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 91%;
+  --secondary-foreground: 240 10% 20%;
+
+  --muted: 240 5% 93%;
+  --muted-foreground: 240 4% 46%;
+
+  /* Apple Blue Accent */
+  --accent: 211 100% 50%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 240 6% 88%;
+  --input: 240 6% 88%;
+  --ring: 211 100% 50%;
+
+  --radius: 0.75rem;
+
+  /* Status Colors */
+  --status-draft: 215 16% 47%;
+  --status-pending: 38 92% 50%;
+  --status-approved: 142 71% 45%;
+  --status-rejected: 0 84% 60%;
+  --status-processing: 217 91% 60%;
+  --status-success: 142 71% 45%;
+  --status-error: 0 84% 60%;
+
+  /* Role Colors */
+  --role-staff: 217 91% 60%;
+  --role-ao: 262 83% 58%;
+  --role-finance: 142 71% 45%;
+  --role-admin: 38 92% 50%;
+
+  /* Sidebar — Apple glass dark */
+  --sidebar-background: 240 8% 9%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 211 100% 56%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 5% 17%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 240 5% 20%;
+  --sidebar-ring: 211 100% 56%;
+
+  /* Gradients */
+  --gradient-primary: linear-gradient(135deg, hsl(211 100% 45%), hsl(211 100% 56%));
+  --gradient-accent: linear-gradient(135deg, hsl(211 100% 40%), hsl(211 100% 52%));
+  --gradient-hero: linear-gradient(135deg, hsl(211 100% 45%), hsl(220 90% 58%));
+
+  /* Shadows — soft Apple style */
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.08), 0 4px 8px rgba(0,0,0,0.04);
+  --shadow-card: 0 1px 4px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+
+  /* Additional theme variables */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --text: #6b6375;
+  --text-h: #08060d;
+  --bg: #fff;
+  --code-bg: #e5e4e7;
+  --accent-bg: rgba(170, 59, 255, 0.1);
+  --accent-border: rgba(170, 59, 255, 0.5);
+  --social-bg: rgba(244, 243, 236, 0.5);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 18px/145% var(--sans);
+  letter-spacing: 0.18px;
+  color-scheme: light dark;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  
+  /* Common colors */
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-gray-50: #f8f9fa;
+  --color-gray-100: #f1f5f9;
+  --color-gray-200: #e5e4e7;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  
+  /* Brand colors */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  
+  --color-red-50: #fef2f2;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  
+  --color-indigo-50: #e0e9ff;
+  --color-indigo-500: #667eea;
+  
+  --color-yellow-400: #fbbf24;
+  --color-yellow-500: #f59e0b;
+  
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+}
+
+.dark {
+  --background: 240 8% 7%;
+  --foreground: 0 0% 95%;
+
+  --card: 240 7% 12%;
+  --card-foreground: 0 0% 95%;
+
+  --popover: 240 7% 12%;
+  --popover-foreground: 0 0% 95%;
+
+  --primary: 211 100% 56%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 17%;
+  --secondary-foreground: 0 0% 90%;
+
+  --muted: 240 5% 16%;
+  --muted-foreground: 240 4% 55%;
+
+  --accent: 211 100% 56%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 240 5% 20%;
+  --input: 240 5% 20%;
+  --ring: 211 100% 56%;
+
+  --sidebar-background: 240 8% 6%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 211 100% 60%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 240 5% 13%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-border: 240 5% 16%;
+  --sidebar-ring: 211 100% 60%;
+}
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+
+  /* Max-width breakpoints for max-w-* utilities */
+  --max-width-xs: 20rem;    /* 320px */
+  --max-width-sm: 24rem;    /* 384px */
+  --max-width-md: 28rem;    /* 448px */
+  --max-width-lg: 32rem;    /* 512px */
+  --max-width-xl: 36rem;    /* 576px */
+  --max-width-2xl: 42rem;   /* 672px */
+  --max-width-3xl: 48rem;   /* 768px */
+  --max-width-4xl: 56rem;   /* 896px */
+  --max-width-5xl: 64rem;   /* 1024px */
+  --max-width-6xl: 72rem;   /* 1152px */
+  --max-width-7xl: 80rem;   /* 1280px */
+
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  /* Default border color for all borders */
+  --color-border: var(--color-gray-200);
+
+  --color-status-draft: hsl(var(--status-draft));
+  --color-status-pending: hsl(var(--status-pending));
+  --color-status-approved: hsl(var(--status-approved));
+  --color-status-rejected: hsl(var(--status-rejected));
+  --color-status-processing: hsl(var(--status-processing));
+  --color-status-success: hsl(var(--status-success));
+  --color-status-error: hsl(var(--status-error));
+
+  --color-role-staff: hsl(var(--role-staff));
+  --color-role-ao: hsl(var(--role-ao));
+  --color-role-finance: hsl(var(--role-finance));
+  --color-role-admin: hsl(var(--role-admin));
+
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  
+  /* Standard border-radius utilities for Tailwind */
+  --radius-2xl: 1rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 2rem;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-enterprise: var(--shadow-md);
+  --shadow-enterprise-lg: var(--shadow-lg);
+
+  --background-image-gradient-primary: var(--gradient-primary);
+  --background-image-gradient-accent: var(--gradient-accent);
+  --background-image-gradient-hero: var(--gradient-hero);
+
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.4s ease-out;
+  --animate-scale-in: scale-in 0.2s ease-out;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes slide-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+@layer base {
+  /* Base styles - CSS variables moved to :root above */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #9ca3af;
+    --text-h: #f3f4f6;
+    --bg: #16171d;
+    --border: #2e303a;
+    --code-bg: #1f2028;
+    --accent: #c084fc;
+    --accent-bg: rgba(192, 132, 252, 0.15);
+    --accent-border: rgba(192, 132, 252, 0.5);
+    --social-bg: rgba(47, 48, 58, 0.5);
+    --shadow:
+      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+  }
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+#root {
+  max-width: none;
+  margin: 0;
+  text-align: left;
+  border-inline: none;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+h1,
+h2 {
+  font-family: var(--sans);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
+
+.white-container {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.main-panel:has(.error-boundary) {
+  padding: 1rem;
+}
+
+/* ===================================
+   Ant Design Font Overrides
+   =================================== */
+:root {
+  /* Primary font family - Inter */
+  --ant-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  
+  /* Code font family - Inter */
+  --ant-font-family-code: 'Inter', ui-monospace, SFMono-Regular, 'SF Mono', Consolas, monospace !important;
+  
+  /* Font sizes (matching ConfigProvider tokens) */
+  --ant-font-size: 14px !important;
+  --ant-font-size-sm: 12px !important;
+  --ant-font-size-lg: 16px !important;
+  --ant-font-size-xl: 20px !important;
+}

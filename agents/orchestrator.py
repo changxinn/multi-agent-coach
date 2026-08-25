@@ -1,8 +1,18 @@
+import os
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from display import AGENT_META, print_backend
 from utils import debug
+
+# Load API key from config if available
+try:
+    from app.config import get_settings
+    _settings = get_settings()
+    if _settings.OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = _settings.OPENAI_API_KEY
+except Exception:
+    pass
 
 
 def orchestrator(state):

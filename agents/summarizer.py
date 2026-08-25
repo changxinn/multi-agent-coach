@@ -1,7 +1,17 @@
+import os
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from tools import get_progress_summary
+
+# Load API key from config if available
+try:
+    from app.config import get_settings
+    _settings = get_settings()
+    if _settings.OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = _settings.OPENAI_API_KEY
+except Exception:
+    pass
 
 
 def summarizer(state) -> str:

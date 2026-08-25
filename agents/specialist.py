@@ -1,4 +1,5 @@
 import re
+import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -13,6 +14,15 @@ from tools import (
 )
 from tools.log_intent import intents_for_agent
 from utils import debug
+
+# Load API key from config if available
+try:
+    from app.config import get_settings
+    _settings = get_settings()
+    if _settings.OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = _settings.OPENAI_API_KEY
+except Exception:
+    pass
 
 AGENTS = {
     "training_planner": {
@@ -150,7 +160,8 @@ Message: [Your coaching response]
 
 STRICT RESPONSE RULES (very important):
 - Maximum 60 words total
-- Use 2-3 short bullet points starting with "• " OR 1-2 short sentences
+- Use 2-3 short bullet points starting with "- " (dash and space) for proper markdown formatting
+- Each bullet point must be on its own line
 - Give ONE clear next step or ONE question at the end
 - Do NOT repeat advice already given by another coach in the conversation
 - Stay strictly in YOUR specialty — defer other topics briefly
@@ -231,7 +242,7 @@ IMPORTANT:
                             {
                                 "role": "assistant",
                                 "name": agent["name"],
-                                "content": f"\n{plain_for_history}\n\n",
+                                "content": plain_for_history,
                             }
                         ],
                     }

@@ -7,3 +7,7 @@ __pycache__/
 .env
 .env.local
 data/user_data.json
+frontend/.env
+frontend/environments/.env.*
+node_modules/
+*.egg-info/
