@@ -362,7 +362,3 @@ See **[README-to-be.md](README-to-be.md)** for:
 - **[docs/DEPLOYMENT-CHECKLIST.md](docs/DEPLOYMENT-CHECKLIST.md)** - Production checklist
 
 ---
-
-## Support
-
-For issues or questions, please open an issue on GitHub.
