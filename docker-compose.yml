@@ -35,6 +35,9 @@ services:
       - ALLOWED_ORIGINS=http://localhost:5174,http://localhost:3000
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LLM_MODEL=gpt-5-nano
+      - USE_RECOVERY_AGENT_SERVICE=true
+      - RECOVERY_AGENT_URL=http://recovery-agent:8001
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - DEBUG=true
       - SEED_ADMIN_EMAIL=admin@example.com
       - SEED_ADMIN_PASSWORD=ChangeMe123!
@@ -79,6 +82,28 @@ services:
       - "6379:6379"
     volumes:
       - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # Recovery Agent Microservice
+  # ===========================================
+  recovery-agent:
+    build:
+      context: ./services/recovery_agent
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
+      - DATABASE_SCHEMA=systemdb
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - app-network

@@ -66,6 +66,7 @@ class AgentOrchestrator:
             # Build initial state
             # Convert session profile to LangGraph State format
             user_profile = {
+                "user_id": session.user_id,
                 "name": session.profile.get("name", "Athlete"),
                 "goal": session.profile.get("fitness_goal", "general fitness"),
                 "fitness_level": session.profile.get("fitness_level", "beginner"),
