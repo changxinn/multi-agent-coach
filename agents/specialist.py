@@ -21,6 +21,17 @@ AGENTS = {
         "personality": "Motivating, structured, focuses on progressive overload and safe form",
         "speech_style": "Clear, actionable, uses sets/reps when helpful",
         "tools": ["log_workout", "exercise_lookup", "progress"],
+        "extra_instructions": """
+TRAINING-SPECIFIC RULES:
+- Tailor every plan to the athlete's stated goal (flexibility, Hyrox, strength, fat loss, etc.)
+- When the athlete confirms training days (e.g. "Mon, Wed, Fri, Sun"), output the full weekly plan immediately — each day + focus. Never defer with "I'll add details later."
+- For program requests: give a weekly structure (days + focus + key movements). Respect equipment limits and injuries mentioned in the conversation.
+- For injury constraints (knee, back, shoulder): prefer low-impact cardio, unilateral work, and controlled range; avoid high-impact running unless cleared.
+- On progress check-ins: summarize workouts and training consistency only. Briefly note gaps in meals/sleep and suggest asking Sam or Jordan — do NOT log meals or sleep yourself.
+- Never re-log workouts, meals, or sleep from conversation history or progress data — only log what the athlete explicitly asks to log in their latest message.
+- When logging a workout: acknowledge the entry, then give one training tip or next-step question.
+- One Action per turn only. Do not chain multiple Action lines.
+""",
     },
     "nutrition_advisor": {
         "name": "Sam (Nutrition Advisor)",
@@ -82,6 +93,52 @@ def _agent_allowed_tool(agent_id: str, tool_name: str) -> bool:
     return tool_name in AGENTS[agent_id]["tools"]
 
 
+def _last_user_text(messages: list) -> str:
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            return msg.get("content", "").replace("You: ", "").strip()
+    return ""
+
+
+def _training_context_hints(agent_id: str, messages: list) -> str:
+    """Inject conversation-aware hints so Alex delivers plans instead of deferring."""
+    if agent_id != "training_planner":
+        return ""
+
+    user_text = _last_user_text(messages)
+    if not user_text:
+        return ""
+
+    hints: list[str] = []
+    lowered = user_text.lower()
+
+    day_tokens = re.findall(
+        r"\b(mon(?:day)?|tue(?:s(?:day)?)?|wed(?:nesday)?|thu(?:rs(?:day)?)?|"
+        r"fri(?:day)?|sat(?:urday)?|sun(?:day)?)\b",
+        lowered,
+    )
+    if day_tokens and len(user_text.split()) <= 12:
+        days = ", ".join(day_tokens)
+        hints.append(
+            f"Athlete confirmed training days ({days}). "
+            "Output the full weekly plan now — one bullet per day with focus and key exercises."
+        )
+
+    if re.search(r"\bplan\b.*\b(program|week|schedule)\b|\b\d+\s*-?\s*day\b", lowered):
+        hints.append(
+            "Athlete wants a program. Give weekly structure (days + focus), "
+            "respecting equipment and injuries from the conversation."
+        )
+
+    if re.search(r"\b(knee|shoulder|back|hip)\b.*\b(injury|hurt|pain|sore)\b", lowered):
+        hints.append(
+            "Injury mentioned — use exercise_lookup for affected movements if helpful, "
+            "then suggest safe alternatives and low-impact options."
+        )
+
+    return "\n".join(hints)
+
+
 def _claims_logged_without_tool(message: str, tools_called: set[str]) -> bool:
     lowered = message.lower()
     if not re.search(r"\blogged\b", lowered):
@@ -116,10 +173,12 @@ def specialist(agent_id: str, state) -> dict:
     for tool in agent["tools"]:
         available_actions += f"\n\n{tool}:\n{TOOL_DESCRIPTIONS[tool]}"
 
+    extra = agent.get("extra_instructions", "")
+
     system_prompt = f"""You are {agent["name"]}, a {agent["role"]}.
 Personality: {agent["personality"]}
 Speech style: {agent["speech_style"]}
-
+{extra}
 Athlete profile:
 - Goal: {profile.get("goal", "general fitness")}
 - Fitness level: {profile.get("fitness_level", "beginner")}
@@ -131,6 +190,7 @@ At the end of the loop you output a Message.
 
 Use Thought to reason about what the athlete needs.
 Use Action to call ONE tool listed below when you need real data or to log something.
+Only one Action per response — never output multiple Action lines.
 Observation will be the tool result — never invent tool output.
 
 Available actions:
@@ -182,12 +242,23 @@ IMPORTANT:
         f"Recent conversation:\n{conversation_text}\n\nRespond as {agent['name']}.\n"
     )
 
+    context_hints = _training_context_hints(agent_id, messages)
+    if context_hints:
+        internal_context += f"\nContext hints:\n{context_hints}\n"
+
     if preflight_lines:
-        internal_context += (
+        preflight_note = (
             "\nPre-loaded tool results (already saved — do NOT call again):\n"
             + "\n".join(preflight_lines)
-            + "\n\nAcknowledge what was logged using the exact data above.\n"
         )
+        if "progress" in tools_called:
+            preflight_note += (
+                "\n\nThis is a progress check — summarize training data only. "
+                "Do NOT call log_workout, log_meal, or log_sleep.\n"
+            )
+        elif any(t.startswith("log_") for t in tools_called):
+            preflight_note += "\n\nAcknowledge what was logged using the exact data above.\n"
+        internal_context += preflight_note
 
     max_iterations = 5
 
@@ -238,13 +309,15 @@ IMPORTANT:
 
             if "Action:" in content:
                 action_match = re.search(
-                    r"Action:\s*(\w+)(?::\s*(.*))?",
+                    r"Action:\s*(\w+)(?::\s*(.*?))?(?:\n|$)",
                     content,
                     re.DOTALL,
                 )
                 if action_match:
                     tool_name = action_match.group(1).lower()
                     argument = (action_match.group(2) or "").strip()
+                    # Strip accidental chained actions pasted into the argument
+                    argument = re.split(r"\n\s*Action:", argument, maxsplit=1)[0].strip()
 
                     if not _agent_allowed_tool(agent_id, tool_name):
                         observation = f"Access denied: {agent['name']} cannot use tool '{tool_name}'."

@@ -73,6 +73,16 @@ def parse_user_intents(user_text: str) -> list[tuple[str, str]]:
     if form:
         intents.append(("exercise_lookup", form.group(1).strip()))
 
+    if re.search(
+        r"(?:safe|knee[- ]friendly)\s+(?:leg\s+)?exercises?",
+        lowered,
+    ):
+        intents.append(("exercise_lookup", "knee-friendly leg"))
+
+    if re.search(r"\bflexibility\b|\bmobility\b|\bstretch", lowered):
+        if re.search(r"\bplan\b|\bprogram\b|\broutine\b|\bhelp\b", lowered):
+            intents.append(("exercise_lookup", "flexibility"))
+
     return intents
 
 
