@@ -1,0 +1,43 @@
+.unauthorized-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: var(--background);
+}
+
+.unauthorized-content {
+  text-align: center;
+  padding: 2rem;
+  max-width: 400px;
+}
+
+.unauthorized-content h1 {
+  font-size: 2rem;
+  margin-bottom: 1rem;
+  color: var(--destructive);
+  font-weight: 600;
+}
+
+.unauthorized-content p {
+  color: var(--muted-foreground);
+  margin-bottom: 0.75rem;
+  line-height: 1.5;
+}
+
+.unauthorized-content .logout-button {
+  margin-top: 1.5rem;
+  padding: 0.75rem 1.5rem;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  border: none;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.unauthorized-content .logout-button:hover {
+  background: var(--primary-hover);
+}

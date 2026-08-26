@@ -1,73 +1,364 @@
-# Fitness Coaching Team — Multi-Agent System
+# Multi-Agent Fitness Coach - Local Development
 
-A LangGraph-based multi-agent fitness coach that plans training, tracks nutrition and sleep, and summarizes your session. Built for the NUS-ISS Agentic AI workshop 3.
+A FastAPI backend for the Multi-Agent Fitness Coach application, integrating LangGraph for intelligent coaching conversations.
 
-## Overview
+## Quick Start - Local Development
 
-This system simulates a **coaching team** with distinct specialist agents:
-
-| Agent | Role | Tools (exclusive access) |
-|-------|------|--------------------------|
-| **Head Coach** (orchestrator) | Routes user messages to the right specialist | — |
-| **Alex** (training planner) | Workouts, exercise form, training plans | `log_workout`, `exercise_lookup`, `progress` |
-| **Sam** (nutrition advisor) | Meals, fueling, hydration | `log_meal`, `progress` |
-| **Jordan** (recovery coach) | Sleep, rest, soreness | `log_sleep`, `progress` |
-| **Summarizer** | End-of-session recap | `progress` (read-only via code) |
-
-**Coordination:** LangGraph orchestrator pattern — user → Head Coach → specialist(s) → user loop, with conditional routing and shared state.
-
-**State:** Conversation history, user profile, volley counter, and next agent selection flow through a shared `State` TypedDict.
-
-**Persistence:** Workouts, meals, and sleep logs are stored in `data/user_data.json`.
-
-## Requirements
+### Prerequisites
 
 - Python 3.12+
-- [uv](https://docs.astral.sh/uv/) package manager
-- OpenAI API key (`OPENAI_API_KEY`)
+- PostgreSQL 16+ **OR** Docker
+- Node.js 18+ (for frontend)
+- Docker & Docker Compose (optional, for containerized development)
 
+---
 
-## Setup
+## Backend Setup
 
-1. Clone or unzip this project.
+### 1. Clone Repository
 
-2. Create a `.env` file in the project root:
+```bash
+cd multi-agent-coach
+```
+
+### 2. Install Python Dependencies
+
+```bash
+pip install -e .
+```
+
+### 3. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your local database password:
 
 ```env
-OPENAI_API_KEY=your_key_here
-DEBUG=true
+DATABASE_URL=postgresql+asyncpg://postgres:adminPassw0rd@localhost:5432/systemdb
+DATABASE_SCHEMA=systemdb
+JWT_SECRET_KEY=your-super-secret-key-min-32-chars-long
+OPENAI_API_KEY=sk-...
+FRONTEND_URL=http://localhost:5174
 ```
 
-- **Backend trace** (routing + tools) is always shown in the terminal.
-- Set `DEBUG=true` for verbose raw LLM logs (thought/action iterations).
+### 4. Start Database
 
-3. Install dependencies and run:
+**Option A: Using Docker Compose (Recommended)**
 
-```powershell
-uv sync
-uv run python main.py
+```bash
+docker-compose up -d db
 ```
 
-## Start and stop
+This starts PostgreSQL on `localhost:5432` with:
+- Database: `systemdb`
+- User: `postgres`
+- Password: `postgres`
 
-| Action | Result |
-|--------|--------|
-| `uv run python main.py` | Start the app |
-| Type `exit` | End session with summary |
-| `Ctrl+C` | Quit immediately (no summary) |
+**Option B: Using Existing PostgreSQL**
 
-See `TEST_PROMPTS.md` for a full list of example prompts and a demo script.
+Ensure your PostgreSQL instance is running and accessible.
 
-## Usage
+### 5. Run Backend
 
-1. Enter your profile (or press Enter for defaults).
-2. Type your question at the `>` prompt.
-3. Watch the **backend trace** (who was routed, which tools ran).
-4. Read the specialist's short bullet response.
-5. Type `exit` to end the session and receive a summary.
+```bash
+uvicorn app.main:app --reload --port 8000
+```
 
+The backend will automatically:
+- ✅ Create database (if not exists)
+- ✅ Create schema and tables
+- ✅ Run migrations
+- ✅ Create admin user (admin@example.com / ChangeMe123!)
+- ✅ Start API server on http://localhost:8000
 
-## Demo log
+### 6. Verify Installation
 
-See `DEMO_LOG.txt` for a sample run highlighting agent routing, tool usage, and session summary.
+**Health Check:**
+```bash
+curl http://localhost:8000/health
+```
 
+**API Documentation:**
+Open http://localhost:8000/docs in your browser.
+
+### 7. Test Endpoints
+
+**Register User:**
+```bash
+curl -X POST http://localhost:8000/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "test@example.com",
+    "password": "TestPass123!",
+    "name": "Test User"
+  }'
+```
+
+**Login:**
+```bash
+curl -X POST http://localhost:8000/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "admin@example.com",
+    "password": "ChangeMe123!"
+  }'
+```
+
+Save the `access_token` for subsequent requests.
+
+**Test Chat:**
+```bash
+curl -X POST http://localhost:8000/api/chat \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{
+    "messages": [{"role": "user", "content": "What workout should I do?"}],
+    "session_id": "chat_abc123def456789"
+  }'
+```
+
+---
+
+## Frontend Setup
+
+### 1. Navigate to Frontend
+
+```bash
+cd frontend
+```
+
+### 2. Install Dependencies
+
+```bash
+npm install
+```
+
+### 3. Configure Environment
+
+Create `frontend/.env`:
+
+```env
+VITE_API_BASE_URL=http://localhost:8000/api
+```
+
+### 4. Start Development Server
+
+```bash
+npm run dev
+```
+
+Frontend will be available at: http://localhost:5174
+
+### 5. Integration Details
+
+For detailed frontend integration instructions, see:
+- **[docs/PHASE-5-FRONTEND.md](docs/PHASE-5-FRONTEND.md)** - Complete integration guide
+- **[frontend/SETUP.md](frontend/SETUP.md)** - Frontend setup details
+
+---
+
+## All-in-One Local Development
+
+### Using Docker Compose
+
+Start everything with one command:
+
+```bash
+docker-compose up -d
+```
+
+This starts:
+- ✅ Backend API (port 8000)
+- ✅ PostgreSQL database (port 5432)
+- ✅ Redis (port 6379, optional for session testing)
+
+**View logs:**
+```bash
+docker-compose logs -f api
+```
+
+**Stop all services:**
+```bash
+docker-compose down
+```
+
+---
+
+## Development Workflow (Additional Info)
+
+### Hot Reload
+
+Backend automatically reloads on code changes:
+
+```bash
+uvicorn app.main:app --reload --port 8000
+```
+
+### Code Formatting
+
+```bash
+# Format code
+ruff format app/
+
+# Check for issues
+ruff check app/
+```
+
+### Database Migrations
+
+Migrations run automatically on startup. To manually run:
+
+```bash
+python -m app.db.seed
+```
+
+### Testing
+
+```bash
+# Run tests (when available)
+pytest tests/ -v --cov=app
+```
+
+---
+
+## Local Troubleshooting
+
+### Database Connection Failed
+
+```bash
+# Check PostgreSQL is running
+docker-compose ps db
+
+# Verify connection string
+echo $DATABASE_URL
+
+# Test connection
+psql $DATABASE_URL
+```
+
+### Port 8000 Already in Use
+
+```bash
+# Windows: Find process
+netstat -ano | findstr :8000
+# Kill process
+taskkill /PID <PID> /F
+
+# Use different port
+uvicorn app.main:app --reload --port 8001
+```
+
+### Admin User Not Created
+
+Check backend logs for:
+```
+"Admin user seeding completed"
+```
+
+If missing, restart backend or manually seed:
+```bash
+python -c "from app.db.seed import seed_admin_user; from app.db.database import AsyncSessionLocal; import asyncio; asyncio.run(seed_admin_user(AsyncSessionLocal()))"
+```
+
+### JWT Validation Failed
+
+- Ensure `JWT_SECRET_KEY` is set in `.env` (min 32 characters)
+- Check token format: `Authorization: Bearer <token>`
+- Default token expiry: 24 hours
+
+---
+
+## Default Credentials
+
+**Admin User** (auto-created on first startup):
+- Email: `admin@example.com`
+- Password: `ChangeMe123!`
+
+**Customize in `.env`:**
+```env
+SEED_ADMIN_EMAIL=your-admin@example.com
+SEED_ADMIN_PASSWORD=YourSecurePassword123!
+SEED_ADMIN_NAME=Your Admin Name
+```
+
+---
+
+## Project Structure
+
+```
+multi-agent-coach/
+├── app/                        # FastAPI backend
+│   ├── api/
+│   │   ├── routes/            # API endpoints
+│   │   └── schemas/           # Pydantic models
+│   ├── services/              # Business logic
+│   ├── db/                    # Database layer
+│   ├── utils/                 # Utilities
+│   ├── config.py              # Configuration
+│   └── main.py                # Application entry
+├── agents/                     # LangGraph agents
+├── tools/                      # Agent tools
+├── frontend/                   # React frontend
+├── docker-compose.yml          # Local dev services
+├── Dockerfile                  # Production container
+└── .env.example                # Environment template
+```
+
+---
+
+## API Quick Reference
+
+### Authentication
+- `POST /api/auth/login` - Login
+- `POST /api/auth/register` - Register
+- `POST /api/auth/refresh` - Refresh token
+
+### Chat
+- `POST /api/chat` - Send message
+- `GET /api/chat/stream` - Stream response (SSE)
+- `POST /api/chat/summary` - Get summary
+- `DELETE /api/chat/history/{id}` - Clear history
+
+### Session
+- `POST /api/session` - Create session
+- `GET /api/session/{id}` - Get details
+- `DELETE /api/session/{id}` - Delete session
+
+---
+
+## Next Steps
+
+### For Development
+1. ✅ Backend running locally
+2. ✅ Frontend running locally
+3. ✅ Database setup complete
+4. → Start building features!
+
+### For Production Deployment
+See **[README-to-be.md](README-to-be.md)** for:
+- AWS deployment guide
+- PostgreSQL container deployment
+- Production configuration
+- Scaling and monitoring
+
+---
+
+## Documentation
+
+**Local Development:**
+- **[README.md](README.md)** - This file (local setup)
+- **[frontend/SETUP.md](frontend/SETUP.md)** - Frontend setup
+
+**Technical:**
+- **[docs/API-REFERENCE.md](docs/API-REFERENCE.md)** - Complete API docs
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
+- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Troubleshooting guide
+
+**Deployment:**
+- **[README-to-be.md](README-to-be.md)** - AWS deployment guide
+- **[docs/PHASE-6-AWS.md](docs/PHASE-6-AWS.md)** - Detailed AWS guide
+- **[docs/DEPLOYMENT-CHECKLIST.md](docs/DEPLOYMENT-CHECKLIST.md)** - Production checklist
+
+---
