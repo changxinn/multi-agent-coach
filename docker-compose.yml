@@ -1,0 +1,94 @@
+version: '3.8'
+
+# ===========================================
+# Docker Compose for Local Development
+# ===========================================
+# Services:
+# - api: FastAPI backend
+# - db: PostgreSQL database
+# - redis: Redis cache (optional, for session testing)
+#
+# Usage:
+#   docker-compose up -d           # Start all services
+#   docker-compose down            # Stop all services
+#   docker-compose logs -f api     # View API logs
+# ===========================================
+
+services:
+  # ===========================================
+  # FastAPI Backend
+  # ===========================================
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/systemdb
+      - DATABASE_SCHEMA=systemdb
+      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_ALGORITHM=HS256
+      - JWT_EXPIRY_HOURS=24
+      - SESSION_EXPIRY_HOURS=24
+      - FRONTEND_URL=http://localhost:5174
+      - ALLOWED_ORIGINS=http://localhost:5174,http://localhost:3000
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-5-nano
+      - DEBUG=true
+      - SEED_ADMIN_EMAIL=admin@example.com
+      - SEED_ADMIN_PASSWORD=ChangeMe123!
+      - SEED_ADMIN_NAME=System Admin
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app  # Mount for hot reload
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # PostgreSQL Database
+  # ===========================================
+  db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=systemdb
+      - POSTGRES_USER=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # Redis (Optional - for session testing)
+  # ===========================================
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  app-network:
+    driver: bridge

@@ -1,0 +1,38 @@
+/* ErrorBoundary Component Styles */
+
+.error-boundary-container {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+
+.error-boundary-result {
+  width: 100%;
+  max-width: 600px;
+}
+
+.error-boundary-icon {
+  font-size: 64px;
+  color: #ef4444;
+}
+
+.error-boundary-details {
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.error-boundary-message {
+  font-size: 14px;
+  color: #6b7280;
+  margin-top: 16px;
+}
+
+.error-boundary-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 24px;
+}

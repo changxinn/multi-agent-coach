@@ -1,0 +1,82 @@
+.chat-page-container {
+  width: 100%;
+  height: 95%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-gray-50);
+  position: relative;
+}
+
+/* Embedded mode - chat container fills parent */
+.chat-page-container .chat-container.embedded {
+  position: relative !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  z-index: 1 !important;
+}
+
+/* Ensure DeepChatBot takes full width */
+.chat-page-container > div {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Override any max-width constraints on DeepChatBot wrapper */
+.chat-page-container .deep-chat-wrapper,
+.chat-page-container .deep-chat-container {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+/* Make chat content area full width */
+.chat-page-container .chat-content {
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 1;
+}
+
+/* Ensure input area spans full width */
+.chat-page-container .input-area {
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+
+/* Full-width input wrapper */
+.chat-page-container .input-wrapper {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+/* Hide the expand/sparkles button */
+.chat-page-container .expand-btn,
+.chat-page-container [class*="expand"],
+.chat-page-container button[class*="sparkle"] {
+  display: none !important;
+}
+
+/* Hide chat trigger button when embedded */
+.chat-page-container.embedded .chat-trigger-btn,
+.chat-page-container .chat-container.embedded ~ .chat-trigger-btn {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  .chat-page-container .input-wrapper {
+    padding: 0 16px;
+  }
+  
+  /* Ensure embedded chat works on mobile */
+  .chat-page-container .chat-container.embedded {
+    height: 100% !important;
+  }
+}
