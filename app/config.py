@@ -67,6 +67,14 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-5-nano"
 
     # ===========================================
+    # Internal Agent Services
+    # ===========================================
+    # Disabled by default to preserve the single-process development fallback.
+    USE_RECOVERY_AGENT_SERVICE: bool = False
+    RECOVERY_AGENT_URL: str = "http://localhost:8001"
+    INTERNAL_SERVICE_TOKEN: str = ""
+
+    # ===========================================
     # AWS Configuration (Optional for Production)
     # ===========================================
     AWS_REGION: Optional[str] = None

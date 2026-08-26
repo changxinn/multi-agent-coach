@@ -144,11 +144,55 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
     Calls specialist agent and returns result.
     """
     from agents.specialist import specialist
+    from app.config import get_settings
 
     next_agent = state.get("next_agent", "training_planner")
     volley_left = state.get("volley_msg_left", 1)
 
     logger.info("Calling specialist agent: %s", next_agent)
+
+    settings = get_settings()
+    if next_agent == "recovery_coach" and settings.USE_RECOVERY_AGENT_SERVICE:
+        try:
+            from app.services.recovery_agent_client import recovery_agent_client
+
+            latest_user_message = next(
+                (
+                    message.get("content", "").replace("You: ", "").strip()
+                    for message in reversed(state.get("messages", []))
+                    if message.get("role") == "user"
+                ),
+                "",
+            )
+            profile = state.get("user_profile", {})
+            response = recovery_agent_client.evaluate(
+                user_id=int(profile["user_id"]),
+                message=latest_user_message,
+                profile=profile,
+            )
+            message_text = response["message"]
+            logger.info(
+                "Recovery Agent service completed assessment: status=%s score=%s",
+                response.get("status"),
+                response.get("score"),
+            )
+            return {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "name": "Jordan (Recovery Coach)",
+                        "content": f"Jordan (Recovery Coach): {message_text}",
+                        "metadata": {
+                            "recovery_status": response.get("status"),
+                            "tool_trace": response.get("tool_trace", []),
+                        },
+                    }
+                ],
+                "volley_msg_left": max(0, volley_left - 1),
+            }
+        except Exception as error:
+            # The existing in-process agent is a deliberate development fallback.
+            logger.exception("Recovery Agent service failed; using local recovery fallback: %s", error)
 
     result = specialist(next_agent, state)
 

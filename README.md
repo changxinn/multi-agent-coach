@@ -171,6 +171,7 @@ docker-compose up -d
 
 This starts:
 - ✅ Backend API (port 8000)
+- ✅ Recovery Agent (port 8001, private microservice)
 - ✅ PostgreSQL database (port 5432)
 - ✅ Redis (port 6379, optional for session testing)
 
