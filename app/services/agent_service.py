@@ -152,6 +152,8 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
     logger.info("Calling specialist agent: %s", next_agent)
 
     settings = get_settings()
+    
+    # Check for recovery coach microservice
     if next_agent == "recovery_coach" and settings.USE_RECOVERY_AGENT_SERVICE:
         try:
             from app.services.recovery_agent_client import recovery_agent_client
@@ -191,8 +193,50 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
                 "volley_msg_left": max(0, volley_left - 1),
             }
         except Exception as error:
-            # The existing in-process agent is a deliberate development fallback.
             logger.exception("Recovery Agent service failed; using local recovery fallback: %s", error)
+    
+    # Check for nutrition agent microservice
+    if next_agent == "nutrition_advisor" and settings.USE_NUTRITION_AGENT_SERVICE:
+        try:
+            from app.services.nutrition_agent_client import nutrition_agent_client
+
+            latest_user_message = next(
+                (
+                    message.get("content", "").replace("You: ", "").strip()
+                    for message in reversed(state.get("messages", []))
+                    if message.get("role") == "user"
+                ),
+                "",
+            )
+            profile = state.get("user_profile", {})
+            response = nutrition_agent_client.evaluate(
+                user_id=int(profile["user_id"]),
+                message=latest_user_message,
+                profile=profile,
+            )
+            message_text = response["message"]
+            logger.info(
+                "Nutrition Agent service completed assessment: status=%s score=%s",
+                response.get("status"),
+                response.get("score"),
+            )
+            return {
+                "messages": [
+                    {
+                        "role": "assistant",
+                        "name": "Sam (Nutrition Advisor)",
+                        "content": f"Sam (Nutrition Advisor): {message_text}",
+                        "metadata": {
+                            "nutrition_status": response.get("status"),
+                            "tool_trace": response.get("tool_trace", []),
+                        },
+                    }
+                ],
+                "volley_msg_left": max(0, volley_left - 1),
+            }
+        except Exception as error:
+            # The existing in-process agent is a deliberate development fallback.
+            logger.exception("Nutrition Agent service failed; using local nutrition fallback: %s", error)
 
     result = specialist(next_agent, state)
 

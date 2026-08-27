@@ -108,6 +108,31 @@ services:
     networks:
       - app-network
 
+  # ===========================================
+  # Nutrition Agent Microservice
+  # ===========================================
+  nutrition-agent:
+    build:
+      context: ./services/nutrition_agent
+      dockerfile: Dockerfile
+    ports:
+      - "127.0.0.1:8003:8003"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
+      - DATABASE_SCHEMA=systemdb
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-nutrition-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - NUTRITION_LLM_ENABLED=false
+      - USDA_FDC_API_KEY=fqdZaUBgSbdb10QEp9QMbCqhAVke1VRzecNmRKkK
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app-network
+
 volumes:
   postgres_data:
     driver: local

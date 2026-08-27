@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     # Disabled by default to preserve the single-process development fallback.
     USE_RECOVERY_AGENT_SERVICE: bool = False
     RECOVERY_AGENT_URL: str = "http://localhost:8001"
+    USE_NUTRITION_AGENT_SERVICE: bool = False
+    NUTRITION_AGENT_URL: str = "http://localhost:8003"
     INTERNAL_SERVICE_TOKEN: str = ""
 
     # ===========================================

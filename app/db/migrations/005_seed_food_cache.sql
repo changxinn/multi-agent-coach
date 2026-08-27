@@ -1,0 +1,263 @@
+-- Migration 005: Seed food cache with 200 common foods
+-- Data sourced from USDA FoodData Central
+-- Idempotent: Uses INSERT ... ON CONFLICT DO NOTHING
+
+-- ===========================================
+-- PROTEINS (40 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(1001, 'Chicken breast, grilled', NULL, 100, 165, 31.0, 0.0, 3.6, 0.0, 'protein'),
+(1002, 'Chicken thigh, roasted', NULL, 100, 209, 26.0, 0.0, 11.0, 0.0, 'protein'),
+(1003, 'Turkey breast, sliced', NULL, 100, 104, 23.0, 1.0, 1.0, 0.0, 'protein'),
+(1004, 'Ground beef, 85% lean, cooked', NULL, 100, 250, 26.0, 0.0, 15.0, 0.0, 'protein'),
+(1005, 'Salmon, Atlantic, cooked', NULL, 100, 206, 22.0, 0.0, 12.0, 0.0, 'protein'),
+(1006, 'Tuna, yellowfin, fresh, cooked', NULL, 100, 139, 30.0, 0.0, 1.0, 0.0, 'protein'),
+(1007, 'Cod, Atlantic, cooked', NULL, 100, 105, 23.0, 0.0, 0.8, 0.0, 'protein'),
+(1008, 'Tilapia, cooked', NULL, 100, 128, 26.0, 0.0, 2.7, 0.0, 'protein'),
+(1009, 'Shrimp, cooked', NULL, 100, 99, 24.0, 0.2, 0.3, 0.0, 'protein'),
+(1010, 'Eggs, whole, cooked, scrambled', NULL, 100, 149, 10.0, 1.6, 11.0, 0.0, 'protein'),
+(1011, 'Egg whites, cooked', NULL, 100, 52, 11.0, 0.7, 0.2, 0.0, 'protein'),
+(1012, 'Tofu, firm', NULL, 100, 144, 17.0, 2.8, 8.7, 2.3, 'protein'),
+(1013, 'Tofu, silken', NULL, 100, 55, 4.8, 2.0, 2.7, 0.2, 'protein'),
+(1014, 'Tempeh', NULL, 100, 193, 20.0, 9.0, 11.0, 0.0, 'protein'),
+(1015, 'Greek yogurt, plain, nonfat', NULL, 170, 100, 17.0, 6.0, 0.0, 0.0, 'protein'),
+(1016, 'Greek yogurt, plain, whole milk', NULL, 170, 154, 15.0, 8.0, 8.0, 0.0, 'protein'),
+(1017, 'Cottage cheese, lowfat', NULL, 100, 72, 12.0, 4.0, 1.0, 0.0, 'protein'),
+(1018, 'Mozzarella, part skim', NULL, 100, 254, 24.0, 3.0, 16.0, 0.0, 'protein'),
+(1019, 'Cheddar cheese', NULL, 100, 403, 25.0, 1.3, 33.0, 0.0, 'protein'),
+(1020, 'Protein powder, whey isolate', NULL, 30, 110, 25.0, 2.0, 0.5, 0.0, 'protein'),
+(1021, 'Pork tenderloin, roasted', NULL, 100, 147, 26.0, 0.0, 4.0, 0.0, 'protein'),
+(1022, 'Lamb, leg, roasted', NULL, 100, 175, 25.0, 0.0, 7.0, 0.0, 'protein'),
+(1023, 'Duck breast, roasted', NULL, 100, 201, 23.0, 0.0, 11.0, 0.0, 'protein'),
+(1024, 'Sardines, canned in water', NULL, 100, 208, 25.0, 0.0, 11.0, 0.0, 'protein'),
+(1025, 'Mackerel, Atlantic, cooked', NULL, 100, 262, 24.0, 0.0, 18.0, 0.0, 'protein'),
+(1026, 'Halibut, cooked', NULL, 100, 140, 27.0, 0.0, 3.0, 0.0, 'protein'),
+(1027, 'Crab, blue, cooked', NULL, 100, 87, 18.0, 0.0, 0.6, 0.0, 'protein'),
+(1028, 'Lobster, cooked', NULL, 100, 89, 19.0, 0.0, 0.6, 0.0, 'protein'),
+(1029, 'Scallops, cooked', NULL, 100, 111, 23.0, 2.4, 0.8, 0.0, 'protein'),
+(1030, 'Mussels, cooked', NULL, 100, 172, 24.0, 7.4, 4.5, 0.0, 'protein'),
+(1031, 'Beef sirloin, grilled', NULL, 100, 207, 27.0, 0.0, 10.0, 0.0, 'protein'),
+(1032, 'Chicken drumstick, roasted', NULL, 100, 172, 28.0, 0.0, 5.7, 0.0, 'protein'),
+(1033, 'Turkey ground, cooked', NULL, 100, 203, 27.0, 0.0, 9.0, 0.0, 'protein'),
+(1034, 'Bison, ground, cooked', NULL, 100, 179, 28.0, 0.0, 6.0, 0.0, 'protein'),
+(1035, 'Venison, roasted', NULL, 100, 158, 30.0, 0.0, 3.0, 0.0, 'protein'),
+(1036, 'Seitan', NULL, 100, 370, 75.0, 14.0, 1.9, 0.0, 'protein'),
+(1037, 'Edamame, cooked', NULL, 100, 122, 11.0, 10.0, 5.0, 5.0, 'protein'),
+(1038, 'Lentils, cooked', NULL, 100, 116, 9.0, 20.0, 0.4, 8.0, 'protein'),
+(1039, 'Chickpeas, cooked', NULL, 100, 164, 9.0, 27.0, 2.6, 8.0, 'protein'),
+(1040, 'Black beans, cooked', NULL, 100, 132, 9.0, 24.0, 0.5, 9.0, 'protein');
+
+-- ===========================================
+-- CARBOHYDRATES / GRAINS (40 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(2001, 'Brown rice, cooked', NULL, 150, 216, 5.0, 45.0, 1.8, 3.5, 'carb'),
+(2002, 'White rice, cooked', NULL, 150, 307, 6.0, 67.0, 0.5, 0.6, 'carb'),
+(2003, 'Quinoa, cooked', NULL, 185, 222, 8.0, 39.0, 3.6, 5.0, 'carb'),
+(2004, 'Oats, rolled, cooked', NULL, 234, 166, 6.0, 28.0, 3.6, 4.0, 'carb'),
+(2005, 'Pasta, whole wheat, cooked', NULL, 140, 174, 7.0, 37.0, 1.0, 6.0, 'carb'),
+(2006, 'Pasta, white, cooked', NULL, 140, 220, 8.0, 43.0, 1.3, 2.5, 'carb'),
+(2007, 'Sweet potato, baked', NULL, 200, 180, 4.0, 41.0, 0.1, 6.6, 'carb'),
+(2008, 'Potato, baked, with skin', NULL, 200, 161, 4.3, 37.0, 0.2, 3.8, 'carb'),
+(2009, 'Bread, whole wheat', NULL, 28, 69, 3.6, 12.0, 1.2, 1.9, 'carb'),
+(2010, 'Bread, white', NULL, 28, 75, 2.3, 14.0, 1.0, 0.8, 'carb'),
+(2011, 'Tortilla, corn', NULL, 30, 52, 1.4, 11.0, 0.7, 1.5, 'carb'),
+(2012, 'Tortilla, flour', NULL, 50, 140, 4.0, 24.0, 3.5, 1.5, 'carb'),
+(2013, 'Couscous, cooked', NULL, 157, 176, 6.0, 36.0, 0.3, 2.2, 'carb'),
+(2014, 'Barley, cooked', NULL, 157, 193, 3.5, 44.0, 0.7, 6.0, 'carb'),
+(2015, 'Bulgur, cooked', NULL, 182, 151, 5.6, 34.0, 0.4, 8.2, 'carb'),
+(2016, 'Millet, cooked', NULL, 174, 207, 6.1, 41.0, 1.7, 2.3, 'carb'),
+(2017, 'Buckwheat, cooked', NULL, 168, 155, 5.7, 33.0, 1.0, 4.5, 'carb'),
+(2018, 'Amaranth, cooked', NULL, 246, 251, 9.3, 46.0, 5.2, 5.0, 'carb'),
+(2019, 'Farro, cooked', NULL, 100, 123, 5.0, 26.0, 1.0, 3.5, 'carb'),
+(2020, 'Corn, yellow, cooked', NULL, 164, 143, 5.4, 31.0, 2.0, 3.6, 'carb'),
+(2021, 'Plantain, cooked', NULL, 179, 214, 2.4, 57.0, 0.4, 4.1, 'carb'),
+(2022, 'Yam, cooked', NULL, 136, 158, 2.3, 38.0, 0.2, 5.4, 'carb'),
+(2023, 'Cassava, cooked', NULL, 206, 330, 2.8, 78.0, 0.6, 3.8, 'carb'),
+(2024, 'Bagel, plain', NULL, 105, 289, 11.0, 56.0, 1.7, 2.4, 'carb'),
+(2025, 'Muffin, plain', NULL, 113, 377, 7.0, 64.0, 11.0, 1.5, 'carb'),
+(2026, 'Croissant', NULL, 57, 231, 5.0, 26.0, 12.0, 1.5, 'carb'),
+(2027, 'Pita bread, whole wheat', NULL, 64, 170, 7.0, 35.0, 1.3, 6.0, 'carb'),
+(2028, 'Naan bread', NULL, 90, 262, 9.0, 46.0, 5.0, 2.7, 'carb'),
+(2029, 'Rice cakes, plain', NULL, 9, 35, 0.7, 7.3, 0.3, 0.4, 'carb'),
+(2030, 'Crackers, whole grain', NULL, 15, 71, 1.7, 11.0, 2.5, 1.8, 'carb'),
+(2031, 'Pretzels, hard', NULL, 28, 108, 3.0, 23.0, 0.8, 1.0, 'carb'),
+(2032, 'Popcorn, air-popped', NULL, 8, 31, 1.0, 6.2, 0.4, 1.2, 'carb'),
+(2033, 'Grits, cooked', NULL, 242, 182, 4.0, 38.0, 1.0, 2.0, 'carb'),
+(2034, 'Polenta, cooked', NULL, 174, 127, 3.0, 27.0, 1.0, 2.3, 'carb'),
+(2035, 'Noodles, egg, cooked', NULL, 160, 221, 7.3, 41.0, 4.5, 1.8, 'carb'),
+(2036, 'Ramen noodles, cooked', NULL, 100, 138, 4.3, 27.0, 2.0, 1.2, 'carb'),
+(2037, 'Udon noodles, cooked', NULL, 140, 105, 2.7, 21.0, 0.6, 1.1, 'carb'),
+(2038, 'Soba noodles, cooked', NULL, 114, 99, 5.1, 20.0, 0.1, 1.8, 'carb'),
+(2039, 'Wild rice, cooked', NULL, 164, 166, 6.5, 35.0, 1.1, 3.0, 'carb'),
+(2040, 'Jasmine rice, cooked', NULL, 140, 205, 4.3, 44.0, 0.4, 0.3, 'carb');
+
+-- ===========================================
+-- VEGETABLES (40 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(3001, 'Broccoli, steamed', NULL, 100, 35, 2.4, 7.0, 0.4, 3.3, 'vegetable'),
+(3002, 'Spinach, cooked', NULL, 180, 41, 5.0, 7.0, 0.5, 4.3, 'vegetable'),
+(3003, 'Kale, cooked', NULL, 130, 36, 2.9, 7.0, 0.9, 2.0, 'vegetable'),
+(3004, 'Carrots, cooked', NULL, 156, 52, 1.2, 12.0, 0.3, 3.6, 'vegetable'),
+(3005, 'Green beans, steamed', NULL, 100, 31, 1.8, 7.0, 0.1, 3.4, 'vegetable'),
+(3006, 'Asparagus, cooked', NULL, 180, 40, 4.3, 8.0, 0.2, 4.0, 'vegetable'),
+(3007, 'Cauliflower, cooked', NULL, 180, 46, 3.6, 9.0, 0.5, 4.4, 'vegetable'),
+(3008, 'Brussels sprouts, cooked', NULL, 156, 61, 4.0, 12.0, 0.8, 4.1, 'vegetable'),
+(3009, 'Cabbage, cooked', NULL, 100, 23, 1.3, 5.4, 0.1, 2.4, 'vegetable'),
+(3010, 'Zucchini, cooked', NULL, 180, 33, 2.4, 6.0, 0.6, 2.2, 'vegetable'),
+(3011, 'Bell peppers, red, raw', NULL, 119, 37, 1.2, 7.2, 0.4, 2.5, 'vegetable'),
+(3012, 'Bell peppers, green, raw', NULL, 119, 24, 1.0, 5.7, 0.2, 1.7, 'vegetable'),
+(3013, 'Tomatoes, red, ripe, raw', NULL, 180, 32, 1.6, 6.9, 0.4, 2.2, 'vegetable'),
+(3014, 'Cucumber, with peel, raw', NULL, 119, 16, 0.8, 3.8, 0.1, 0.5, 'vegetable'),
+(3015, 'Lettuce, romaine, raw', NULL, 47, 8, 1.2, 1.4, 0.1, 1.0, 'vegetable'),
+(3016, 'Lettuce, iceberg, raw', NULL, 72, 10, 0.7, 2.1, 0.1, 0.9, 'vegetable'),
+(3017, 'Celery, raw', NULL, 101, 14, 0.7, 3.0, 0.2, 1.6, 'vegetable'),
+(3018, 'Onions, raw', NULL, 115, 46, 1.3, 11.0, 0.1, 1.9, 'vegetable'),
+(3019, 'Garlic, raw', NULL, 3, 4, 0.2, 1.0, 0.0, 0.1, 'vegetable'),
+(3020, 'Mushrooms, white, cooked', NULL, 121, 44, 4.0, 7.0, 0.6, 2.2, 'vegetable'),
+(3021, 'Eggplant, cooked', NULL, 99, 35, 0.8, 8.7, 0.2, 2.5, 'vegetable'),
+(3022, 'Peas, green, cooked', NULL, 160, 118, 8.0, 21.0, 0.4, 7.0, 'vegetable'),
+(3023, 'Corn, sweet, yellow, cooked', NULL, 164, 143, 5.4, 31.0, 2.0, 3.6, 'vegetable'),
+(3024, 'Beets, cooked', NULL, 170, 75, 2.9, 17.0, 0.1, 3.8, 'vegetable'),
+(3025, 'Radishes, raw', NULL, 116, 19, 0.7, 4.0, 0.1, 1.9, 'vegetable'),
+(3026, 'Turnips, cooked', NULL, 130, 34, 1.1, 7.8, 0.1, 2.5, 'vegetable'),
+(3027, 'Parsnips, cooked', NULL, 156, 112, 1.6, 27.0, 0.5, 5.6, 'vegetable'),
+(3028, 'Squash, butternut, cooked', NULL, 205, 82, 1.8, 22.0, 0.2, 3.9, 'vegetable'),
+(3029, 'Squash, acorn, cooked', NULL, 205, 115, 2.3, 30.0, 0.2, 9.0, 'vegetable'),
+(3030, 'Pumpkin, cooked', NULL, 245, 49, 1.8, 12.0, 0.2, 3.2, 'vegetable'),
+(3031, 'Artichokes, cooked', NULL, 120, 53, 3.7, 12.0, 0.3, 10.0, 'vegetable'),
+(3032, 'Okra, cooked', NULL, 160, 53, 3.1, 11.0, 0.3, 5.7, 'vegetable'),
+(3033, 'Swiss chard, cooked', NULL, 175, 35, 3.3, 7.0, 0.4, 3.7, 'vegetable'),
+(3034, 'Collard greens, cooked', NULL, 190, 49, 4.9, 9.6, 0.7, 5.3, 'vegetable'),
+(3035, 'Bok choy, cooked', NULL, 170, 20, 3.0, 3.8, 0.3, 2.0, 'vegetable'),
+(3036, 'Watercress, raw', NULL, 34, 8, 2.3, 1.3, 0.1, 0.5, 'vegetable'),
+(3037, 'Arugula, raw', NULL, 20, 5, 0.5, 0.7, 0.1, 0.3, 'vegetable'),
+(3038, 'Endive, raw', NULL, 50, 9, 0.7, 2.0, 0.1, 1.6, 'vegetable'),
+(3039, 'Fennel, raw', NULL, 87, 27, 1.1, 6.3, 0.2, 2.7, 'vegetable'),
+(3040, 'Leeks, cooked', NULL, 89, 54, 1.3, 13.0, 0.3, 1.6, 'vegetable');
+
+-- ===========================================
+-- FRUITS (30 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(4001, 'Apple, with skin, raw', NULL, 182, 95, 0.5, 25.0, 0.3, 4.4, 'fruit'),
+(4002, 'Banana, raw', NULL, 118, 105, 1.3, 27.0, 0.4, 3.1, 'fruit'),
+(4003, 'Orange, raw', NULL, 131, 62, 1.2, 15.4, 0.2, 3.1, 'fruit'),
+(4004, 'Strawberries, raw', NULL, 152, 49, 1.0, 11.7, 0.5, 3.0, 'fruit'),
+(4005, 'Blueberries, raw', NULL, 148, 84, 1.1, 21.4, 0.5, 3.6, 'fruit'),
+(4006, 'Grapes, red or green, raw', NULL, 151, 104, 1.1, 27.3, 0.2, 1.4, 'fruit'),
+(4007, 'Watermelon, raw', NULL, 152, 46, 0.9, 11.5, 0.2, 0.6, 'fruit'),
+(4008, 'Cantaloupe, raw', NULL, 160, 54, 1.3, 13.0, 0.3, 1.6, 'fruit'),
+(4009, 'Honeydew melon, raw', NULL, 170, 61, 1.0, 15.5, 0.2, 1.4, 'fruit'),
+(4010, 'Peach, raw', NULL, 150, 59, 1.4, 14.3, 0.4, 2.3, 'fruit'),
+(4011, 'Pear, raw', NULL, 178, 101, 0.6, 27.3, 0.2, 5.5, 'fruit'),
+(4012, 'Plum, raw', NULL, 165, 76, 1.2, 19.0, 0.5, 2.2, 'fruit'),
+(4013, 'Cherries, sweet, raw', NULL, 154, 97, 1.6, 25.0, 0.3, 3.2, 'fruit'),
+(4014, 'Pineapple, raw', NULL, 165, 82, 0.9, 21.6, 0.2, 2.3, 'fruit'),
+(4015, 'Mango, raw', NULL, 165, 99, 1.4, 25.0, 0.6, 2.6, 'fruit'),
+(4016, 'Papaya, raw', NULL, 140, 60, 0.8, 15.0, 0.4, 2.5, 'fruit'),
+(4017, 'Kiwi, raw', NULL, 148, 92, 1.7, 22.0, 0.9, 4.4, 'fruit'),
+(4018, 'Grapefruit, raw', NULL, 230, 74, 1.3, 19.0, 0.2, 2.6, 'fruit'),
+(4019, 'Lemon, raw', NULL, 58, 17, 0.6, 5.4, 0.2, 1.6, 'fruit'),
+(4020, 'Lime, raw', NULL, 67, 20, 0.5, 7.0, 0.1, 1.9, 'fruit'),
+(4021, 'Avocado, raw', NULL, 150, 240, 3.0, 13.0, 22.0, 10.0, 'fruit'),
+(4022, 'Coconut meat, raw', NULL, 45, 159, 1.6, 6.8, 15.0, 4.1, 'fruit'),
+(4023, 'Pomegranate, raw', NULL, 87, 72, 1.5, 16.0, 1.1, 3.5, 'fruit'),
+(4024, 'Fig, raw', NULL, 50, 37, 0.4, 9.6, 0.2, 1.5, 'fruit'),
+(4025, 'Dates, Medjool, raw', NULL, 24, 66, 0.4, 18.0, 0.0, 1.6, 'fruit'),
+(4026, 'Raisins, seedless', NULL, 40, 129, 1.3, 34.0, 0.1, 1.3, 'fruit'),
+(4027, 'Cranberries, dried', NULL, 40, 123, 0.1, 33.0, 0.5, 2.0, 'fruit'),
+(4028, 'Apricots, dried', NULL, 35, 84, 1.4, 22.0, 0.3, 2.6, 'fruit'),
+(4029, 'Prunes, dried', NULL, 40, 96, 0.9, 26.0, 0.2, 2.8, 'fruit'),
+(4030, 'Blackberries, raw', NULL, 144, 62, 2.0, 14.0, 0.7, 7.6, 'fruit');
+
+-- ===========================================
+-- FATS / OILS / NUTS / SEEDS (30 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(5001, 'Almonds, raw', NULL, 28, 164, 6.0, 6.0, 14.0, 3.5, 'fat'),
+(5002, 'Walnuts, English', NULL, 28, 185, 4.3, 3.9, 18.5, 1.9, 'fat'),
+(5003, 'Cashews, raw', NULL, 28, 157, 5.2, 9.3, 12.4, 0.9, 'fat'),
+(5004, 'Peanuts, all types, raw', NULL, 28, 161, 7.3, 4.6, 14.0, 2.4, 'fat'),
+(5005, 'Pistachios, dry roasted', NULL, 28, 161, 5.8, 7.7, 12.7, 3.0, 'fat'),
+(5006, 'Pecans, dry roasted', NULL, 28, 203, 2.6, 4.0, 21.6, 2.7, 'fat'),
+(5007, 'Macadamia nuts, dry roasted', NULL, 28, 204, 2.2, 3.9, 21.6, 2.4, 'fat'),
+(5008, 'Brazil nuts, dried', NULL, 28, 186, 4.1, 3.5, 18.8, 2.1, 'fat'),
+(5009, 'Hazelnuts, dry roasted', NULL, 28, 183, 4.2, 4.7, 17.8, 2.7, 'fat'),
+(5010, 'Pine nuts, dried', NULL, 28, 191, 3.9, 3.7, 19.4, 1.0, 'fat'),
+(5011, 'Sunflower seeds, dry roasted', NULL, 28, 165, 5.5, 5.4, 14.1, 2.4, 'fat'),
+(5012, 'Pumpkin seeds, roasted', NULL, 28, 151, 7.0, 4.2, 13.0, 1.8, 'fat'),
+(5013, 'Chia seeds, dried', NULL, 28, 138, 4.7, 12.0, 8.7, 9.8, 'fat'),
+(5014, 'Flaxseeds, ground', NULL, 28, 151, 5.1, 8.1, 12.0, 7.6, 'fat'),
+(5015, 'Sesame seeds, whole, dried', NULL, 28, 160, 5.1, 6.6, 14.0, 3.3, 'fat'),
+(5016, 'Peanut butter, smooth', NULL, 32, 188, 7.7, 6.9, 16.0, 2.0, 'fat'),
+(5017, 'Almond butter, plain', NULL, 32, 196, 6.7, 6.0, 18.0, 3.3, 'fat'),
+(5018, 'Olive oil, extra virgin', NULL, 14, 119, 0.0, 0.0, 13.5, 0.0, 'fat'),
+(5019, 'Coconut oil', NULL, 14, 121, 0.0, 0.0, 13.6, 0.0, 'fat'),
+(5020, 'Avocado oil', NULL, 14, 124, 0.0, 0.0, 14.0, 0.0, 'fat'),
+(5021, 'Butter, salted', NULL, 14, 102, 0.1, 0.0, 11.5, 0.0, 'fat'),
+(5022, 'Ghee', NULL, 14, 112, 0.0, 0.0, 12.7, 0.0, 'fat'),
+(5023, 'Mayonnaise, regular', NULL, 14, 94, 0.1, 0.1, 10.3, 0.0, 'fat'),
+(5024, 'Tahini', NULL, 30, 178, 5.1, 6.4, 16.0, 2.7, 'fat'),
+(5025, 'Coconut butter', NULL, 16, 105, 1.0, 4.0, 10.0, 1.6, 'fat'),
+(5026, 'Walnut oil', NULL, 14, 120, 0.0, 0.0, 13.6, 0.0, 'fat'),
+(5027, 'Canola oil', NULL, 14, 124, 0.0, 0.0, 14.0, 0.0, 'fat'),
+(5028, 'Vegetable oil, soybean', NULL, 14, 124, 0.0, 0.0, 14.0, 0.0, 'fat'),
+(5029, 'Lard', NULL, 14, 115, 0.0, 0.0, 12.8, 0.0, 'fat'),
+(5030, 'Shortening, vegetable', NULL, 14, 115, 0.0, 0.0, 12.8, 0.0, 'fat');
+
+-- ===========================================
+-- DAIRY (20 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(6001, 'Milk, whole, 3.25% milkfat', NULL, 244, 149, 8.0, 12.0, 8.0, 0.0, 'dairy'),
+(6002, 'Milk, reduced fat, 2% milkfat', NULL, 244, 122, 8.0, 12.0, 4.7, 0.0, 'dairy'),
+(6003, 'Milk, lowfat, 1% milkfat', NULL, 244, 102, 8.0, 12.0, 2.4, 0.0, 'dairy'),
+(6004, 'Milk, nonfat, skim', NULL, 244, 83, 8.0, 12.0, 0.2, 0.0, 'dairy'),
+(6005, 'Milk, almond, unsweetened', NULL, 240, 30, 1.0, 1.0, 2.5, 0.0, 'dairy'),
+(6006, 'Milk, soy, unsweetened', NULL, 243, 80, 7.0, 4.0, 4.0, 2.0, 'dairy'),
+(6007, 'Milk, oat, original', NULL, 240, 130, 3.0, 16.0, 7.0, 2.0, 'dairy'),
+(6008, 'Milk, coconut, canned', NULL, 240, 552, 5.5, 13.0, 57.0, 0.0, 'dairy'),
+(6009, 'Yogurt, plain, whole milk', NULL, 245, 149, 8.5, 11.4, 8.0, 0.0, 'dairy'),
+(6010, 'Yogurt, plain, lowfat', NULL, 245, 154, 12.9, 17.2, 3.8, 0.0, 'dairy'),
+(6011, 'Yogurt, vanilla, lowfat', NULL, 245, 208, 8.5, 31.5, 5.7, 0.0, 'dairy'),
+(6012, 'Kefir, plain, lowfat', NULL, 240, 110, 11.0, 12.0, 2.0, 0.0, 'dairy'),
+(6013, 'Sour cream, regular', NULL, 30, 60, 0.7, 1.2, 5.8, 0.0, 'dairy'),
+(6014, 'Cream, half and half', NULL, 30, 31, 0.6, 1.3, 2.7, 0.0, 'dairy'),
+(6015, 'Cream, heavy whipping', NULL, 30, 101, 0.6, 0.8, 10.8, 0.0, 'dairy'),
+(6016, 'Cream cheese, regular', NULL, 30, 99, 2.2, 1.2, 9.9, 0.0, 'dairy'),
+(6017, 'Parmesan, grated', NULL, 5, 22, 2.0, 0.2, 1.4, 0.0, 'dairy'),
+(6018, 'Swiss cheese', NULL, 28, 106, 7.6, 1.5, 7.8, 0.0, 'dairy'),
+(6019, 'Provolone cheese', NULL, 28, 98, 7.0, 0.6, 7.4, 0.0, 'dairy'),
+(6020, 'Feta cheese', NULL, 28, 75, 4.0, 1.2, 6.0, 0.0, 'dairy');
+
+-- ===========================================
+-- LEGUMES (10 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(7001, 'Lentils, mature seeds, cooked', NULL, 198, 230, 18.0, 40.0, 0.8, 15.6, 'legume'),
+(7002, 'Chickpeas, mature seeds, cooked', NULL, 164, 269, 14.5, 45.0, 4.3, 12.5, 'legume'),
+(7003, 'Black beans, mature seeds, cooked', NULL, 172, 227, 15.2, 41.0, 0.9, 15.0, 'legume'),
+(7004, 'Kidney beans, red, mature seeds, cooked', NULL, 177, 225, 15.3, 40.0, 0.9, 11.3, 'legume'),
+(7005, 'Pinto beans, mature seeds, cooked', NULL, 171, 245, 15.4, 45.0, 1.1, 15.4, 'legume'),
+(7006, 'Navy beans, mature seeds, cooked', NULL, 182, 255, 15.0, 47.0, 1.1, 19.1, 'legume'),
+(7007, 'Lima beans, large, mature seeds, cooked', NULL, 170, 216, 14.7, 40.0, 0.6, 13.2, 'legume'),
+(7008, 'Split peas, mature seeds, cooked', NULL, 196, 231, 16.3, 41.4, 0.8, 16.3, 'legume'),
+(7009, 'Soybeans, mature seeds, cooked', NULL, 172, 298, 28.6, 11.5, 15.4, 10.3, 'legume'),
+(7010, 'Mung beans, mature seeds, cooked', NULL, 202, 212, 14.2, 38.7, 0.8, 15.4, 'legume');
+
+-- ===========================================
+-- MISCELLANEOUS / CONDIMENTS (10 items)
+-- ===========================================
+INSERT INTO systemdb.food_cache (fdc_id, name, brand, serving_size_g, calories, protein_g, carbs_g, fat_g, fiber_g, category) VALUES
+(8001, 'Honey', NULL, 21, 64, 0.1, 17.3, 0.0, 0.0, 'misc'),
+(8002, 'Maple syrup', NULL, 20, 52, 0.0, 13.4, 0.0, 0.0, 'misc'),
+(8003, 'Agave nectar', NULL, 21, 63, 0.1, 16.0, 0.0, 0.0, 'misc'),
+(8004, 'Soy sauce', NULL, 16, 8, 1.3, 0.8, 0.0, 0.1, 'misc'),
+(8005, 'Ketchup', NULL, 17, 19, 0.2, 4.7, 0.1, 0.2, 'misc'),
+(8006, 'Mustard, yellow', NULL, 5, 3, 0.2, 0.3, 0.2, 0.2, 'misc'),
+(8007, 'Salsa, medium', NULL, 30, 10, 0.5, 2.0, 0.0, 0.5, 'misc'),
+(8008, 'Hot sauce', NULL, 5, 0, 0.0, 0.1, 0.0, 0.0, 'misc'),
+(8009, 'Vinegar, apple cider', NULL, 15, 3, 0.0, 0.1, 0.0, 0.0, 'misc'),
+(8010, 'Dark chocolate, 70-85% cacao', NULL, 30, 170, 2.2, 13.0, 12.0, 3.3, 'misc');
