@@ -89,6 +89,7 @@ class AgentOrchestrator:
             messages = session.messages + [
                 {"role": "user", "content": f"You: {user_message}"}
             ]
+            input_message_count = len(messages)
 
             initial_state = {
                 "messages": messages,
@@ -105,9 +106,13 @@ class AgentOrchestrator:
                 {"recursion_limit": 50},
             )
 
-            # Extract assistant messages from result
+            # State.messages uses LangGraph's additive reducer, so the graph result
+            # includes the conversation supplied as input followed by messages
+            # generated for this turn. Only return and persist the latter; otherwise
+            # historical specialist replies are rendered again in the UI.
+            generated_messages = result.get("messages", [])[input_message_count:]
             assistant_messages = [
-                m for m in result.get("messages", [])
+                m for m in generated_messages
                 if m.get("role") == "assistant"
             ]
 

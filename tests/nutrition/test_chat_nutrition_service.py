@@ -104,6 +104,35 @@ async def test_chat_missing_nutrition_profile_returns_onboarding_response(monkey
 
 
 @pytest.mark.asyncio
+async def test_chat_meal_response_uses_target_context_without_adherence_status(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def get_profile(_: int) -> dict[str, object]:
+        return {"timezone": "America/New_York"}
+
+    async def evaluate(*_: object, **__: object) -> dict[str, object]:
+        return {
+            "message": "Lunch option.", "status": "green", "target_available": True,
+            "tdee": 2_100, "macro_targets": {"protein_g": 130},
+            "meal_recommendations": [{"name": "Lunch", "target_percentages": {"protein_g": 30}}],
+        }
+
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("local fallback"))
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", get_profile)
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", evaluate)
+    monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
+    monkeypatch.setattr("app.config.get_settings", lambda: type("Settings", (), {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100})())
+
+    result = await agent_service.specialist_node_api(_state({"user_id": 42}))
+    metadata = result["messages"][0]["metadata"]
+
+    assert "nutrition_status" not in metadata
+    assert metadata["nutrition_target_available"] is True
+    assert metadata["nutrition_tdee"] == 2_100
+    assert metadata["meal_recommendations"][0]["target_percentages"] == {"protein_g": 30}
+
+
+@pytest.mark.asyncio
 async def test_chat_invalid_nutrition_profile_uses_local_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
 

@@ -10,9 +10,17 @@ from fastapi import HTTPException
 from services.nutrition_agent.app import main as nutrition_main
 from services.nutrition_agent.app.assessment import REFERRAL
 from services.nutrition_agent.app.schemas import MealPlanRequest
-from services.nutrition_agent.app.tools.meal_planner import generate_meal_plan
+from services.nutrition_agent.app.tools.meal_planner import generate_meal_plan, select_meal
 
 MACROS = {"calories": 1_800, "protein_g": 100, "carbs_g": 200, "fat_g": 60}
+
+
+def test_select_meal_applies_minimum_and_maximum_fat_constraints() -> None:
+    meal = select_meal("dinner", min_fat_g=20, max_fat_g=25)
+
+    assert meal is not None
+    assert 20 <= meal["fat_g"] <= 25
+    assert select_meal("dinner", min_fat_g=100) is None
 
 
 def test_planner_filters_allergy_and_restriction_tags_before_selecting_templates() -> None:

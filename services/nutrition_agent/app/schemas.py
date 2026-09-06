@@ -176,12 +176,30 @@ class NutritionEvaluateRequest(StrictModel):
         return value
 
 
+class MealRecommendation(StrictModel):
+    """A deterministic meal option and its trusted nutrition facts."""
+
+    meal_type: MealType
+    name: str
+    calories: int = Field(ge=0)
+    protein_g: int = Field(ge=0)
+    carbs_g: int = Field(ge=0)
+    fiber_g: int = Field(ge=0)
+    fat_g: int = Field(ge=0)
+    satisfies: list[Literal["protein", "carbohydrates", "fiber", "fat"]] = Field(
+        default_factory=list
+    )
+    target_percentages: dict[str, int] | None = None
+
+
 class NutritionEvaluateResponse(StrictModel):
     agent: Literal["nutrition"] = "nutrition"
     status: NutritionStatus
     score: int = Field(ge=0, le=10)
     message: str
     recommendations: list[str] = Field(max_length=10)
+    meal_recommendations: list[MealRecommendation] = Field(default_factory=list, max_length=4)
+    target_available: bool = False
     tdee: int | None = None
     macro_targets: dict[str, float | int] | None = None
     safety_findings: list[SafetyFinding] = Field(default_factory=list)

@@ -20,7 +20,7 @@ class _AsyncOnlyGraph:
     async def ainvoke(self, state: dict, config: dict) -> dict:
         self.calls.append((state, config))
         return {
-            "messages": [
+            "messages": state["messages"] + [
                 {
                     "role": "assistant",
                     "name": "Alex (Training Planner)",
@@ -78,3 +78,45 @@ async def test_process_message_with_metadata_preserves_specialist_metadata() -> 
 
     assert response == "Alex (Training Planner): Welcome!"
     assert metadata == {"nutrition_profile_required": True}
+
+
+@pytest.mark.asyncio
+async def test_process_message_excludes_historical_specialist_responses() -> None:
+    class _HistoryPreservingGraph:
+        async def ainvoke(self, state: dict, config: dict) -> dict:
+            assert config == {"recursion_limit": 50}
+            return {
+                "messages": state["messages"] + [
+                    {
+                        "role": "assistant",
+                        "name": "Sam (Nutrition Advisor)",
+                        "content": "Sam (Nutrition Advisor): Greek yogurt protein bowl — 430 calories, 40 g protein.",
+                        "metadata": {"nutrition_status": "ok"},
+                    }
+                ]
+            }
+
+    orchestrator = AgentOrchestrator()
+    orchestrator.graph = _HistoryPreservingGraph()
+    session = Session(
+        session_id="chat_0123456789abcdef",
+        user_id=42,
+        profile={},
+    )
+    session.messages = [
+        {"role": "user", "content": "I want a strength plan."},
+        {
+            "role": "assistant",
+            "name": "Alex (Training Planner)",
+            "content": "Alex (Training Planner): What days can you train this week?",
+        },
+    ]
+
+    response, metadata = await orchestrator.process_message_with_metadata(
+        session,
+        "Give me a high-protein breakfast under 500 calories.",
+    )
+
+    assert response == "Sam (Nutrition Advisor): Greek yogurt protein bowl — 430 calories, 40 g protein."
+    assert "Alex (Training Planner)" not in response
+    assert metadata == {"nutrition_status": "ok"}

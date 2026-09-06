@@ -203,6 +203,94 @@ async def test_evaluate_presents_before_persisting(monkeypatch: pytest.MonkeyPat
 
 
 @pytest.mark.asyncio
+async def test_evaluate_attaches_persisted_target_to_meal_recommendation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def history(_: int) -> NutritionHistory:
+        return NutritionHistory()
+
+    async def current_target(_: int, __: object) -> dict[str, object]:
+        return {
+            "inputs": {"age": 30, "gender": "female", "weight_kg": 65,
+                       "height_cm": 165, "activity_level": "moderate"},
+            "recommended_calories": 2_000,
+            "macro_targets": {"protein_g": 130, "carbs_g": 250, "fat_g": 60},
+        }
+
+    async def save(*_: object) -> None:
+        return None
+
+    monkeypatch.setattr(nutrition_main.repository, "history", history)
+    monkeypatch.setattr(nutrition_main.repository, "current_target", current_target)
+    monkeypatch.setattr(nutrition_main.repository, "save_assessment", save)
+    monkeypatch.setattr(nutrition_main.agent, "present", lambda assessment, _: assessment)
+
+    result = await nutrition_main.evaluate(
+        42, NutritionEvaluateRequest(message="Give me a high-protein lunch.")
+    )
+
+    assert result.target_available is True
+    assert result.tdee is not None
+    assert result.macro_targets == {"protein_g": 130, "carbs_g": 250, "fat_g": 60}
+    assert result.meal_recommendations[0].target_percentages is not None
+    assert result.meal_recommendations[0].target_percentages["protein_g"] > 0
+
+
+@pytest.mark.asyncio
+async def test_evaluate_meal_without_persisted_target_stays_target_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def history(_: int) -> NutritionHistory:
+        return NutritionHistory()
+
+    async def current_target(_: int, __: object) -> None:
+        return None
+
+    async def save(*_: object) -> None:
+        return None
+
+    monkeypatch.setattr(nutrition_main.repository, "history", history)
+    monkeypatch.setattr(nutrition_main.repository, "current_target", current_target)
+    monkeypatch.setattr(nutrition_main.repository, "save_assessment", save)
+    monkeypatch.setattr(nutrition_main.agent, "present", lambda assessment, _: assessment)
+
+    result = await nutrition_main.evaluate(
+        42, NutritionEvaluateRequest(message="Give me a high-protein lunch.")
+    )
+
+    assert result.target_available is False
+    assert result.tdee is None
+    assert result.macro_targets is None
+    assert result.meal_recommendations[0].target_percentages is None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_incomplete_persisted_target_stays_target_independent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def history(_: int) -> NutritionHistory:
+        return NutritionHistory()
+
+    async def current_target(_: int, __: object) -> dict[str, object]:
+        return {"inputs": "not-json", "recommended_calories": 2_000, "macro_targets": {}}
+
+    async def save(*_: object) -> None:
+        return None
+
+    monkeypatch.setattr(nutrition_main.repository, "history", history)
+    monkeypatch.setattr(nutrition_main.repository, "current_target", current_target)
+    monkeypatch.setattr(nutrition_main.repository, "save_assessment", save)
+    monkeypatch.setattr(nutrition_main.agent, "present", lambda assessment, _: assessment)
+
+    result = await nutrition_main.evaluate(
+        42, NutritionEvaluateRequest(message="Give me a high-protein lunch.")
+    )
+
+    assert result.target_available is False
+    assert result.tdee is None
+
+
+@pytest.mark.asyncio
 async def test_evaluate_escalation_bypasses_presentation_and_persists_terminal_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

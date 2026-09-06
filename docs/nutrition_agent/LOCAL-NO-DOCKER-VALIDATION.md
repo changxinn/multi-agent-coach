@@ -172,6 +172,13 @@ Open <http://localhost:5174>, register a user, sign in, and send a nutrition-spe
 
 > I train four days each week. Give me a high-protein breakfast under 500 calories.
 
+Expected semantic result when `NUTRITION_LLM_ENABLED=false`:
+
+- The response is from Nutrition Advisor only; it must not include Training Planner output.
+- It names a breakfast option and explicitly reports calories and protein.
+- The selected option is at or below 500 calories and provides at least 30 g protein (the built-in omnivore option is approximately 430 calories and 40 g protein).
+- It retains the general nutrition-information disclaimer. If stored allergies or restrictions rule out every matching template, it explains that no safe template meets the constraints rather than suggesting an unverified option.
+
 The chat request requires a session ID matching `chat_` plus 16 lowercase hexadecimal characters, such as `chat_0123456789abcdef`; the frontend normally creates this automatically.
 
 ## 6. Verify authenticated API-to-agent delegation

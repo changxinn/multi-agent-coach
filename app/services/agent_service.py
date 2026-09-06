@@ -301,6 +301,18 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
                     profile=nutrition_profile,
                 )
                 message_text = response["message"]
+                is_meal_recommendation = bool(response.get("meal_recommendations"))
+                metadata = {
+                    "safety_findings": response.get("safety_findings", []),
+                    "escalation": response.get("escalation"),
+                    "nutrition_target_available": response.get("target_available", False),
+                    "nutrition_tdee": response.get("tdee"),
+                    "nutrition_macro_targets": response.get("macro_targets"),
+                    "meal_recommendations": response.get("meal_recommendations", []),
+                }
+                # A longitudinal adherence state is not a verdict on one meal.
+                if not is_meal_recommendation:
+                    metadata["nutrition_status"] = response.get("status")
                 logger.info(
                     "Nutrition Agent service completed assessment: status=%s score=%s",
                     response.get("status"),
@@ -312,11 +324,7 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
                             "role": "assistant",
                             "name": "Sam (Nutrition Advisor)",
                             "content": f"Sam (Nutrition Advisor): {message_text}",
-                            "metadata": {
-                                "nutrition_status": response.get("status"),
-                                "safety_findings": response.get("safety_findings", []),
-                                "escalation": response.get("escalation"),
-                            },
+                            "metadata": metadata,
                         }
                     ],
                     "volley_msg_left": max(0, volley_left - 1),

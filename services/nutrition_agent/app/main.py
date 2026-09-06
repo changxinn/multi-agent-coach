@@ -1,4 +1,5 @@
 """Private, token-protected Nutrition Agent API."""
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
@@ -83,6 +84,49 @@ def target_calculation(payload: TargetCalculateRequest) -> dict:
     if referral:
         raise HTTPException(422, {"code": "NUTRITION_SAFETY_REFERRAL_REQUIRED", "message": referral.message})
     return {"bmr": expenditure["bmr"], "tdee": expenditure["tdee"], "recommended_calories": calories, "macro_targets": macros, "safety_findings": [item.model_dump() for item in findings], "policy_version": "nutrition-safety-v1"}
+
+
+def _target_context(assessment: NutritionEvaluateResponse, target: dict | None) -> NutritionEvaluateResponse:
+    """Attach persisted daily targets and deterministic meal contributions."""
+    if not target:
+        return assessment
+    try:
+        inputs = target.get("inputs") or {}
+        if isinstance(inputs, str):
+            inputs = json.loads(inputs)
+        macro_targets = target.get("macro_targets") or {}
+        if isinstance(macro_targets, str):
+            macro_targets = json.loads(macro_targets)
+        tdee = calculate_tdee(
+            int(inputs["age"]), inputs["gender"], float(inputs["weight_kg"]),
+            float(inputs["height_cm"]), inputs["activity_level"],
+        )["tdee"]
+        target_values = {"calories": int(target["recommended_calories"]), **macro_targets}
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        logger.warning("Current nutrition target has incomplete persisted inputs")
+        return assessment
+
+    meals = []
+    for meal in assessment.meal_recommendations:
+        values = {
+            "calories": meal.calories,
+            "protein_g": meal.protein_g,
+            "carbs_g": meal.carbs_g,
+            "fat_g": meal.fat_g,
+            "fiber_g": meal.fiber_g,
+        }
+        percentages = {
+            nutrient: round(value / float(target_values[nutrient]) * 100)
+            for nutrient, value in values.items()
+            if target_values.get(nutrient) not in (None, 0)
+        }
+        meals.append(meal.model_copy(update={"target_percentages": percentages or None}))
+    return assessment.model_copy(update={
+        "target_available": True,
+        "tdee": tdee,
+        "macro_targets": macro_targets,
+        "meal_recommendations": meals,
+    })
 
 @app.get("/health/live")
 async def live(): return {"status": "live"}
@@ -218,6 +262,11 @@ async def evaluate(user_id: int, payload: NutritionEvaluateRequest):
     # Escalations are terminal deterministic safety outcomes. They must never
     # enter the optional presentation/LLM path, which could add advice.
     if assessment.escalation is None:
+        if assessment.meal_recommendations:
+            assessment = _target_context(
+                assessment,
+                await repository.current_target(user_id, datetime.now(UTC).date()),
+            )
         assessment = agent.present(assessment, payload.message)
     await repository.save_assessment(user_id, assessment)
     return assessment

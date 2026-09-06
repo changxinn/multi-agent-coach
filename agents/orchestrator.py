@@ -1,9 +1,32 @@
 import os
+import re
+
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from display import AGENT_META, print_backend
 from utils import debug
+
+_NUTRITION_REQUEST_TERMS = re.compile(
+    r"\b(?:food|meal|breakfast|lunch|dinner|snack|diet|protein|calories?|"
+    r"macros?|hydration|fuel(?:ing)?)\b",
+    re.IGNORECASE,
+)
+
+
+def _latest_user_message(messages: list[dict]) -> str:
+    """Return the latest user-authored text without the display prefix."""
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return str(message.get("content", "")).removeprefix("You: ").strip()
+    return ""
+
+
+def _deterministic_specialist(latest_message: str) -> str | None:
+    """Route explicit meal requests without letting incidental training context win."""
+    if _NUTRITION_REQUEST_TERMS.search(latest_message):
+        return "nutrition_advisor"
+    return None
 
 # Load API key from config if available
 try:
@@ -32,6 +55,22 @@ def orchestrator(state):
 
     messages = state.get("messages", [])
     profile = state.get("user_profile", {})
+
+    deterministic_selection = _deterministic_specialist(_latest_user_message(messages))
+    if deterministic_selection:
+        debug(f"Deterministic nutrition selection: {deterministic_selection}", "HEAD COACH")
+        agent_label = AGENT_META.get(deterministic_selection, {}).get(
+            "short_name", deterministic_selection
+        )
+        print_backend(
+            "Routing to specialist",
+            f"{agent_label} ({deterministic_selection})",
+            "head_coach",
+        )
+        return {
+            "next_agent": deterministic_selection,
+            "volley_msg_left": volley_left - 1,
+        }
 
     conversation_text = ""
     for msg in messages:
