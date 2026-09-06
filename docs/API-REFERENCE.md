@@ -479,6 +479,54 @@ All endpoints may return these error responses:
 
 ---
 
+## Nutrition API
+
+Nutrition programmatic operations are available through the main API under
+`/api/nutrition/*`. They require the same JWT bearer authentication described
+above. The server derives ownership from the authenticated user; clients must
+not send a `user_id` in nutrition request bodies or query parameters.
+
+The Nutrition Agent microservice is not a public API. Its
+`/v1/nutrition/*` paths require `X-Internal-Service-Token` on private
+networking and must not be called by browsers or exposed through public ingress.
+
+| Capability | Public main-API paths |
+| --- | --- |
+| Profile | `GET`, `PUT`, `DELETE /nutrition/profile` |
+| Meal logs | `POST`, `GET /nutrition/meal-logs`; `GET`, `PUT`, `DELETE /nutrition/meal-logs/{meal_id}` |
+| Targets | `POST /nutrition/targets/calculate`; `POST /nutrition/targets`; `GET /nutrition/targets/current` |
+| History and assessments | `GET /nutrition/history`; `GET /nutrition/assessment-history` |
+| Food reference | `GET /nutrition/foods`; `GET /nutrition/foods/{fdc_id}` |
+| Meal plans | `POST /nutrition/meal-plans` |
+
+Nutrition validation and HTTP failures use a route-specific envelope and always
+include `X-Request-ID`:
+
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request validation failed.",
+    "request_id": "018f..."
+  }
+}
+```
+
+Stable nutrition error codes include `UNAUTHORIZED`, `FORBIDDEN`, the named
+resource-not-found codes, `NUTRITION_VALUE_INCONSISTENT`,
+`NUTRITION_SAFETY_REFERRAL_REQUIRED`, `DEPENDENCY_UNAVAILABLE`, and
+`SERVICE_DISABLED`. The complete typed requests, responses, bounds,
+pagination/date rules, and error table are maintained in
+`docs/nutrition_agent/API-CONTRACT.md`; that document is authoritative to
+avoid duplicating the detailed contract here.
+
+The authenticated `/api/chat` orchestrator route is the intended user-facing
+nutrition experience. These direct routes are authenticated programmatic
+capabilities for internal/admin workflows and future UI use. Production
+enablement remains gated by `docs/nutrition_agent/NUTRITION-SERVICE-IMPLEMENTATION-PLAN.md`.
+
+---
+
 ## Authentication
 
 ### Obtaining Token

@@ -14,15 +14,22 @@ echo "Nutrition Agent Test Script"
 echo "======================================"
 echo ""
 
-# Test 1: Health Check
-echo "Test 1: Health Check"
+# Test 1: Liveness Check
+echo "Test 1: Liveness Check"
 echo "--------------------"
-curl -s "${BASE_URL}/health" | jq .
+curl -s "${BASE_URL}/health/live" | jq .
 echo ""
 echo ""
 
-# Test 2: Create Nutrition Profile
-echo "Test 2: Create Nutrition Profile"
+# Test 2: Readiness Check
+echo "Test 2: Readiness Check"
+echo "--------------------"
+curl -s "${BASE_URL}/health/ready" | jq .
+echo ""
+echo ""
+
+# Test 3: Create Nutrition Profile
+echo "Test 3: Create Nutrition Profile"
 echo "---------------------------------"
 curl -s -X POST "${BASE_URL}/v1/nutrition/profile" \
   -H "X-Internal-Service-Token: ${TOKEN}" \
@@ -40,8 +47,8 @@ curl -s -X POST "${BASE_URL}/v1/nutrition/profile" \
 echo ""
 echo ""
 
-# Test 3: Evaluate Nutrition Status (Normal)
-echo "Test 3: Evaluate Nutrition (Normal Query)"
+# Test 4: Evaluate Nutrition Status (Normal)
+echo "Test 4: Evaluate Nutrition (Normal Query)"
 echo "------------------------------------------"
 curl -s -X POST "${BASE_URL}/v1/nutrition/evaluate" \
   -H "X-Internal-Service-Token: ${TOKEN}" \
@@ -56,8 +63,8 @@ curl -s -X POST "${BASE_URL}/v1/nutrition/evaluate" \
 echo ""
 echo ""
 
-# Test 4: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)
-echo "Test 4: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)"
+# Test 5: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)
+echo "Test 5: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)"
 echo "------------------------------------------------------------------------"
 curl -s -X POST "${BASE_URL}/v1/nutrition/evaluate" \
   -H "X-Internal-Service-Token: ${TOKEN}" \
@@ -70,8 +77,8 @@ curl -s -X POST "${BASE_URL}/v1/nutrition/evaluate" \
 echo ""
 echo ""
 
-# Test 5: Log a Meal
-echo "Test 5: Log a Meal"
+# Test 6: Log a Meal
+echo "Test 6: Log a Meal"
 echo "------------------"
 curl -s -X POST "${BASE_URL}/v1/nutrition/meal-logs" \
   -H "X-Internal-Service-Token: ${TOKEN}" \
@@ -88,19 +95,21 @@ curl -s -X POST "${BASE_URL}/v1/nutrition/meal-logs" \
 echo ""
 echo ""
 
-# Test 6: Get Nutrition History
-echo "Test 6: Get Nutrition History"
+# Test 7: Get Nutrition History
+echo "Test 7: Get Nutrition History"
 echo "------------------------------"
 curl -s "${BASE_URL}/v1/nutrition/history/1" \
   -H "X-Internal-Service-Token: ${TOKEN}" | jq .
 echo ""
 echo ""
 
-# Test 7: Invalid Token (Should Fail)
-echo "Test 7: Invalid Token (Should Return 401)"
+# Test 8: Invalid Token (Should Fail)
+echo "Test 8: Invalid Token (Should Return 401)"
 echo "------------------------------------------"
-curl -s -w "\nHTTP Status: %{http_code}\n" "${BASE_URL}/health" \
-  -H "X-Internal-Service-Token: invalid-token"
+curl -s -w "\nHTTP Status: %{http_code}\n" -X POST "${BASE_URL}/v1/nutrition/profile" \
+  -H "X-Internal-Service-Token: invalid-token" \
+  -H "Content-Type: application/json" \
+  -d '{}'
 echo ""
 echo ""
 

@@ -1,6 +1,6 @@
 """Meal logging tool."""
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -9,10 +9,10 @@ def log_meal(
     user_id: int,
     meal_type: str,
     description: str,
-    calories: int = None,
-    protein_g: float = None,
-    carbs_g: float = None,
-    fat_g: float = None,
+    calories: int | None = None,
+    protein_g: float | None = None,
+    carbs_g: float | None = None,
+    fat_g: float | None = None,
 ) -> dict:
     """
     Log a meal (placeholder - actual DB logging in repository).
@@ -68,7 +68,7 @@ def log_meal(
         "protein_g": protein_g,
         "carbs_g": carbs_g,
         "fat_g": fat_g,
-        "logged_at": datetime.utcnow().isoformat(),
+        "logged_at": datetime.now(UTC).isoformat(),
     }
 
     return {

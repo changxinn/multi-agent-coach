@@ -2,7 +2,7 @@
 Chat request/response schemas.
 """
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
+from typing import Any, Dict, List, Optional, Literal
 import re
 
 
@@ -42,6 +42,7 @@ class ChatResponse(BaseModel):
     session_id: str
     model: Optional[str] = None
     agents_involved: Optional[List[str]] = None
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class StreamChunk(BaseModel):
@@ -50,6 +51,7 @@ class StreamChunk(BaseModel):
     token: str
     session_id: str
     is_complete: bool = False
+    metadata: Optional[Dict[str, Any]] = None
 
 
 class SummaryRequest(BaseModel):

@@ -4,7 +4,11 @@ Agent service for LangGraph integration.
 Wraps LangGraph workflow for API usage.
 """
 import logging
-from typing import Dict, Any, List
+from typing import Any
+
+from pydantic import ValidationError
+
+from services.nutrition_agent.app.schemas import NutritionProfileUpsert
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +18,70 @@ try:
 except ImportError:
     # Define a placeholder if state module not available
     State = dict
+
+
+def _nutrition_user_id(profile: object) -> int | None:
+    """Return a valid authenticated user ID from graph state, if available."""
+    if not isinstance(profile, dict):
+        return None
+    value = profile.get("user_id")
+    if isinstance(value, bool):
+        return None
+    try:
+        user_id = int(value)
+    except (TypeError, ValueError):
+        return None
+    return user_id if user_id > 0 else None
+
+
+def _nutrition_profile(profile: object) -> dict[str, Any] | None:
+    """Validate and allowlist a Nutrition profile before private evaluation."""
+    if not isinstance(profile, dict):
+        return None
+    allowed = {
+        "dietary_preference", "dietary_restrictions", "allergies", "meals_per_day",
+        "activity_level", "age", "gender", "weight_kg", "height_cm", "timezone",
+    }
+    try:
+        return NutritionProfileUpsert.model_validate(
+            {key: value for key, value in profile.items() if key in allowed}
+        ).model_dump(mode="json")
+    except ValidationError:
+        return None
+
+
+def _is_missing_nutrition_profile(error: object) -> bool:
+    """Return whether a Nutrition Agent error represents first-use onboarding."""
+    from app.services.nutrition_agent_client import NutritionAgentError
+
+    return (
+        isinstance(error, NutritionAgentError)
+        and error.status_code == 404
+        and error.code == "NUTRITION_PROFILE_NOT_FOUND"
+    )
+
+
+def _nutrition_profile_required_response(volley_left: int) -> dict[str, Any]:
+    """Build the safe chat response used before a Nutrition profile exists."""
+    message = (
+        "Before I can give personalized nutrition guidance, please set up your nutrition "
+        "profile. I need your dietary preference, dietary restrictions, food allergies, "
+        "meals per day, and IANA timezone (for example, Asia/Singapore)."
+    )
+    return {
+        "messages": [
+            {
+                "role": "assistant",
+                "name": "Sam (Nutrition Advisor)",
+                "content": f"Sam (Nutrition Advisor): {message}",
+                "metadata": {
+                    "nutrition_status": "profile_required",
+                    "nutrition_profile_required": True,
+                },
+            }
+        ],
+        "volley_msg_left": max(0, volley_left - 1),
+    }
 
 
 def build_api_graph():
@@ -28,17 +96,18 @@ def build_api_graph():
     try:
         from langgraph.graph import END, START, StateGraph
 
-        # Import existing components
-        from state import State
         from agents import orchestrator as orchestrator_agent
 
         # Import or create API-friendly nodes
         from app.services.agent_service import (
-            human_node_api,
-            specialist_node_api,
             check_exit_condition_api,
+            human_node_api,
             orchestrator_routing_api,
+            specialist_node_api,
         )
+
+        # Import existing components
+        from state import State
 
         # Build graph
         builder = StateGraph(State)
@@ -88,7 +157,7 @@ def build_api_graph():
         raise
 
 
-def human_node_api(state: "State") -> Dict[str, Any]:
+def human_node_api(state: "State") -> dict[str, Any]:
     """
     API version of human node.
 
@@ -108,8 +177,6 @@ def check_exit_condition_api(state: "State"):
 
     Routes to summarizer if exit requested.
     """
-    from typing import Literal
-
     messages = state.get("messages", [])
     if not messages:
         return "human"
@@ -127,8 +194,6 @@ def orchestrator_routing_api(state: "State"):
     """
     API version of orchestrator routing.
     """
-    from typing import Literal
-
     next_agent = state.get("next_agent")
 
     if next_agent and next_agent != "human":
@@ -137,7 +202,7 @@ def orchestrator_routing_api(state: "State"):
     return "end"
 
 
-def specialist_node_api(state: "State") -> Dict[str, Any]:
+async def specialist_node_api(state: "State") -> dict[str, Any]:
     """
     API version of specialist node.
 
@@ -192,13 +257,16 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
                 ],
                 "volley_msg_left": max(0, volley_left - 1),
             }
-        except Exception as error:
-            logger.exception("Recovery Agent service failed; using local recovery fallback: %s", error)
+        except Exception:
+            logger.exception("Recovery Agent service failed; using local recovery fallback")
     
     # Check for nutrition agent microservice
     if next_agent == "nutrition_advisor" and settings.USE_NUTRITION_AGENT_SERVICE:
         try:
             from app.services.nutrition_agent_client import nutrition_agent_client
+            from app.services.nutrition_rollout import (
+                is_nutrition_agent_enabled_for_user,
+            )
 
             latest_user_message = next(
                 (
@@ -208,35 +276,58 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
                 ),
                 "",
             )
-            profile = state.get("user_profile", {})
-            response = nutrition_agent_client.evaluate(
-                user_id=int(profile["user_id"]),
-                message=latest_user_message,
-                profile=profile,
-            )
-            message_text = response["message"]
-            logger.info(
-                "Nutrition Agent service completed assessment: status=%s score=%s",
-                response.get("status"),
-                response.get("score"),
-            )
-            return {
-                "messages": [
-                    {
-                        "role": "assistant",
-                        "name": "Sam (Nutrition Advisor)",
-                        "content": f"Sam (Nutrition Advisor): {message_text}",
-                        "metadata": {
-                            "nutrition_status": response.get("status"),
-                            "tool_trace": response.get("tool_trace", []),
-                        },
-                    }
-                ],
-                "volley_msg_left": max(0, volley_left - 1),
-            }
+            user_id = _nutrition_user_id(state.get("user_profile"))
+
+            if user_id is None:
+                logger.warning(
+                    "Nutrition Agent service skipped because the graph state has no valid user ID"
+                )
+            elif not is_nutrition_agent_enabled_for_user(
+                user_id,
+                settings.NUTRITION_AGENT_ROLLOUT_PERCENT,
+            ):
+                logger.info(
+                    "Nutrition Agent service disabled for user bucket; using local nutrition fallback"
+                )
+            else:
+                profile = await nutrition_agent_client.get_profile(user_id)
+                nutrition_profile = _nutrition_profile(profile)
+                if nutrition_profile is None:
+                    logger.warning("Nutrition Agent returned an invalid profile; using local fallback")
+                    raise ValueError("Nutrition profile validation failed")
+                response = await nutrition_agent_client.evaluate(
+                    user_id=user_id,
+                    message=latest_user_message,
+                    profile=nutrition_profile,
+                )
+                message_text = response["message"]
+                logger.info(
+                    "Nutrition Agent service completed assessment: status=%s score=%s",
+                    response.get("status"),
+                    response.get("score"),
+                )
+                return {
+                    "messages": [
+                        {
+                            "role": "assistant",
+                            "name": "Sam (Nutrition Advisor)",
+                            "content": f"Sam (Nutrition Advisor): {message_text}",
+                            "metadata": {
+                                "nutrition_status": response.get("status"),
+                                "safety_findings": response.get("safety_findings", []),
+                                "escalation": response.get("escalation"),
+                            },
+                        }
+                    ],
+                    "volley_msg_left": max(0, volley_left - 1),
+                }
+
         except Exception as error:
+            if _is_missing_nutrition_profile(error):
+                logger.info("Nutrition profile is required before chat evaluation")
+                return _nutrition_profile_required_response(volley_left)
             # The existing in-process agent is a deliberate development fallback.
-            logger.exception("Nutrition Agent service failed; using local nutrition fallback: %s", error)
+            logger.exception("Nutrition Agent service failed; using local nutrition fallback")
 
     result = specialist(next_agent, state)
 
@@ -254,7 +345,7 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
     return {"volley_msg_left": new_volley}
 
 
-def summarizer_node_api(state: "State") -> Dict[str, Any]:
+def summarizer_node_api(state: "State") -> dict[str, Any]:
     """
     API version of summarizer node.
 

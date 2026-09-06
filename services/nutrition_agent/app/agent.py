@@ -3,8 +3,11 @@ import logging
 
 from openai import OpenAI
 
+from .assessment import DISCLAIMER
 from .config import Settings
 from .schemas import NutritionEvaluateResponse
+
+logger = logging.getLogger(__name__)
 
 
 SYSTEM_PROMPT = """You are Sam, a nutrition advisor and sports nutrition specialist.
@@ -16,9 +19,27 @@ If status is escalate, emphasize the need for professional healthcare support; d
 Always include this disclaimer at the end in small italic text:
 *All nutrition advice is for general informational purposes only and does not constitute medical advice. Consult a healthcare provider before making significant dietary changes.*
 
-If status is escalate, add this additional warning:
-*⚠️ **Important**: This system cannot diagnose or treat eating disorders. Please consult a healthcare provider or contact the National Eating Disorders Association (NEDA) Helpline at 1-800-931-2237 for confidential support.*
 """
+
+_UNSAFE_OUTPUT_TERMS = (
+    "system prompt",
+    "api key",
+    "developer message",
+    "ignore previous instructions",
+    "purge",
+    "starve yourself",
+    "self-harm",
+)
+
+
+def _safe_message(assessment: NutritionEvaluateResponse, content: str | None = None) -> str:
+    """Return presentation text with required deterministic safety language."""
+    message = (content or assessment.message).strip()
+    if assessment.escalation and assessment.escalation.message not in message:
+        message = f"{assessment.escalation.message}\n\n{message}"
+    if DISCLAIMER not in message:
+        message = f"{message}\n\n*{DISCLAIMER}*"
+    return message
 
 
 class NutritionAgent:
@@ -34,72 +55,56 @@ class NutritionAgent:
     ) -> NutritionEvaluateResponse:
         """Apply LLM presentation layer if enabled."""
         if not self.settings.NUTRITION_LLM_ENABLED:
-            # Add disclaimer to deterministic response
-            disclaimer = (
-                "\n\n*All nutrition advice is for general informational purposes only "
-                "and does not constitute medical advice. Consult a healthcare provider "
-                "before making significant dietary changes.*"
-            )
-            if assessment.status == "escalate":
-                disclaimer += (
-                    "\n\n*⚠️ **Important**: This system cannot diagnose or treat eating "
-                    "disorders. Please consult a healthcare provider or contact the "
-                    "National Eating Disorders Association (NEDA) Helpline at "
-                    "1-800-931-2237 for confidential support.*"
-                )
-            updated_message = assessment.message + disclaimer
-            return assessment.model_copy(update={"message": updated_message})
+            return assessment.model_copy(update={"message": _safe_message(assessment)})
 
         if not self.settings.OPENAI_API_KEY:
-            logging.warning(
+            logger.warning(
                 "NUTRITION_LLM_ENABLED is true but OPENAI_API_KEY is unavailable; "
                 "using deterministic response"
             )
-            return assessment
+            return assessment.model_copy(update={"message": _safe_message(assessment)})
 
         context = {
             "status": assessment.status,
             "score": assessment.score,
-            "reasoning": assessment.reasoning,
             "recommendations": assessment.recommendations,
-            "tool_trace": assessment.tool_trace,
             "tdee": assessment.tdee,
             "macro_targets": assessment.macro_targets,
-            "untrusted_user_message": user_message,
         }
 
         try:
             client = OpenAI(api_key=self.settings.OPENAI_API_KEY)
             completion = client.chat.completions.create(
                 model=self.settings.LLM_MODEL,
-                temperature=0.2,
-                max_tokens=200,
+                reasoning_effort="minimal",
+                max_completion_tokens=500,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": f"Structured assessment: {context}"},
                 ],
             )
-            content = (completion.choices[0].message.content or "").strip()
+            choice = completion.choices[0]
+            content = (choice.message.content or "").strip()
+            unsafe_output = any(term in content.lower() for term in _UNSAFE_OUTPUT_TERMS)
 
-            # Safety check: ensure response doesn't leak sensitive info
-            if not content or any(
-                term in content.lower()
-                for term in ("system prompt", "api key", "developer message")
-            ):
-                raise ValueError("Model response failed nutrition-agent output safety checks")
+            # Generated prose may not introduce unsafe medical or prompt content.
+            if not content or unsafe_output:
+                logger.warning(
+                    "Nutrition LLM response failed safety checks; "
+                    "finish_reason=%s content_empty=%s refusal_present=%s unsafe_output=%s; "
+                    "using deterministic response",
+                    getattr(choice, "finish_reason", None),
+                    not content,
+                    bool(getattr(choice.message, "refusal", None)),
+                    unsafe_output,
+                )
+                return assessment.model_copy(update={"message": _safe_message(assessment)})
 
-            return assessment.model_copy(update={"message": content})
+            return assessment.model_copy(update={"message": _safe_message(assessment, content)})
 
         except Exception as error:
-            logging.warning(
+            logger.warning(
                 "Nutrition LLM presentation failed; using deterministic response: %s",
                 error,
             )
-            # Fallback to deterministic response with disclaimer
-            disclaimer = (
-                "\n\n*All nutrition advice is for general informational purposes only "
-                "and does not constitute medical advice. Consult a healthcare provider "
-                "before making significant dietary changes.*"
-            )
-            updated_message = assessment.message + disclaimer
-            return assessment.model_copy(update={"message": updated_message})
+            return assessment.model_copy(update={"message": _safe_message(assessment)})

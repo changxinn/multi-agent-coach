@@ -1,145 +1,145 @@
-"""USDA FoodData Central API client with local cache fallback."""
-import logging
-from typing import Optional
+"""Bounded USDA FoodData Central client returning normalized food records only."""
+
+from __future__ import annotations
+
+import asyncio
+from collections import deque
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 
-logger = logging.getLogger(__name__)
+
+class FoodDatabaseUnavailable(Exception):
+    """USDA is unreachable or returned an invalid/unusable response."""
+
+
+class FoodDatabaseRateLimited(FoodDatabaseUnavailable):
+    """The local per-instance USDA request allowance has been exhausted."""
+
+
+class UsdaRequestLimiter:
+    """In-memory rolling-window cap covering every USDA HTTP request."""
+
+    def __init__(self, per_minute: int, per_hour: int, per_day: int, now: Callable[[], datetime] | None = None) -> None:
+        self._limits = ((timedelta(minutes=1), per_minute), (timedelta(hours=1), per_hour), (timedelta(days=1), per_day))
+        self._requests: deque[datetime] = deque()
+        self._now = now or (lambda: datetime.now(UTC))
+
+    def acquire(self) -> None:
+        now = self._now()
+        self._requests.append(now)
+        for window, limit in self._limits:
+            if sum(requested_at > now - window for requested_at in self._requests) > limit:
+                self._requests.pop()
+                raise FoodDatabaseRateLimited()
+        while self._requests and self._requests[0] <= now - timedelta(days=1):
+            self._requests.popleft()
 
 
 class FoodDatabaseClient:
-    """Client for USDA FoodData Central API."""
+    """Small USDA client; callers own cache and circuit-breaker policy."""
 
-    def __init__(self, api_key: str, base_url: str = "https://api.nal.usda.gov/fdc/v1"):
-        """
-        Initialize USDA FoodData Central client.
-
-        Args:
-            api_key: USDA FDC API key
-            base_url: API base URL
-        """
+    def __init__(self, api_key: str, base_url: str = "https://api.nal.usda.gov/fdc/v1", *, limiter: UsdaRequestLimiter | None = None, connect_timeout_seconds: float = 2.0, read_timeout_seconds: float = 5.0, request_timeout_seconds: float = 10.0) -> None:
         self.api_key = api_key
-        self.base_url = base_url
+        self.base_url = base_url.rstrip("/")
+        self.limiter = limiter
+        self.timeout = httpx.Timeout(request_timeout_seconds, connect=connect_timeout_seconds, read=read_timeout_seconds, write=read_timeout_seconds, pool=connect_timeout_seconds)
+
+    async def _get(self, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        for attempt in range(2):
+            try:
+                if self.limiter:
+                    self.limiter.acquire()
+                async with httpx.AsyncClient(timeout=self.timeout) as client:
+                    response = await client.get(
+                        f"{self.base_url}{path}",
+                        params={"api_key": self.api_key, **params},
+                    )
+                if response.status_code in {502, 503, 504} and attempt == 0:
+                    await asyncio.sleep(0.125)
+                    continue
+                response.raise_for_status()
+                payload = response.json()
+                if not isinstance(payload, dict):
+                    raise FoodDatabaseUnavailable()
+                return payload
+            except FoodDatabaseRateLimited:
+                raise
+            except (httpx.ConnectTimeout, httpx.ReadTimeout):
+                if attempt == 0:
+                    await asyncio.sleep(0.125)
+                    continue
+                raise FoodDatabaseUnavailable() from None
+            except (httpx.HTTPError, ValueError):
+                raise FoodDatabaseUnavailable() from None
+        raise FoodDatabaseUnavailable()
 
     async def search_food(
-        self,
-        query: str,
-        data_type: str = "Foundation",
-        page_size: int = 10,
-    ) -> list[dict]:
-        """
-        Search for foods by keyword.
+        self, query: str, page_size: int = 10
+    ) -> list[dict[str, Any]]:
+        payload = await self._get(
+            "/foods/search", {"query": query, "pageSize": min(page_size, 50)}
+        )
+        foods = payload.get("foods")
+        if not isinstance(foods, list):
+            raise FoodDatabaseUnavailable()
+        return [
+            food
+            for food in foods
+            if isinstance(food, dict) and isinstance(food.get("fdcId"), int)
+        ]
 
-        Args:
-            query: Search keyword (e.g., "chicken breast")
-            data_type: One of: Foundation, SR Legacy, Survey, Branded, Experimental
-            page_size: Number of results (max 50)
+    @staticmethod
+    def _nutrients(food: dict[str, Any]) -> dict[int, float]:
+        values: dict[int, float] = {}
+        for entry in food.get("foodNutrients", []):
+            if not isinstance(entry, dict):
+                continue
+            nutrient = (
+                entry.get("nutrient")
+                if isinstance(entry.get("nutrient"), dict)
+                else entry
+            )
+            nutrient_id = nutrient.get("id") or nutrient.get("nutrientId")
+            amount = entry.get("amount") or entry.get("value")
+            if isinstance(nutrient_id, int) and isinstance(amount, (int, float)):
+                values[nutrient_id] = float(amount)
+        return values
 
-        Returns:
-            List of foods with basic info: [{fdc_id, name, brand, ...}]
-        """
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/foods/search",
-                    params={
-                        "api_key": self.api_key,
-                        "query": query,
-                        "dataType": [data_type] if isinstance(data_type, str) else data_type,
-                        "pageSize": min(page_size, 50),
-                    },
-                )
-                response.raise_for_status()
-                data = response.json()
-
-                foods = []
-                for food in data.get("foods", []):
-                    foods.append({
-                        "fdc_id": food.get("fdcId"),
-                        "name": food.get("description"),
-                        "brand": food.get("brandOwner"),
-                        "food_category": food.get("foodCategory"),
-                    })
-
-                return foods
-
-        except httpx.HTTPError as e:
-            logger.warning(f"USDA API search failed: {e}")
-            return []
-        except Exception as e:
-            logger.error(f"USDA API search error: {e}")
-            return []
-
-    async def get_food_details(self, fdc_id: int) -> Optional[dict]:
-        """
-        Get detailed nutrition info for a food by FDC ID.
-
-        Args:
-            fdc_id: USDA FoodData Central food ID
-
-        Returns:
-            dict with nutrition info per 100g serving, or None if not found
-        """
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
-                    f"{self.base_url}/food/{fdc_id}",
-                    params={
-                        "api_key": self.api_key,
-                        "nutrients": [
-                            "1003",  # Protein (g)
-                            "1005",  # Carbohydrate (g)
-                            "1004",  # Fat (g)
-                            "1008",  # Energy (kcal)
-                            "1079",  # Fiber, total dietary (g)
-                        ],
-                    },
-                )
-                response.raise_for_status()
-                food = response.json()
-
-                # Extract nutrients
-                nutrients = {n["nutrient"]["id"]: n["amount"] for n in food.get("foodNutrients", [])}
-
-                return {
-                    "fdc_id": food.get("fdcId"),
-                    "name": food.get("description"),
-                    "brand": food.get("brandOwner"),
-                    "serving_size_g": food.get("servingSize", 100),
-                    "calories": nutrients.get(1008, 0),
-                    "protein_g": nutrients.get(1003, 0),
-                    "carbs_g": nutrients.get(1005, 0),
-                    "fat_g": nutrients.get(1004, 0),
-                    "fiber_g": nutrients.get(1079),
-                    "food_category": food.get("foodCategory"),
-                }
-
-        except httpx.HTTPError as e:
-            logger.warning(f"USDA API details failed for {fdc_id}: {e}")
+    @classmethod
+    def normalize(cls, food: dict[str, Any]) -> dict[str, Any] | None:
+        fdc_id, name = food.get("fdcId"), food.get("description")
+        if not isinstance(fdc_id, int) or not isinstance(name, str) or not name.strip():
             return None
-        except Exception as e:
-            logger.error(f"USDA API details error: {e}")
-            return None
+        nutrients = cls._nutrients(food)
+        serving = food.get("servingSize")
+        return {
+            "fdc_id": fdc_id,
+            "name": name.strip(),
+            "brand": food.get("brandOwner") or None,
+            "serving_size_g": int(serving)
+            if isinstance(serving, (int, float)) and serving > 0
+            else None,
+            "calories": nutrients.get(1008),
+            "protein_g": nutrients.get(1003),
+            "carbs_g": nutrients.get(1005),
+            "fat_g": nutrients.get(1004),
+            "fiber_g": nutrients.get(1079),
+            "category": food.get("foodCategory") or None,
+        }
 
-    async def search_and_get_details(self, query: str, max_results: int = 5) -> list[dict]:
-        """
-        Search for foods and get detailed nutrition info.
+    async def get_food_details(self, fdc_id: int) -> dict[str, Any] | None:
+        return self.normalize(await self._get(f"/food/{fdc_id}", {"format": "full"}))
 
-        Args:
-            query: Search keyword
-            max_results: Maximum number of detailed results to return
-
-        Returns:
-            List of foods with full nutrition info
-        """
-        search_results = await self.search_food(query, page_size=max_results)
-        detailed_foods = []
-
-        for food in search_results[:max_results]:
-            fdc_id = food.get("fdc_id")
-            if fdc_id:
-                details = await self.get_food_details(fdc_id)
-                if details:
-                    detailed_foods.append(details)
-
-        return detailed_foods
+    async def search_and_get_details(
+        self, query: str, max_results: int = 5
+    ) -> list[dict[str, Any]]:
+        results = await self.search_food(query, max_results)
+        foods: list[dict[str, Any]] = []
+        for result in results[:max_results]:
+            detail = await self.get_food_details(result["fdcId"])
+            if detail:
+                foods.append(detail)
+        return foods

@@ -1,14 +1,14 @@
 """
 Chat routes for multi-agent conversations.
 """
-import logging
 import json
-from typing import Optional
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette import status
 
-from app.db.database import get_db
 from app.api.routes.auth import get_current_user
 from app.api.schemas.chat import (
     ChatRequest,
@@ -16,9 +16,10 @@ from app.api.schemas.chat import (
     SummaryRequest,
     SummaryResponse,
 )
-from app.services.session_manager import session_manager, get_session_manager
-from app.services.user_profile_service import UserProfileService
+from app.db.database import get_db
 from app.services.agent_orchestrator import get_orchestrator
+from app.services.session_manager import get_session_manager
+from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ async def chat(
 
     # Process message through multi-agent system
     orchestrator = get_orchestrator()
-    response_text = await orchestrator.process_message(
+    response_text, response_metadata = await orchestrator.process_message_with_metadata(
         session=session,
         user_message=request.messages[-1].content,
         request_summary=False,
@@ -83,6 +84,7 @@ async def chat(
         message=response_text,
         session_id=session.session_id,
         model="gpt-5-nano",
+        metadata=response_metadata,
     )
 
 
@@ -102,7 +104,7 @@ async def chat_stream(
     ```
     data: {"token": "Hello", "session_id": "chat_abc123", "is_complete": false}
     data: {"token": "!", "session_id": "chat_abc123", "is_complete": false}
-    data: {"token": "", "session_id": "chat_abc123", "is_complete": true}
+    data: {"token": "", "session_id": "chat_abc123", "is_complete": true, "metadata": {...}}
     ```
     """
     user_id = current_user["id"]
@@ -139,24 +141,24 @@ async def chat_stream(
             # Get orchestrator
             orchestrator = get_orchestrator()
             
-            # Process message through multi-agent system with streaming
-            async for token in orchestrator.process_message_stream(
+            # The orchestrator currently resolves the full graph response before
+            # character replay. Retain its final metadata for the completion event.
+            response_text, response_metadata = await orchestrator.process_message_with_metadata(
                 session=session,
                 user_message=message,
                 request_summary=False,
-            ):
+            )
+            for token in response_text:
                 yield f"data: {json.dumps({'token': token, 'session_id': session_id, 'is_complete': False})}\n\n"
 
             # Send completion signal
-            yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True})}\n\n"
+            yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': response_metadata})}\n\n"
             logger.info("Multi-agent streaming completed")
 
         except Exception as e:
-            logger.error("Streaming error: %s", e, exc_info=True)
+            logger.exception("Streaming error")
             yield f"data: {json.dumps({'error': str(e), 'session_id': session_id})}\n\n"
 
-    from fastapi.responses import Response
-    
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",

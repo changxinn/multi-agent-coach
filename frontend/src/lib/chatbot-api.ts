@@ -11,6 +11,11 @@ export interface ChatMessage {
 export interface ChatResponse {
   message: string
   model?: string
+  metadata?: {
+    nutrition_status?: string
+    nutrition_profile_required?: boolean
+    [key: string]: unknown
+  }
   usage?: {
     prompt_tokens: number
     completion_tokens: number
@@ -23,6 +28,7 @@ export interface StreamResult {
   isDemoResponse?: boolean
   isOllamaResponse?: boolean
   error?: string
+  metadata?: ChatResponse['metadata']
 }
 
 export interface ApiResult {
@@ -31,6 +37,15 @@ export interface ApiResult {
   error?: string
   isDemoResponse?: boolean
   isOllamaResponse?: boolean
+  metadata?: ChatResponse['metadata']
+}
+
+export interface NutritionProfileWrite {
+  timezone: string
+  dietary_preference: 'omnivore' | 'vegetarian' | 'vegan' | 'pescatarian' | 'other'
+  dietary_restrictions: string[]
+  allergies: string[]
+  meals_per_day: number
 }
 
 export interface ChatOptions {
@@ -149,7 +164,7 @@ export async function callChatbotAPI(
     }
 
     const data: ChatResponse = await response.json()
-    console.log('✅ Backend response received:', {
+    console.log('Ã¢Å“â€¦ Backend response received:', {
       messageLength: data.message?.length,
       model: data.model,
       hasUsage: !!data.usage
@@ -158,18 +173,19 @@ export async function callChatbotAPI(
     return {
       success: true,
       message: data.message || 'I apologize, I could not generate a response.',
+      metadata: data.metadata,
       isDemoResponse: false,
       isOllamaResponse: true,
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to get response'
-    console.error('❌ Backend error:', errorMessage)
+    console.error('Ã¢ÂÅ’ Backend error:', errorMessage)
     
     if (config.enableDemoResponse) {
       const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || ''
       const demoResponse = generateDemoResponse(lastUserMessage)
       
-      console.warn('⚠️ Using demo mode as fallback')
+      console.warn('Ã¢Å¡Â Ã¯Â¸Â Using demo mode as fallback')
       setDemoModeShown()
       
       return {
@@ -180,7 +196,7 @@ export async function callChatbotAPI(
         error: `Backend unavailable (using demo mode): ${errorMessage}`,
       }
     } else {
-      console.error('❌ Demo mode disabled - returning error to user')
+      console.error('Ã¢ÂÅ’ Demo mode disabled - returning error to user')
       return {
         success: false,
         error: `Unable to connect to backend: ${errorMessage}. Please ensure the backend server is running at ${backendUrl}`,
@@ -191,6 +207,23 @@ export async function callChatbotAPI(
   }
 }
 
+export async function upsertNutritionProfile(
+  profile: NutritionProfileWrite,
+  token: string,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/nutrition/profile`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(profile),
+  })
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    throw new Error(body?.error?.message || 'Unable to save your nutrition profile.')
+  }
+}
 export function generateDemoResponse(userMessage: string): string {
   const lowerMessage = userMessage.toLowerCase()
   
@@ -204,7 +237,7 @@ export function generateDemoResponse(userMessage: string): string {
     return "The **Forms** page demonstrates various form components with validation using React Hook Form and Zod. It includes examples of text inputs, passwords, and form submission."
   }
   if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-    return "Hello! 👋 How can I assist you today? Feel free to ask me anything about the workforce console system."
+    return "Hello! Ã°Å¸â€˜â€¹ How can I assist you today? Feel free to ask me anything about the workforce console system."
   }
   if (lowerMessage.includes('help')) {
     return "I can help you with:\n\n1. **Navigation** - Guide you through different pages\n2. **Features** - Explain system capabilities\n3. **Employee Info** - Direct you to employee management\n4. **Projects** - Show project tracking features\n\nWhat would you like to know?"
@@ -249,7 +282,7 @@ export async function streamChatbotAPI(
     ? configOrAbortController 
     : new AbortController()
   
-  console.log('📡 Attempting to connect to backend:', {
+  console.log('Ã°Å¸â€œÂ¡ Attempting to connect to backend:', {
     url: backendUrl,
     hasToken: !!token,
     tokenLength: token?.length,
@@ -260,7 +293,7 @@ export async function streamChatbotAPI(
   try {
     const message = messages.filter(m => m.role === 'user').pop()?.content || ''
     
-    console.log('📡 Fetching stream endpoint:', `${backendUrl}/chat/stream?message=${encodeURIComponent(message.substring(0, 50))}...&session_id=${sessionId}`)
+    console.log('Ã°Å¸â€œÂ¡ Fetching stream endpoint:', `${backendUrl}/chat/stream?message=${encodeURIComponent(message.substring(0, 50))}...&session_id=${sessionId}`)
     
     const response = await fetch(
       `${backendUrl}/chat/stream?message=${encodeURIComponent(message)}&session_id=${sessionId}`,
@@ -273,18 +306,18 @@ export async function streamChatbotAPI(
       }
     )
     
-    console.log('📡 Response status:', response.status, response.ok ? '✅' : '❌')
+    console.log('Ã°Å¸â€œÂ¡ Response status:', response.status, response.ok ? 'Ã¢Å“â€¦' : 'Ã¢ÂÅ’')
     
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('❌ Error response body:', errorText)
+      console.error('Ã¢ÂÅ’ Error response body:', errorText)
       throw new Error(`Server error: ${response.status} - ${errorText}`)
     }
     
     let reader;
     if (response && response.body) {
       reader = response.body.getReader()
-      console.log('📡 Stream reader initialized')
+      console.log('Ã°Å¸â€œÂ¡ Stream reader initialized')
     }
     const decoder = new TextDecoder()
     
@@ -295,7 +328,7 @@ export async function streamChatbotAPI(
       while (true && reader) {
         const { done, value } = await reader.read()
         if (done) {
-          console.log('📡 Stream completed, total tokens:', tokenCount)
+          console.log('Ã°Å¸â€œÂ¡ Stream completed, total tokens:', tokenCount)
           break
         }
         
@@ -320,15 +353,15 @@ export async function streamChatbotAPI(
                 if (data.token !== undefined) {
                   tokenCount++
                   if (tokenCount <= 5 || tokenCount % 50 === 0) {
-                    console.log(`📡 Token ${tokenCount}:`, data.token.substring(0, 20))
+                    console.log(`Ã°Å¸â€œÂ¡ Token ${tokenCount}:`, data.token.substring(0, 20))
                   }
                   onToken(data.token)
                 }
                 
                 // Check for completion or error
                 if (data.is_complete === true) {
-                  console.log('📡 Stream marked as complete')
-                  return { success: true, isOllamaResponse: true }
+                  console.log('Ã°Å¸â€œÂ¡ Stream marked as complete')
+                  return { success: true, isOllamaResponse: true, metadata: data.metadata }
                 }
                 
                 if (data.error) {

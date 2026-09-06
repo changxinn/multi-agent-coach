@@ -1,324 +1,99 @@
-"""Deterministic nutrition scoring and ethical safeguards."""
+"""Deterministic ``nutrition-safety-v1`` assessment and safety gates."""
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
-from .schemas import NutritionEvaluateRequest, NutritionEvaluateResponse
+from .schemas import (
+    Escalation,
+    NutritionEvaluateRequest,
+    NutritionEvaluateResponse,
+    SafetyContext,
+    SafetyFinding,
+    TargetInputs,
+)
 
-
-# ===========================================
-# SAFETY THRESHOLDS (Evidence-based)
-# ===========================================
-
-# Minimum safe calories per day (per clinical guidelines)
-MIN_CALORIES_WOMEN = 1200
-MIN_CALORIES_MEN = 1500
-
-# Maximum safe weight loss: 0.5-1.0 kg/week
-MAX_SAFE_WEIGHT_LOSS_PER_WEEK = 1.0
-
-# BMI thresholds (WHO classification)
-BMI_UNDERWEIGHT = 18.5
-BMI_OBESE_CLASS_III = 40.0
-
-# Eating disorder keyword detection (based on NEDA guidelines)
-EATING_DISORDER_KEYWORDS = [
-    # Restrictive behaviors
-    "starving myself",
-    "fasting for days",
-    "only eating",
-    "afraid to eat",
-    "scared to eat",
-    "guilt after eating",
-    "guilty after eating",
-    "purging",
-    "vomiting after meals",
-    "make myself vomit",
-    "laxatives",
-    "diet pills",
-    "weight loss pills",
-    "excessive exercise",
-    "over-exercising",
-
-    # Body dysmorphia
-    "feel fat",
-    "hate my body",
-    "disgusted by food",
-    "body hatred",
-
-    # Obsessive behaviors
-    "counting every calorie",
-    "obsessed with calories",
-    "terrified of gaining weight",
-    "afraid of gaining weight",
-    "restricting entire food groups",
-]
-
-# Medical risk phrases
-MEDICAL_RISK_PHRASES = [
-    "chest pain",
-    "chest discomfort",
-    "difficulty breathing",
-    "shortness of breath",
-    "fainted",
-    "fainting",
-    "passed out",
-    "severe dizziness",
-    "heart palpitations",
-    "irregular heartbeat",
-]
+POLICY_VERSION = "nutrition-safety-v1"
+DISCLAIMER = "All nutrition advice is for general informational purposes only and does not constitute medical advice. Consult a healthcare provider before making significant dietary changes."
+REFERRAL = "I can’t provide a nutrition target or meal plan for this situation. Please seek personalized guidance from a qualified healthcare professional; seek urgent medical care or local emergency services if symptoms are severe or immediate."
+ED_REFERRAL = " If this relates to disordered eating or feeling unsafe around food, consider contacting a qualified clinician or an eating-disorder support service in your region."
+ORDERED_CODES = ("CHEST_PAIN_OR_BREATHING_DIFFICULTY", "FAINTING_OR_SEVERE_DIZZINESS", "PURGING_OR_LAXATIVE_USE", "SEVERE_FOOD_RESTRICTION", "CURRENT_DISORDERED_EATING_BEHAVIORS", "EATING_DISORDER_HISTORY", "PREGNANCY_OR_BREASTFEEDING", "DIABETES_OR_INSULIN", "KIDNEY_DISEASE", "HEART_DISEASE_OR_HYPERTENSION", "UNDER_18", "RAPID_WEIGHT_LOSS_REQUEST", "OTHER_MEDICAL_CONDITION", "BMI_UNDERWEIGHT", "BMI_CLASS_III_OBESITY", "BELOW_MINIMUM_CALORIE_FLOOR")
+ESCALATE_CODES = set(ORDERED_CODES[:13])
 
 
 @dataclass(frozen=True)
 class NutritionHistory:
-    """7-day nutrition history."""
-
     meal_logs_last_7_days: int = 0
     average_calories: float | None = None
-    average_protein_g: float | None = None
-    average_carbs_g: float | None = None
-    average_fat_g: float | None = None
     adherence_percentage: float | None = None
+    macro_adherence_percentages: dict[str, float | None] | None = None
 
 
-def _extract_calories_from_message(message: str) -> int | None:
-    """Extract calorie mentions from user message."""
-    match = re.search(r"\b(\d{3,4})\s*(?:calories?|cals?|kcal)\b", message, re.IGNORECASE)
-    return int(match.group(1)) if match else None
-
-
-def _extract_meal_frequency(message: str) -> int | None:
-    """Extract meal frequency mentions."""
-    match = re.search(r"\b(\d)\s*(?:meals?|times)\s*(?:per|a)\s*day\b", message, re.IGNORECASE)
-    return int(match.group(1)) if match else None
-
-
-def _check_eating_disorder_keywords(message: str) -> list[str]:
-    """Check for eating disorder warning signs."""
-    message_lower = message.lower()
-    detected = []
-    for keyword in EATING_DISORDER_KEYWORDS:
-        if keyword in message_lower:
-            detected.append(keyword)
-    return detected
-
-
-def _check_medical_risk(message: str) -> list[str]:
-    """Check for medical risk phrases requiring escalation."""
-    message_lower = message.lower()
-    detected = []
-    for phrase in MEDICAL_RISK_PHRASES:
-        if phrase in message_lower:
-            detected.append(phrase)
-    return detected
-
-
-def _calculate_bmi(weight_kg: float | None, height_cm: float | None) -> float | None:
-    """Calculate BMI from weight and height."""
-    if not weight_kg or not height_cm or height_cm <= 0:
-        return None
-    height_m = height_cm / 100
-    return round(weight_kg / (height_m ** 2), 1)
-
-
-def assess_nutrition(
-    request: NutritionEvaluateRequest,
-    history: NutritionHistory,
-    user_profile: dict,
-) -> NutritionEvaluateResponse:
-    """
-    Score nutrition status from structured inputs, message signals, and history.
-
-    Scoring:
-    - 0-2: green (on track)
-    - 3-5: amber (minor gaps)
-    - 6-8: red (major issues)
-    - 9+: escalate (medical/professional referral needed)
-    """
-    message = request.message.strip()
-    created_at = datetime.now(UTC)
-    tool_trace = ["get_nutrition_history", "calculate_adherence", "assess_macro_balance"]
-
-    # ===========================================
-    # IMMEDIATE ESCALATION CHECKS
-    # ===========================================
-
-    # 1. Medical risk symptoms
-    medical_risks = _check_medical_risk(message)
-    if medical_risks:
-        return NutritionEvaluateResponse(
-            status="escalate",
-            score=10,
-            message=(
-                "- Your reported symptoms require medical attention.\n"
-                "- Please consult a healthcare provider before continuing.\n"
-                "- This system cannot provide medical diagnosis or treatment."
-            ),
-            reasoning=f"Medical risk phrases detected: {', '.join(medical_risks)}",
-            recommendations=[
-                "Stop any extreme dietary practices immediately",
-                "Consult a healthcare provider for proper evaluation",
-                "If symptoms are severe, seek urgent medical care",
-            ],
-            tool_trace=tool_trace + ["medical_risk_escalation"],
-            created_at=created_at,
-        )
-
-    # 2. Eating disorder keywords
-    ed_keywords = _check_eating_disorder_keywords(message)
-    if ed_keywords:
-        return NutritionEvaluateResponse(
-            status="escalate",
-            score=10,
-            message=(
-                "- I'm concerned about your relationship with food.\n"
-                "- Please consider speaking with a healthcare provider.\n"
-                "- You deserve support in developing a healthy approach to nutrition."
-            ),
-            reasoning=f"Eating disorder warning signs detected: {', '.join(ed_keywords)}",
-            recommendations=[
-                "Contact a healthcare provider specializing in eating behaviors",
-                "Consider resources from National Eating Disorders Association (NEDA)",
-                "This system cannot provide medical diagnosis or treatment",
-            ],
-            tool_trace=tool_trace + ["eating_disorder_screening"],
-            created_at=created_at,
-        )
-
-    # ===========================================
-    # EXTRACT SIGNALS FROM MESSAGE
-    # ===========================================
-
-    reported_calories = _extract_calories_from_message(message)
-    meal_frequency = _extract_meal_frequency(message)
-
-    # Get user demographics for safety checks
-    gender = user_profile.get("gender", "other").lower()
-    weight_kg = user_profile.get("weight_kg")
-    height_cm = user_profile.get("height_cm")
-    fitness_goal = user_profile.get("fitness_goal", "maintenance")
-
-    # ===========================================
-    # BMI SAFETY CHECK
-    # ===========================================
-
-    bmi = _calculate_bmi(weight_kg, height_cm)
-    if bmi is not None:
-        if bmi < BMI_UNDERWEIGHT:
-            tool_trace.append("bmi_underweight_check")
-            # Underweight - already concerning, but not immediate escalation
-            # unless combined with other factors
-        elif bmi > BMI_OBESE_CLASS_III:
-            tool_trace.append("bmi_obese_class_3_check")
-            # Class III obesity - recommend medical supervision
-
-    # ===========================================
-    # CALORIE SAFETY CHECK
-    # ===========================================
-
-    score = 0
-    signals: list[str] = []
-    recommendations: list[str] = []
-
-    # Check if reported calories are dangerously low
-    if reported_calories is not None:
-        min_safe_calories = MIN_CALORIES_WOMEN if gender == "female" else MIN_CALORIES_MEN
-
-        if reported_calories < min_safe_calories:
-            score += 4
-            signals.append(f"very low calorie intake ({reported_calories} < {min_safe_calories})")
-            recommendations.append(
-                f"Your reported intake is below safe minimums ({min_safe_calories} kcal/day). "
-                "This can lead to nutrient deficiencies and metabolic slowdown."
-            )
-            tool_trace.append("safety_check_calories")
-        elif reported_calories < min_safe_calories + 200:
-            score += 2
-            signals.append(f"low calorie intake ({reported_calories})")
-            recommendations.append(
-                f"Consider increasing intake to at least {min_safe_calories} kcal/day for safety."
-            )
-
-    # ===========================================
-    # MEAL LOGGING CONSISTENCY
-    # ===========================================
-
-    if history.meal_logs_last_7_days > 0:
-        # Good logging consistency
-        if history.meal_logs_last_7_days >= 14:  # 2 meals/day average
-            signals.append("excellent meal logging consistency")
-        elif history.meal_logs_last_7_days >= 7:  # 1 meal/day average
-            signals.append("good meal logging consistency")
-        else:
-            score += 1
-            signals.append("inconsistent meal logging")
-            recommendations.append("Try logging all meals daily for better tracking.")
-    else:
-        score += 1
-        signals.append("no recent meal logs")
-        recommendations.append("Start logging meals to track your nutrition patterns.")
-
-    # ===========================================
-    # ADHERENCE TO TARGETS (if available)
-    # ===========================================
-
-    if history.adherence_percentage is not None:
-        if history.adherence_percentage < 50:
-            score += 2
-            signals.append(f"low adherence to targets ({history.adherence_percentage:.0f}%)")
-            recommendations.append("Focus on meeting your nutrition targets consistently.")
-        elif history.adherence_percentage < 70:
-            score += 1
-            signals.append(f"moderate adherence ({history.adherence_percentage:.0f}%)")
-
-    # ===========================================
-    # DETERMINE STATUS
-    # ===========================================
-
-    if score >= 6:
-        status = "red"
-        if not recommendations:
-            recommendations = [
-                "Your nutrition patterns show significant gaps.",
-                "Consider consulting a registered dietitian for personalized guidance.",
-            ]
-        next_step = "Let's work together to improve your nutrition approach."
-
-    elif score >= 3:
-        status = "amber"
-        if not recommendations:
-            recommendations = [
-                "Minor gaps detected in your nutrition approach.",
-                "Small adjustments can help you reach your goals more effectively.",
-            ]
-        next_step = "What aspect of your nutrition would you like to improve?"
-
-    else:
-        status = "green"
-        if not recommendations:
-            recommendations = [
-                "Your nutrition approach appears well-balanced.",
-                "Continue tracking and maintaining consistent habits.",
-            ]
-        next_step = "Keep up the great work with your nutrition tracking!"
-
-    # ===========================================
-    # BUILD RESPONSE
-    # ===========================================
-
-    signal_text = ", ".join(signals) if signals else "no elevated nutrition-risk signals"
-
-    message_lines = [f"- {item}" for item in recommendations[:2]]  # Max 2 bullet points
-    message_lines.append(next_step)
-
-    return NutritionEvaluateResponse(
-        status=status,
-        score=score,
-        message="\n".join(message_lines),
-        reasoning=f"Assessment based on {signal_text} and recent nutrition history.",
-        recommendations=recommendations,
-        tool_trace=tool_trace,
-        created_at=created_at,
+def _has(message: str, *phrases: str) -> bool:
+    return any(
+        re.search(r"\b" + re.escape(phrase) + r"\b", message, re.IGNORECASE)
+        for phrase in phrases
     )
+
+
+def safety_findings(message: str, context: SafetyContext | None = None, inputs: TargetInputs | None = None, proposed_calories: int | None = None) -> list[SafetyFinding]:
+    """Return ordered, deduplicated, privacy-safe policy codes only."""
+    context = context or SafetyContext()
+    conditions, flags = set(context.medical_conditions), set(context.risk_flags)
+    bmi = inputs.weight_kg / (inputs.height_cm / 100) ** 2 if inputs and inputs.height_cm else None
+    checks = {
+        "CHEST_PAIN_OR_BREATHING_DIFFICULTY": "chest_pain_or_breathing_difficulty" in flags or _has(message, "chest pain", "shortness of breath", "trouble breathing"),
+        "FAINTING_OR_SEVERE_DIZZINESS": "fainting_or_severe_dizziness" in flags or _has(message, "fainting", "passed out", "severe dizziness"),
+        "PURGING_OR_LAXATIVE_USE": "purging_or_laxative_use" in flags or _has(message, "purging", "laxative"),
+        "SEVERE_FOOD_RESTRICTION": "severe_food_restriction" in flags or _has(message, "severely restrict", "starving myself"),
+        "CURRENT_DISORDERED_EATING_BEHAVIORS": "current_disordered_eating_behaviors" in flags,
+        "EATING_DISORDER_HISTORY": "eating_disorder_history" in conditions or _has(message, "eating disorder", "anorexia", "bulimia", "binge eating"),
+        "PREGNANCY_OR_BREASTFEEDING": context.pregnancy_lactation_status in {"pregnant", "breastfeeding", "pregnant_and_breastfeeding"} or _has(message, "pregnant", "pregnancy", "breastfeeding"),
+        "DIABETES_OR_INSULIN": bool({"diabetes", "uses_insulin_or_glucose_lowering_medication"} & conditions) or _has(message, "diabetes", "diabetic", "insulin"),
+        "KIDNEY_DISEASE": "kidney_disease" in conditions or _has(message, "kidney disease", "renal disease"),
+        "HEART_DISEASE_OR_HYPERTENSION": bool({"heart_disease", "hypertension"} & conditions) or _has(message, "heart disease", "heart condition", "high blood pressure", "hypertension"),
+        "UNDER_18": "under_18" in flags or bool(inputs and inputs.age < 18),
+        "RAPID_WEIGHT_LOSS_REQUEST": "rapid_weight_loss_request" in flags or bool(inputs and inputs.requested_weekly_loss_kg and inputs.requested_weekly_loss_kg > inputs.weight_kg * .01),
+        "OTHER_MEDICAL_CONDITION": "other_medical_condition" in flags or _has(message, "dehydrate", "water cut", "rapid water loss", "anaphylaxis", "allergic reaction", "medication dosage", "medication advice", "drug dosage", "drug advice", "supplement dosage", "supplement advice"),
+        "BMI_UNDERWEIGHT": bool(bmi and bmi < 18.5), "BMI_CLASS_III_OBESITY": bool(bmi and bmi >= 40),
+        "BELOW_MINIMUM_CALORIE_FLOOR": bool(proposed_calories and proposed_calories < (1500 if inputs and inputs.gender == "male" else 1200)),
+    }
+    return [SafetyFinding(code=code, severity="escalate" if code in ESCALATE_CODES else "warning") for code in ORDERED_CODES if checks[code]]
+
+
+def escalation_for(findings: list[SafetyFinding]) -> Escalation | None:
+    codes = {finding.code for finding in findings}
+    if not codes & ESCALATE_CODES:
+        return None
+    return Escalation(message=REFERRAL + (ED_REFERRAL if codes & {"PURGING_OR_LAXATIVE_USE", "SEVERE_FOOD_RESTRICTION", "CURRENT_DISORDERED_EATING_BEHAVIORS", "EATING_DISORDER_HISTORY"} else ""), urgent=bool(codes & {"CHEST_PAIN_OR_BREATHING_DIFFICULTY", "FAINTING_OR_SEVERE_DIZZINESS"}))
+
+
+def assess_nutrition(request: NutritionEvaluateRequest, history: NutritionHistory, profile: dict) -> NutritionEvaluateResponse:
+    findings = safety_findings(request.message, request.safety_context)
+    escalation = escalation_for(findings)
+    if escalation:
+        return NutritionEvaluateResponse(status="escalate", score=10, message=f"{escalation.message}\n\n*{DISCLAIMER}*", recommendations=["Seek qualified healthcare support."], safety_findings=findings, escalation=escalation, created_at=datetime.now(UTC))
+    score = 0 if history.meal_logs_last_7_days >= 7 else 1
+    if history.adherence_percentage is not None and history.adherence_percentage < 70:
+        score += 1
+    if history.macro_adherence_percentages and any(
+        value is not None and value < 70
+        for value in history.macro_adherence_percentages.values()
+    ):
+        score += 1
+    if findings:
+        score = max(score, 6)
+    status = "red" if score >= 6 else "amber" if score >= 3 else "green"
+    low_macro_adherence = history.macro_adherence_percentages and any(
+        value is not None and value < 70
+        for value in history.macro_adherence_percentages.values()
+    )
+    recommendation = (
+        "A qualified professional can help tailor a safe approach." if findings
+        else "Review your calorie and macronutrient targets across your logged days."
+        if low_macro_adherence
+        else "Log meals consistently to understand your nutrition patterns." if score
+        else "Continue building consistent nutrition habits."
+    )
+    return NutritionEvaluateResponse(status=status, score=score, message=f"- {recommendation}\n\n*{DISCLAIMER}*", recommendations=[recommendation], safety_findings=findings, created_at=datetime.now(UTC))

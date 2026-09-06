@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { CloseOutlined, SendOutlined, ExpandOutlined } from '@ant-design/icons'
 import { Bot } from 'lucide-react'
-import { Input, Button } from 'antd'
-import { message } from 'antd'
+import { Input, Button, Form, InputNumber, Modal, Select, message } from 'antd'
 import { marked } from 'marked'
 
 marked.setOptions({
@@ -20,6 +19,8 @@ import {
   wasDemoModeShown,
   clearDemoModeShown,
   type ChatMessage,
+  type NutritionProfileWrite,
+  upsertNutritionProfile,
 } from '../../lib/chatbot-api'
 import {
   deepChatRequestBodyLimits,
@@ -28,6 +29,21 @@ import {
 } from '../../lib/deep-chat-config'
 import { ChatbotConfig } from '../../lib/chatbot-config'
 import './DeepChatWrapper.css'
+
+const DEFAULT_NUTRITION_TIMEZONE = 'Asia/Singapore'
+
+const nutritionTimezoneOptions = (() => {
+  const supportedValuesOf = (
+    Intl as typeof Intl & {
+      supportedValuesOf?: (key: 'timeZone') => string[]
+    }
+  ).supportedValuesOf
+  const timezones = supportedValuesOf?.('timeZone') ?? []
+
+  return [...new Set([DEFAULT_NUTRITION_TIMEZONE, 'UTC', ...timezones])]
+    .sort((first, second) => first.localeCompare(second))
+    .map((timezone) => ({ value: timezone, label: timezone }))
+})()
 
 interface DeepChatBotProps {
   enableExpand?: boolean
@@ -53,6 +69,9 @@ export function DeepChatBot({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [nutritionProfileMessage, setNutritionProfileMessage] = useState<string | null>(null)
+  const [isSavingNutritionProfile, setIsSavingNutritionProfile] = useState(false)
+  const [nutritionProfileForm] = Form.useForm<NutritionProfileWrite>()
   const { token, user, logout } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
@@ -118,7 +137,7 @@ export function DeepChatBot({
    */
   const typeNextCharacter = useCallback(() => {
     if (!isTypingRef.current || !deepChatRef.current) {
-      console.log('📝 Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
+      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
       isTypingRef.current = false
       return
     }
@@ -130,7 +149,7 @@ export function DeepChatBot({
       accumulatedMessageRef.current += char
       displayIndexRef.current++
       
-      console.log('📝 Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
+      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
       
       // Update UI
       updateMessageDisplay()
@@ -139,15 +158,15 @@ export function DeepChatBot({
       typingTimeoutRef.current = setTimeout(typeNextCharacter, ChatbotConfig.TYPEWRITER.SPEED_MS)
     } else {
       // Finished typing current buffer, check if more tokens arrived
-      console.log('📝 Buffer exhausted, checking for more tokens...')
+      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Buffer exhausted, checking for more tokens...')
       if (tokenBufferRef.current.length > 0) {
-        console.log('📝 Clearing buffer and continuing')
+        console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Clearing buffer and continuing')
         tokenBufferRef.current = ''
         displayIndexRef.current = 0
         // Keep typing if there's more content
         typeNextCharacter()
       } else {
-        console.log('📝 Typewriter finished - no more tokens')
+        console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typewriter finished - no more tokens')
         isTypingRef.current = false
       }
     }
@@ -162,15 +181,15 @@ export function DeepChatBot({
     }
   }, [token, userEmail])
 
-  const handleSend = useCallback(async () => {
-    if (!inputValue.trim() || isSending) {
+  const handleSend = useCallback(async (messageOverride?: string) => {
+    if (!(messageOverride ?? inputValue).trim() || isSending) {
       console.log('handleSend: Skipping - isSending:', isSending, 'inputValue:', inputValue)
       return
     }
     
     console.log('handleSend: Starting with message:', inputValue)
     setIsSending(true)
-    const userMessage = inputValue.trim()
+    const userMessage = (messageOverride ?? inputValue).trim()
     setInputValue('')
     
     try {
@@ -223,19 +242,19 @@ export function DeepChatBot({
           token || '',
           sessionId.current,
           (tokenContent) => {
-            console.log('📝 Token received:', tokenContent, '| Buffer length:', tokenBufferRef.current.length)
+            console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Token received:', tokenContent, '| Buffer length:', tokenBufferRef.current.length)
             if (useTypewriter) {
               tokenBufferRef.current += tokenContent
-              console.log('📝 Added to buffer, new length:', tokenBufferRef.current.length)
+              console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Added to buffer, new length:', tokenBufferRef.current.length)
               
               if (!isTypingRef.current) {
-                console.log('📝 Starting typewriter')
+                console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Starting typewriter')
                 isTypingRef.current = true
                 typeNextCharacter()
               }
             } else {
               accumulatedMessageRef.current += tokenContent
-              console.log('📝 Direct update, accumulated length:', accumulatedMessageRef.current.length)
+              console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Direct update, accumulated length:', accumulatedMessageRef.current.length)
               updateMessageDisplay()
             }
           },
@@ -285,6 +304,10 @@ export function DeepChatBot({
         }
       }
       
+      if (result.success && result.metadata?.nutrition_profile_required) {
+        setNutritionProfileMessage(userMessage)
+      }
+
       if (result.isOllamaResponse && !hasShownOllamaToast.current && wasDemoModeShown()) {
         // messageApi.success({
         //   content: 'Response powered by Ollama AI',
@@ -324,7 +347,7 @@ export function DeepChatBot({
           
           deepChatRef.current.addMessage({
             role: 'assistant',
-            text: `${accumulatedMessageRef.current}\n\n⚠️ Response interrupted. Please try again.`
+            text: `${accumulatedMessageRef.current}\n\nGÃƒÆ’Ã…â€œÃƒÆ’Ã‚Â¡n+ÃƒÆ’Ã¢â‚¬Â¦ Response interrupted. Please try again.`
           })
         }
       } else {
@@ -446,9 +469,35 @@ export function DeepChatBot({
     }
   }, [isOpen, initialMessage, messageApi, token])
 
+  const handleNutritionProfileSubmit = useCallback(async () => {
+    const values = await nutritionProfileForm.validateFields()
+    const retryMessage = nutritionProfileMessage
+    if (!retryMessage) return
+    setIsSavingNutritionProfile(true)
+    try {
+      await upsertNutritionProfile(values, token || '')
+      setNutritionProfileMessage(null)
+      messageApi.success('Nutrition profile saved. Continuing your question...')
+      await handleSend(retryMessage)
+    } catch (error) {
+      messageApi.error(error instanceof Error ? error.message : 'Unable to save your nutrition profile.')
+    } finally {
+      setIsSavingNutritionProfile(false)
+    }
+  }, [handleSend, messageApi, nutritionProfileForm, nutritionProfileMessage, token])
   return (
     <>
       {messageContextHolder}
+      <Modal title="Set up your nutrition profile" open={nutritionProfileMessage !== null} closable={false} maskClosable={false} okText="Save and continue" cancelButtonProps={{ style: { display: 'none' } }} confirmLoading={isSavingNutritionProfile} onOk={handleNutritionProfileSubmit}>
+        <p>Your timezone sets nutrition-day boundaries. It defaults to Asia/Singapore; select your local IANA timezone if different.</p>
+        <Form<NutritionProfileWrite> form={nutritionProfileForm} layout="vertical" initialValues={{ timezone: DEFAULT_NUTRITION_TIMEZONE, dietary_preference: 'omnivore', dietary_restrictions: [], allergies: [], meals_per_day: 3 }}>
+          <Form.Item name="timezone" label="IANA timezone" rules={[{ required: true, message: 'Select your timezone.' }]}><Select showSearch optionFilterProp="label" options={nutritionTimezoneOptions} placeholder="Select a timezone" /></Form.Item>
+          <Form.Item name="dietary_preference" label="Dietary preference" rules={[{ required: true }]}><Select options={[{ value: 'omnivore', label: 'Omnivore' }, { value: 'vegetarian', label: 'Vegetarian' }, { value: 'vegan', label: 'Vegan' }, { value: 'pescatarian', label: 'Pescatarian' }, { value: 'other', label: 'Other' }]} /></Form.Item>
+          <Form.Item name="dietary_restrictions" label="Dietary restrictions"><Select mode="tags" tokenSeparators={[',']} placeholder="e.g. halal, gluten-free" /></Form.Item>
+          <Form.Item name="allergies" label="Food allergies"><Select mode="tags" tokenSeparators={[',']} placeholder="e.g. peanuts, shellfish" /></Form.Item>
+          <Form.Item name="meals_per_day" label="Meals per day" rules={[{ required: true }]}><InputNumber min={1} max={10} style={{ width: '100%' }} /></Form.Item>
+        </Form>
+      </Modal>
       
       {/* Floating chat trigger button - only show when closed and not embedded */}
       {!isOpen && !embedInPage && (

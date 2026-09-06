@@ -1,5 +1,7 @@
 """Macro target calculator based on fitness goals."""
 
+from math import isfinite
+
 # Safety thresholds per clinical guidelines
 MIN_CALORIES_WOMEN = 1200
 MIN_CALORIES_MEN = 1500
@@ -22,7 +24,7 @@ def calculate_macro_targets(
     - Muscle gain: TDEE + 250 kcal, protein 2.2g/kg, fat 1.0g/kg, rest carbs
 
     Safety checks:
-    - Minimum calories: 1200 (women), 1500 (men)
+    - Minimum calories: 1200 (women/other), 1500 (men)
     - Maximum weight loss: 1 kg/week (~1000 kcal deficit)
 
     Args:
@@ -53,9 +55,8 @@ def calculate_macro_targets(
         fat_per_kg = 1.0
 
     # Safety check: minimum calories
-    min_calories = MIN_CALORIES_WOMEN if gender.lower() == "female" else MIN_CALORIES_MEN
-    if target_calories < min_calories:
-        target_calories = min_calories
+    min_calories = MIN_CALORIES_MEN if gender.lower() == "male" else MIN_CALORIES_WOMEN
+    target_calories = max(target_calories, min_calories)
 
     # Calculate macros
     protein_g = protein_per_kg * weight_kg
@@ -67,26 +68,42 @@ def calculate_macro_targets(
     fat_calories = fat_g * 9
     remaining_calories = target_calories - protein_calories - fat_calories
 
-    # Ensure carbs don't go negative
-    if remaining_calories < 0:
-        # Adjust fat down first, then protein
-        fat_g = max(0.5 * weight_kg, fat_g + remaining_calories / 9)
-        remaining_calories = target_calories - (protein_g * 4) - (fat_g * 9)
+    # A valid high body weight combined with a calorie floor can make the
+    # prescribed protein and fat exceed available energy. Preserve their ratio
+    # and normalize both to the target instead of returning negative carbs.
+    prescribed_macro_calories = protein_calories + fat_calories
+    if prescribed_macro_calories > target_calories:
+        scale = target_calories / prescribed_macro_calories
+        protein_g *= scale
+        fat_g *= scale
+        carbs_g = 0.0
+    else:
+        carbs_g = remaining_calories / 4
 
-    carbs_g = remaining_calories / 4
-
-    # Calculate percentages
-    total_macro_calories = (protein_g * 4) + (carbs_g * 4) + (fat_g * 9)
-    protein_percentage = round((protein_g * 4) / total_macro_calories * 100, 1)
-    carbs_percentage = round((carbs_g * 4) / total_macro_calories * 100, 1)
-    fat_percentage = round((fat_g * 9) / total_macro_calories * 100, 1)
-
-    return {
-        "calories": round(target_calories),
+    rounded_macros = {
         "protein_g": round(protein_g, 1),
         "carbs_g": round(carbs_g, 1),
         "fat_g": round(fat_g, 1),
-        "protein_percentage": protein_percentage,
-        "carbs_percentage": carbs_percentage,
-        "fat_percentage": fat_percentage,
+    }
+    total_macro_calories = (
+        rounded_macros["protein_g"] * 4
+        + rounded_macros["carbs_g"] * 4
+        + rounded_macros["fat_g"] * 9
+    )
+    percentages = {
+        "protein_percentage": round(rounded_macros["protein_g"] * 4 / total_macro_calories * 100, 1),
+        "carbs_percentage": round(rounded_macros["carbs_g"] * 4 / total_macro_calories * 100, 1),
+        "fat_percentage": round(rounded_macros["fat_g"] * 9 / total_macro_calories * 100, 1),
+    }
+    if (
+        total_macro_calories <= 0
+        or any(not isfinite(value) or value < 0 or value > 100 for value in percentages.values())
+        or not 99.9 <= sum(percentages.values()) <= 100.1
+    ):
+        raise ValueError("Unable to calculate valid macronutrient targets")
+
+    return {
+        "calories": round(target_calories),
+        **rounded_macros,
+        **percentages,
     }

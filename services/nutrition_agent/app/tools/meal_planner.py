@@ -1,5 +1,4 @@
 """Meal planner that generates meal suggestions aligned with macro targets."""
-from typing import Any
 
 # Sample meal templates (would be expanded with food database queries)
 MEAL_TEMPLATES = {
@@ -82,12 +81,69 @@ MEAL_TEMPLATES = {
 }
 
 
+# Template names are presentation text, not a reliable allergy/restriction source.
+# Keep the matching vocabulary separate and internal so a renamed display string
+# cannot silently make an unsafe option eligible.
+_INGREDIENTS_BY_MEAL_NAME = {
+    "Scrambled eggs with toast": {"eggs", "gluten", "wheat"},
+    "Oatmeal with berries and almonds": {"oats", "berries", "almonds", "tree nuts"},
+    "Greek yogurt parfait with granola": {"dairy", "milk", "yogurt", "gluten", "oats"},
+    "Grilled chicken salad with quinoa": {"chicken", "poultry", "quinoa", "vegetables"},
+    "Turkey wrap with vegetables": {"turkey", "poultry", "gluten", "wheat", "vegetables"},
+    "Tuna salad with mixed greens": {"tuna", "fish", "vegetables"},
+    "Salmon with brown rice and broccoli": {"salmon", "fish", "rice", "vegetables", "broccoli"},
+    "Chicken stir-fry with vegetables": {"chicken", "poultry", "vegetables", "soy"},
+    "Lean beef with sweet potato": {"beef", "red meat", "sweet potato"},
+    "Apple with peanut butter": {"apple", "peanuts", "peanut"},
+    "Greek yogurt": {"dairy", "milk", "yogurt"},
+    "Handful of almonds": {"almonds", "tree nuts"},
+    "Vegetable omelet with cheese": {"eggs", "dairy", "milk", "cheese", "vegetables"},
+    "Oatmeal with protein powder": {"oats", "dairy", "milk"},
+    "Lentil soup with whole grain bread": {"lentils", "gluten", "wheat"},
+    "Caprese salad with quinoa": {"dairy", "milk", "cheese", "quinoa", "vegetables"},
+    "Tofu stir-fry with brown rice": {"tofu", "soy", "rice", "vegetables"},
+    "Vegetable curry with chickpeas": {"chickpeas", "legumes", "vegetables"},
+    "Hummus with vegetables": {"chickpeas", "legumes", "sesame", "vegetables"},
+    "Cottage cheese with fruit": {"dairy", "milk", "cheese", "fruit"},
+    "Tofu scramble with vegetables": {"tofu", "soy", "vegetables"},
+    "Oatmeal with almond milk and banana": {"oats", "almonds", "tree nuts", "banana"},
+    "Buddha bowl with quinoa and chickpeas": {"quinoa", "chickpeas", "legumes", "vegetables"},
+    "Lentil salad with tahini dressing": {"lentils", "legumes", "sesame", "tahini", "vegetables"},
+    "Tempeh stir-fry with vegetables": {"tempeh", "soy", "vegetables"},
+    "Black bean tacos with avocado": {"black beans", "legumes", "avocado", "corn"},
+    "Energy balls with dates and nuts": {"dates", "tree nuts", "nuts"},
+    "Roasted chickpeas": {"chickpeas", "legumes"},
+}
+
+
+def _matches_exclusion(ingredients: set[str], exclusions: set[str]) -> bool:
+    """Return whether an explicit ingredient tag matches an excluded food."""
+    return any(
+        exclusion == ingredient
+        or exclusion in ingredient
+        or ingredient in exclusion
+        for exclusion in exclusions
+        for ingredient in ingredients
+    )
+
+
+def _safe_options(options: list[dict], exclusions: set[str]) -> list[dict]:
+    safe_options = []
+    for option in options:
+        ingredients = _INGREDIENTS_BY_MEAL_NAME.get(option["name"])
+        # An untagged template cannot be proven safe for an exclusion request.
+        if ingredients is not None and not _matches_exclusion(ingredients, exclusions):
+            safe_options.append(option)
+    return safe_options
+
+
 def generate_meal_plan(
     macro_targets: dict,
     dietary_preference: str = "omnivore",
     meals_per_day: int = 3,
-    allergies: list[str] = None,
-) -> dict:
+    allergies: list[str] | None = None,
+    dietary_restrictions: list[str] | None = None,
+) -> dict | None:
     """
     Generate a simple meal plan aligned with macro targets.
 
@@ -95,13 +151,19 @@ def generate_meal_plan(
         macro_targets: dict with calories, protein_g, carbs_g, fat_g
         dietary_preference: omnivore, vegetarian, vegan, pescatarian
         meals_per_day: Number of meals (3 = breakfast/lunch/dinner, 4 = +snack)
-        allergies: List of allergens to avoid (not yet implemented)
+        allergies: List of allergens to avoid.
+        dietary_restrictions: List of foods or ingredients to avoid.
 
     Returns:
-        dict with meals for each meal type and totals
+        Dict with meals and totals, or None if no complete safe plan is available.
     """
     # Get meal templates for dietary preference
     templates = MEAL_TEMPLATES.get(dietary_preference, MEAL_TEMPLATES["omnivore"])
+    exclusions = {
+        item.strip().casefold()
+        for item in [*(allergies or []), *(dietary_restrictions or [])]
+        if item.strip()
+    }
 
     # Simple distribution: 30% breakfast, 35% lunch, 35% dinner, 0-10% snacks
     target_calories = macro_targets["calories"]
@@ -114,7 +176,9 @@ def generate_meal_plan(
 
     # Breakfast (30%)
     if meals_per_day >= 1:
-        breakfast_options = templates.get("breakfast", [])
+        breakfast_options = _safe_options(templates.get("breakfast", []), exclusions)
+        if not breakfast_options:
+            return None
         if breakfast_options:
             # Pick closest to target
             target_breakfast_cal = target_calories * 0.30
@@ -127,7 +191,9 @@ def generate_meal_plan(
 
     # Lunch (35%)
     if meals_per_day >= 2:
-        lunch_options = templates.get("lunch", [])
+        lunch_options = _safe_options(templates.get("lunch", []), exclusions)
+        if not lunch_options:
+            return None
         if lunch_options:
             target_lunch_cal = target_calories * 0.35
             lunch = min(lunch_options, key=lambda x: abs(x["calories"] - target_lunch_cal))
@@ -139,7 +205,9 @@ def generate_meal_plan(
 
     # Dinner (35%)
     if meals_per_day >= 3:
-        dinner_options = templates.get("dinner", [])
+        dinner_options = _safe_options(templates.get("dinner", []), exclusions)
+        if not dinner_options:
+            return None
         if dinner_options:
             target_dinner_cal = target_calories * 0.35
             dinner = min(dinner_options, key=lambda x: abs(x["calories"] - target_dinner_cal))
@@ -151,7 +219,9 @@ def generate_meal_plan(
 
     # Snacks (if 4+ meals)
     if meals_per_day >= 4:
-        snack_options = templates.get("snack", [])
+        snack_options = _safe_options(templates.get("snack", []), exclusions)
+        if not snack_options:
+            return None
         if snack_options:
             target_snack_cal = target_calories * 0.10
             snack = min(snack_options, key=lambda x: abs(x["calories"] - target_snack_cal))

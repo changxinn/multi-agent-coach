@@ -60,24 +60,56 @@ This starts PostgreSQL on `localhost:5432` with:
 
 Ensure your PostgreSQL instance is running and accessible.
 
-### 5. Run Backend
+### 5. Apply Migrations, Then Run Backend
+
+Provision the database outside the application, then explicitly apply the
+ledger-backed migrations before starting either API service:
+
+```bash
+uv run python -m app.db.migrate
+uv run python -m app.db.migrate --check
+```
+
+The migration command mutates schema state. Run it only against a database
+that your environment/operator has designated for this application. Normal API
+startup validates database compatibility and does not create a database, run
+migrations, create tables, or seed users.
+
+Compose runs this operation through its one-shot `migrations` service after
+PostgreSQL is healthy. The `api` and `nutrition-agent` services wait for that
+job to complete successfully, then perform read-only readiness validation:
+
+```bash
+docker compose up --build
+```
+
+With Docker Desktop running, run the opt-in deployment smoke test (it uses an
+isolated Compose project and removes all resources it creates):
+
+```powershell
+.\scripts\test-compose-deployment.ps1
+```
+
+Start the main API:
 
 ```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-The backend will automatically:
-- ✅ Create database (if not exists)
-- ✅ Create schema and tables
-- ✅ Run migrations
-- ✅ Create admin user (admin@example.com / ChangeMe123!)
-- ✅ Start API server on http://localhost:8000
+The backend validates the configured database/ledger and starts on
+http://localhost:8000 when that validation succeeds. Admin seeding, if needed,
+is a separate explicit operation.
 
 ### 6. Verify Installation
 
-**Health Check:**
+**Liveness Check:**
 ```bash
-curl http://localhost:8000/health
+curl http://localhost:8000/health/live
+```
+
+**Readiness Check:**
+```bash
+curl http://localhost:8000/health/ready
 ```
 
 **API Documentation:**
@@ -209,11 +241,16 @@ ruff check app/
 
 ### Database Migrations
 
-Migrations run automatically on startup. To manually run:
+Migrations never run automatically on application startup. After the database
+has been provisioned, apply and validate them explicitly:
 
 ```bash
-python -m app.db.seed
+uv run python -m app.db.migrate
+uv run python -m app.db.migrate --check
 ```
+
+See `docs/nutrition_agent/MIGRATION-RUNNER.md` for the ledger protocol and
+operator requirements.
 
 ### Testing
 
@@ -258,7 +295,8 @@ Check backend logs for:
 "Admin user seeding completed"
 ```
 
-If missing, restart backend or manually seed:
+If the database has been migrated and an admin user is needed, run the explicit
+seed operation:
 ```bash
 python -c "from app.db.seed import seed_admin_user; from app.db.database import AsyncSessionLocal; import asyncio; asyncio.run(seed_admin_user(AsyncSessionLocal()))"
 ```
@@ -273,7 +311,7 @@ python -c "from app.db.seed import seed_admin_user; from app.db.database import 
 
 ## Default Credentials
 
-**Admin User** (auto-created on first startup):
+**Admin User** (optional explicit seed configuration):
 - Email: `admin@example.com`
 - Password: `ChangeMe123!`
 
@@ -326,6 +364,21 @@ multi-agent-coach/
 - `POST /api/session` - Create session
 - `GET /api/session/{id}` - Get details
 - `DELETE /api/session/{id}` - Delete session
+
+### Nutrition
+- Authenticated programmatic routes are under `/api/nutrition/*`; they derive
+  ownership from the JWT and never accept a public `user_id`.
+- The Nutrition Agent is a private service. Its `/v1/nutrition/*` routes require
+  `X-Internal-Service-Token` and must not be exposed to browsers or public
+  ingress.
+- The authenticated `/api/chat` orchestrator path is the intended user-facing
+  nutrition interaction. Direct nutrition routes support programmatic and
+  future-UI workflows.
+
+See `docs/nutrition_agent/API-CONTRACT.md` for the complete nutrition route,
+request, response, and error contract. Nutrition remains development-core work;
+production enablement requires the release gates in
+`docs/nutrition_agent/NUTRITION-SERVICE-IMPLEMENTATION-PLAN.md`.
 
 ---
 

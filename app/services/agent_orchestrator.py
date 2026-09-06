@@ -40,6 +40,19 @@ class AgentOrchestrator:
         user_message: str,
         request_summary: bool = False,
     ) -> str:
+        response_text, _ = await self.process_message_with_metadata(
+            session=session,
+            user_message=user_message,
+            request_summary=request_summary,
+        )
+        return response_text
+
+    async def process_message_with_metadata(
+        self,
+        session: Session,
+        user_message: str,
+        request_summary: bool = False,
+    ) -> tuple[str, dict[str, Any] | None]:
         """
         Process user message through multi-agent system.
 
@@ -84,10 +97,10 @@ class AgentOrchestrator:
                 "user_profile": user_profile,
             }
 
-            # Invoke graph
+            # Invoke graph through its async API because the API workflow
+            # contains asynchronous specialist nodes.
             logger.info("Invoking LangGraph for user message")
-            result = await asyncio.to_thread(
-                graph.invoke,
+            result = await graph.ainvoke(
                 initial_state,
                 {"recursion_limit": 50},
             )
@@ -98,8 +111,10 @@ class AgentOrchestrator:
                 if m.get("role") == "assistant"
             ]
 
-            # Aggregate responses
+            # Aggregate responses and expose the final specialist metadata to
+            # structured API consumers.
             response_text = self._aggregate_responses(assistant_messages)
+            response_metadata = assistant_messages[-1].get("metadata") if assistant_messages else None
 
             # If summary requested, generate it
             if request_summary:
@@ -125,13 +140,14 @@ class AgentOrchestrator:
                 len(response_text),
             )
 
-            return response_text
+            return response_text, response_metadata
 
         except Exception as e:
             logger.error("Error processing message: %s", e, exc_info=True)
             return (
                 "I apologize, but I encountered an error processing your request. "
-                "Please try again."
+                "Please try again.",
+                None,
             )
 
     async def process_message_stream(

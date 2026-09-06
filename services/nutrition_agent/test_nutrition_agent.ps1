@@ -12,11 +12,11 @@ Write-Host "Nutrition Agent Test Script" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host ""
 
-# Test 1: Health Check
-Write-Host "Test 1: Health Check" -ForegroundColor Yellow
+# Test 1: Liveness Check
+Write-Host "Test 1: Liveness Check" -ForegroundColor Yellow
 Write-Host "--------------------" -ForegroundColor Gray
 try {
-    $response = Invoke-RestMethod -Uri "${BASE_URL}/health" -Method Get
+    $response = Invoke-RestMethod -Uri "${BASE_URL}/health/live" -Method Get
     $response | ConvertTo-Json
 } catch {
     Write-Host "Error: $_" -ForegroundColor Red
@@ -24,8 +24,20 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 2: Create Nutrition Profile
-Write-Host "Test 2: Create Nutrition Profile" -ForegroundColor Yellow
+# Test 2: Readiness Check
+Write-Host "Test 2: Readiness Check" -ForegroundColor Yellow
+Write-Host "--------------------" -ForegroundColor Gray
+try {
+    $response = Invoke-RestMethod -Uri "${BASE_URL}/health/ready" -Method Get
+    $response | ConvertTo-Json
+} catch {
+    Write-Host "Error: $_" -ForegroundColor Red
+}
+Write-Host ""
+Write-Host ""
+
+# Test 3: Create Nutrition Profile
+Write-Host "Test 3: Create Nutrition Profile" -ForegroundColor Yellow
 Write-Host "---------------------------------" -ForegroundColor Gray
 try {
     $body = @{
@@ -51,8 +63,8 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 3: Evaluate Nutrition Status (Normal)
-Write-Host "Test 3: Evaluate Nutrition (Normal Query)" -ForegroundColor Yellow
+# Test 4: Evaluate Nutrition Status (Normal)
+Write-Host "Test 4: Evaluate Nutrition (Normal Query)" -ForegroundColor Yellow
 Write-Host "------------------------------------------" -ForegroundColor Gray
 try {
     $body = @{
@@ -75,8 +87,8 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 4: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)
-Write-Host "Test 4: Evaluate Nutrition (Eating Disorder - Should Escalate)" -ForegroundColor Yellow
+# Test 5: Evaluate Nutrition (Eating Disorder Keywords - Should Escalate)
+Write-Host "Test 5: Evaluate Nutrition (Eating Disorder - Should Escalate)" -ForegroundColor Yellow
 Write-Host "----------------------------------------------------------------" -ForegroundColor Gray
 try {
     $body = @{
@@ -97,8 +109,8 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 5: Log a Meal
-Write-Host "Test 5: Log a Meal" -ForegroundColor Yellow
+# Test 6: Log a Meal
+Write-Host "Test 6: Log a Meal" -ForegroundColor Yellow
 Write-Host "------------------" -ForegroundColor Gray
 try {
     $body = @{
@@ -123,8 +135,8 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 6: Get Nutrition History
-Write-Host "Test 6: Get Nutrition History" -ForegroundColor Yellow
+# Test 7: Get Nutrition History
+Write-Host "Test 7: Get Nutrition History" -ForegroundColor Yellow
 Write-Host "------------------------------" -ForegroundColor Gray
 try {
     $response = Invoke-RestMethod -Uri "${BASE_URL}/v1/nutrition/history/1" `
@@ -137,13 +149,14 @@ try {
 Write-Host ""
 Write-Host ""
 
-# Test 7: Invalid Token (Should Fail)
-Write-Host "Test 7: Invalid Token (Should Return 401)" -ForegroundColor Yellow
+# Test 8: Invalid Token (Should Fail)
+Write-Host "Test 8: Invalid Token (Should Return 401)" -ForegroundColor Yellow
 Write-Host "------------------------------------------" -ForegroundColor Gray
 try {
-    $response = Invoke-RestMethod -Uri "${BASE_URL}/health" `
-        -Method Get `
-        -Headers @{"X-Internal-Service-Token" = "invalid-token"}
+    $response = Invoke-RestMethod -Uri "${BASE_URL}/v1/nutrition/profile" `
+        -Method Post `
+        -Headers @{"X-Internal-Service-Token" = "invalid-token"; "Content-Type" = "application/json"} `
+        -Body "{}"
     $response | ConvertTo-Json
 } catch {
     Write-Host "Expected error (401): $_" -ForegroundColor Green

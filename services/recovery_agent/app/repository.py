@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 import asyncpg
 
@@ -19,7 +18,11 @@ class RecoveryRepository:
     async def connect(self) -> None:
         database_url = self.settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
         self.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
-        await self.ensure_schema()
+        try:
+            await self.validate_schema()
+        except Exception:
+            await self.close()
+            raise
 
     async def close(self) -> None:
         if self.pool:
@@ -31,44 +34,24 @@ class RecoveryRepository:
             raise RuntimeError("Recovery repository is not connected")
         return self.pool
 
-    async def ensure_schema(self) -> None:
+    async def validate_schema(self) -> None:
+        """Verify migration-owned Recovery tables without executing DDL."""
         schema = self.settings.validated_schema()
         async with self._pool.acquire() as conn:
-            await conn.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            await conn.execute(
-                f'''CREATE TABLE IF NOT EXISTS "{schema}".sleep_logs (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL REFERENCES "{schema}".users(id) ON DELETE CASCADE,
-                    duration_minutes INTEGER NOT NULL CHECK (duration_minutes BETWEEN 0 AND 1440),
-                    quality INTEGER NOT NULL CHECK (quality BETWEEN 1 AND 5),
-                    notes TEXT,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )'''
+            applied_versions = await conn.fetch(
+                f'SELECT version FROM "{schema}".schema_migrations'
             )
-            await conn.execute(
-                f'''CREATE TABLE IF NOT EXISTS "{schema}".recovery_checkins (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL REFERENCES "{schema}".users(id) ON DELETE CASCADE,
-                    energy INTEGER NOT NULL CHECK (energy BETWEEN 1 AND 10),
-                    soreness INTEGER NOT NULL CHECK (soreness BETWEEN 1 AND 10),
-                    stress INTEGER NOT NULL CHECK (stress BETWEEN 1 AND 10),
-                    notes TEXT,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )'''
-            )
-            await conn.execute(
-                f'''CREATE TABLE IF NOT EXISTS "{schema}".recovery_assessments (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL REFERENCES "{schema}".users(id) ON DELETE CASCADE,
-                    status VARCHAR(16) NOT NULL,
-                    score INTEGER NOT NULL,
-                    response JSONB NOT NULL,
-                    tool_trace JSONB NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )'''
-            )
-            await conn.execute(f'CREATE INDEX IF NOT EXISTS idx_sleep_logs_user_created ON "{schema}".sleep_logs(user_id, created_at DESC)')
-            await conn.execute(f'CREATE INDEX IF NOT EXISTS idx_recovery_checkins_user_created ON "{schema}".recovery_checkins(user_id, created_at DESC)')
+            if "006" not in {row["version"] for row in applied_versions}:
+                raise RuntimeError("Recovery database migration 006 is not applied")
+            required_tables = ("users", "sleep_logs", "recovery_checkins", "recovery_assessments")
+            missing = [
+                table
+                for table in required_tables
+                if await conn.fetchval("SELECT to_regclass($1) IS NOT NULL", f"{schema}.{table}")
+                is not True
+            ]
+            if missing:
+                raise RuntimeError(f"Recovery database tables are absent: {', '.join(missing)}")
 
     async def create_sleep_log(self, payload: SleepLogCreate) -> asyncpg.Record:
         schema = self.settings.validated_schema()

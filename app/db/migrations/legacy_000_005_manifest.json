@@ -1,0 +1,88 @@
+{
+  "schema": "systemdb",
+  "migration_filename_pattern": "^(?<version>[0-9]{3,})_(?<name>[a-z0-9_]+)\\.sql$",
+  "legacy_migrations": [
+    { "version": "000", "filename": "000_create_users_table.sql", "sha256": "a3765b1be23d2380953c107535de2978bf4d5992e4d2e5fbb6b48e8154980e86" },
+    { "version": "001", "filename": "001_create_tables.sql", "sha256": "19b99f88044e59a22fd5d3ca5002f182b7c97a1065b64fa1ce6e65748d63fd35" },
+    { "version": "002", "filename": "002_seed_data.sql", "sha256": "c52a8deab8d0a488261d9c7b8f705cc2dc32e13601cc75c8cab99694e137c2b1" },
+    { "version": "003", "filename": "003_create_recovery_tables.sql", "sha256": "a9ac41da3492b6c10ebb4ecca2cb8bd0560794ec0256e477c0378f654f64497e" },
+    { "version": "004", "filename": "004_create_nutrition_tables.sql", "sha256": "5df2119dfc4bb3f94e1baed1fc4260cfe782f763f77f59699944b4428af3ec75" },
+    { "version": "005", "filename": "005_seed_food_cache.sql", "sha256": "7eb74f453ea3f340bbb73629f962911c04917060a9a2b7aca7d41d57a16b72aa" }
+  ],
+  "historical_notes": [
+    "Migration 000 creates systemdb, users, and user_fitness_profiles.",
+    "Migration 001 repeats CREATE TABLE IF NOT EXISTS for user_fitness_profiles and its explicit index. After 000, it does not alter that table; this manifest records the resulting 000 definition.",
+    "Migration 002 contains comments only and is validated solely by its immutable filename and raw-byte checksum."
+  ],
+  "required_tables": {
+    "users": {
+      "columns": [
+        { "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" },
+        { "name": "email", "type": "character varying(255)", "nullable": false },
+        { "name": "password", "type": "character varying(255)", "nullable": false },
+        { "name": "name", "type": "character varying(255)", "nullable": false },
+        { "name": "role", "type": "character varying(20)", "nullable": false, "default_sql": "'USER'" },
+        { "name": "enabled", "type": "boolean", "nullable": false, "default_sql": "true" },
+        { "name": "created_at", "type": "timestamp without time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }
+      ],
+      "primary_key": ["id"], "unique_constraints": [["email"]],
+      "check_constraints": ["role IN ('ADMIN', 'STAFF', 'USER')"], "foreign_keys": [],
+      "indexes": [{ "name": "idx_users_email", "unique": false, "columns": [{ "name": "email", "order": "ASC" }] }]
+    },
+    "user_fitness_profiles": {
+      "columns": [{ "name": "user_id", "type": "bigint", "nullable": false }, { "name": "fitness_goal", "type": "character varying(255)", "nullable": true, "default_sql": "'general fitness'" }, { "name": "fitness_level", "type": "character varying(50)", "nullable": true, "default_sql": "'beginner'" }, { "name": "weight_kg", "type": "numeric(5,2)", "nullable": true }, { "name": "height_cm", "type": "numeric(5,2)", "nullable": true }, { "name": "age", "type": "integer", "nullable": true }, { "name": "updated_at", "type": "timestamp without time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["user_id"], "unique_constraints": [], "check_constraints": [],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_user_profiles_user_id", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }] }]
+    },
+    "sleep_logs": {
+      "columns": [{ "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" }, { "name": "user_id", "type": "bigint", "nullable": false }, { "name": "duration_minutes", "type": "integer", "nullable": false }, { "name": "quality", "type": "integer", "nullable": false }, { "name": "notes", "type": "text", "nullable": true }, { "name": "created_at", "type": "timestamp with time zone", "nullable": false, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["id"], "unique_constraints": [], "check_constraints": ["duration_minutes BETWEEN 0 AND 1440", "quality BETWEEN 1 AND 5"],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_sleep_logs_user_created", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }, { "name": "created_at", "order": "DESC" }] }]
+    },
+    "recovery_checkins": {
+      "columns": [{ "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" }, { "name": "user_id", "type": "bigint", "nullable": false }, { "name": "energy", "type": "integer", "nullable": false }, { "name": "soreness", "type": "integer", "nullable": false }, { "name": "stress", "type": "integer", "nullable": false }, { "name": "notes", "type": "text", "nullable": true }, { "name": "created_at", "type": "timestamp with time zone", "nullable": false, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["id"], "unique_constraints": [], "check_constraints": ["energy BETWEEN 1 AND 10", "soreness BETWEEN 1 AND 10", "stress BETWEEN 1 AND 10"],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_recovery_checkins_user_created", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }, { "name": "created_at", "order": "DESC" }] }]
+    },
+    "recovery_assessments": {
+      "columns": [{ "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" }, { "name": "user_id", "type": "bigint", "nullable": false }, { "name": "status", "type": "character varying(16)", "nullable": false }, { "name": "score", "type": "integer", "nullable": false }, { "name": "response", "type": "jsonb", "nullable": false }, { "name": "tool_trace", "type": "jsonb", "nullable": false }, { "name": "created_at", "type": "timestamp with time zone", "nullable": false, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["id"], "unique_constraints": [], "check_constraints": [],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }], "indexes": []
+    },
+    "nutrition_profiles": {
+      "columns": [{ "name": "user_id", "type": "bigint", "nullable": false }, { "name": "dietary_preference", "type": "character varying(50)", "nullable": true, "default_sql": "'omnivore'" }, { "name": "dietary_restrictions", "type": "jsonb", "nullable": true, "default_sql": "'[]'" }, { "name": "allergies", "type": "jsonb", "nullable": true, "default_sql": "'[]'" }, { "name": "meals_per_day", "type": "integer", "nullable": true, "default_sql": "3" }, { "name": "target_calories", "type": "integer", "nullable": true }, { "name": "activity_level", "type": "character varying(20)", "nullable": true }, { "name": "age", "type": "integer", "nullable": true }, { "name": "gender", "type": "character varying(10)", "nullable": true }, { "name": "weight_kg", "type": "numeric(5,2)", "nullable": true }, { "name": "height_cm", "type": "numeric(5,2)", "nullable": true }, { "name": "created_at", "type": "timestamp with time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }, { "name": "updated_at", "type": "timestamp with time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["user_id"], "unique_constraints": [], "check_constraints": [],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_nutrition_profiles_user_id", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }] }]
+    },
+    "meal_logs": {
+      "columns": [{ "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" }, { "name": "user_id", "type": "bigint", "nullable": false }, { "name": "meal_type", "type": "character varying(20)", "nullable": false }, { "name": "description", "type": "text", "nullable": false }, { "name": "calories", "type": "integer", "nullable": true }, { "name": "protein_g", "type": "numeric(5,2)", "nullable": true }, { "name": "carbs_g", "type": "numeric(5,2)", "nullable": true }, { "name": "fat_g", "type": "numeric(5,2)", "nullable": true }, { "name": "logged_at", "type": "timestamp with time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["id"], "unique_constraints": [], "check_constraints": [],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_meal_logs_user_date", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }, { "name": "logged_at", "order": "DESC" }] }]
+    },
+    "nutrition_assessments": {
+      "columns": [{ "name": "id", "type": "bigint", "nullable": false, "identity": "bigserial" }, { "name": "user_id", "type": "bigint", "nullable": false }, { "name": "status", "type": "character varying(16)", "nullable": false }, { "name": "score", "type": "integer", "nullable": false }, { "name": "tdee", "type": "integer", "nullable": true }, { "name": "macro_targets", "type": "jsonb", "nullable": true }, { "name": "response", "type": "jsonb", "nullable": false }, { "name": "tool_trace", "type": "jsonb", "nullable": false }, { "name": "created_at", "type": "timestamp with time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["id"], "unique_constraints": [], "check_constraints": [],
+      "foreign_keys": [{ "columns": ["user_id"], "references": { "schema": "systemdb", "table": "users", "columns": ["id"] }, "on_delete": "CASCADE" }],
+      "indexes": [{ "name": "idx_nutrition_assessments_user_created", "unique": false, "columns": [{ "name": "user_id", "order": "ASC" }, { "name": "created_at", "order": "DESC" }] }]
+    },
+    "food_cache": {
+      "columns": [{ "name": "fdc_id", "type": "bigint", "nullable": false }, { "name": "name", "type": "character varying(255)", "nullable": false }, { "name": "brand", "type": "character varying(255)", "nullable": true }, { "name": "serving_size_g", "type": "integer", "nullable": true }, { "name": "calories", "type": "numeric(8,2)", "nullable": true }, { "name": "protein_g", "type": "numeric(6,2)", "nullable": true }, { "name": "carbs_g", "type": "numeric(6,2)", "nullable": true }, { "name": "fat_g", "type": "numeric(6,2)", "nullable": true }, { "name": "fiber_g", "type": "numeric(6,2)", "nullable": true }, { "name": "category", "type": "character varying(50)", "nullable": true }, { "name": "last_updated", "type": "timestamp with time zone", "nullable": true, "default_sql": "CURRENT_TIMESTAMP" }],
+      "primary_key": ["fdc_id"], "unique_constraints": [], "check_constraints": [], "foreign_keys": [],
+      "indexes": [{ "name": "idx_food_cache_category", "unique": false, "columns": [{ "name": "category", "order": "ASC" }] }, { "name": "idx_food_cache_name", "unique": false, "columns": [{ "name": "name", "order": "ASC" }] }]
+    }
+  },
+  "food_cache": {
+    "row_count": 220,
+    "minimum_fdc_id": 1001,
+    "maximum_fdc_id": 8010,
+    "unique_fdc_id": true,
+    "canonical_json_sha256": "e874e07bd96687087e1355645a03421de3114b92e7a0124500c7d78b9fdd2720",
+    "canonical_row_fields": ["fdc_id", "name", "brand", "serving_size_g", "calories", "protein_g", "carbs_g", "fat_g", "fiber_g", "category"],
+    "serialization": "UTF-8 compact JSON array ordered by fdc_id; each row is an ordered array; SQL null is JSON null; decimals are plain non-exponent values with insignificant trailing zeroes removed."
+  }
+}

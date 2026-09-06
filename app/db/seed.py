@@ -4,14 +4,17 @@ Database seeding script.
 Creates default admin user with properly hashed password.
 Safe to run multiple times (idempotent).
 """
+
 import asyncio
 import logging
-from sqlalchemy import text, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import bcrypt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.database import AsyncSessionLocal, run_migrations
+from app.db.database import AsyncSessionLocal
+from app.db.migrate import validate_compatible_schema
 from app.db.models import User, UserFitnessProfile
 
 logger = logging.getLogger(__name__)
@@ -36,8 +39,7 @@ async def seed_admin_user(session: AsyncSession) -> None:
 
     # Hash password with bcrypt
     password_hash = bcrypt.hashpw(
-        settings.SEED_ADMIN_PASSWORD.encode("utf-8"),
-        bcrypt.gensalt(rounds=12)
+        settings.SEED_ADMIN_PASSWORD.encode("utf-8"), bcrypt.gensalt(rounds=12)
     ).decode("utf-8")
 
     # Create admin user
@@ -69,12 +71,13 @@ async def seed_database() -> None:
     """
     Main seeding function.
 
-    Runs migrations first, then seeds data.
+    Validates an already-migrated database, then seeds data.
     """
     logger.info("Starting database seeding...")
 
-    # Run migrations first
-    await run_migrations()
+    validation = await validate_compatible_schema()
+    if not validation.compatible:
+        raise RuntimeError(validation.reason or "Database schema is incompatible")
 
     # Seed admin user
     async with AsyncSessionLocal() as session:

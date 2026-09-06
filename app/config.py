@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # ===========================================
     APP_NAME: str = "Multi-Agent Coach API"
     APP_VERSION: str = "1.0.0"
+    APP_ENV: str = "development"
     DEBUG: bool = False
 
     # ===========================================
@@ -74,6 +75,8 @@ class Settings(BaseSettings):
     RECOVERY_AGENT_URL: str = "http://localhost:8001"
     USE_NUTRITION_AGENT_SERVICE: bool = False
     NUTRITION_AGENT_URL: str = "http://localhost:8003"
+    NUTRITION_AGENT_ROLLOUT_PERCENT: int = 0
+    NUTRITION_INTERNAL_SERVICE_TOKEN: str = ""
     INTERNAL_SERVICE_TOKEN: str = ""
 
     # ===========================================
