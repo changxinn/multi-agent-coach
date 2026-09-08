@@ -1,418 +1,206 @@
-# Multi-Agent Fitness Coach - Local Development
+# Multi-Agent Fitness Coach — Local Development
 
-A FastAPI backend for the Multi-Agent Fitness Coach application, integrating LangGraph for intelligent coaching conversations.
+Multi-Agent Fitness Coach is a FastAPI application with a React frontend, PostgreSQL persistence, and optional private Recovery and Nutrition Agent services.
 
-## Quick Start - Local Development
+This guide covers running and testing the application locally. For the containerized main API and agent stack, see [README-to-be.md](README-to-be.md).
 
-### Prerequisites
+## Prerequisites
 
 - Python 3.12+
-- PostgreSQL 16+ **OR** Docker
-- Node.js 18+ (for frontend)
-- Docker & Docker Compose (optional, for containerized development)
+- [`uv`](https://docs.astral.sh/uv/) (recommended for Python commands)
+- PostgreSQL 16+ running locally
+- Node.js 18+ for the frontend
 
----
+Create the database named in `DATABASE_URL` before applying migrations. The application and migration runner do not create the PostgreSQL database itself.
 
-## Backend Setup
+## 1. Configure the backend
 
-### 1. Clone Repository
+From the repository root:
 
-```bash
-cd multi-agent-coach
+```powershell
+Copy-Item .env.example .env
+uv sync --group dev
 ```
 
-### 2. Install Python Dependencies
-
-```bash
-pip install -e .
-```
-
-### 3. Configure Environment
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` with your local database password:
+Update `C:\dev\multi-agent-coach\.env` with values appropriate for your local PostgreSQL instance:
 
 ```env
-DATABASE_URL=postgresql+asyncpg://postgres:adminPassw0rd@localhost:5432/systemdb
+DATABASE_URL=postgresql+asyncpg://postgres:YOUR_PASSWORD@localhost:5432/systemdb
 DATABASE_SCHEMA=systemdb
-JWT_SECRET_KEY=your-super-secret-key-min-32-chars-long
-OPENAI_API_KEY=sk-...
+JWT_SECRET_KEY=replace-with-a-local-secret-at-least-32-characters
+OPENAI_API_KEY=your-key-if-required-by-your-chat-configuration
 FRONTEND_URL=http://localhost:5174
+ALLOWED_ORIGINS=http://localhost:5174,http://localhost:3000
 ```
 
-### 4. Start Database
+Confirm PostgreSQL is listening and the configured database exists before continuing. On Windows:
 
-**Option A: Using Docker Compose (Recommended)**
-
-```bash
-docker-compose up -d db
+```powershell
+Get-NetTCPConnection -State Listen -LocalPort 5432
 ```
 
-This starts PostgreSQL on `localhost:5432` with:
-- Database: `systemdb`
-- User: `postgres`
-- Password: `postgres`
+## 2. Apply migrations
 
-**Option B: Using Existing PostgreSQL**
+Migrations are explicit and must run before starting the API:
 
-Ensure your PostgreSQL instance is running and accessible.
-
-### 5. Apply Migrations, Then Run Backend
-
-Provision the database outside the application, then explicitly apply the
-ledger-backed migrations before starting either API service:
-
-```bash
+```powershell
 uv run python -m app.db.migrate
 uv run python -m app.db.migrate --check
 ```
 
-The migration command mutates schema state. Run it only against a database
-that your environment/operator has designated for this application. Normal API
-startup validates database compatibility and does not create a database, run
-migrations, create tables, or seed users.
+The first command updates the configured database and records applied versions in the migration ledger. The `--check` command is read-only. Run these only against a database designated for this application.
 
-Compose runs this operation through its one-shot `migrations` service after
-PostgreSQL is healthy. The `api` and `nutrition-agent` services wait for that
-job to complete successfully, then perform read-only readiness validation:
+Normal API startup validates the database, ledger, and schema; it does **not** create the database, apply migrations, create tables, or seed users.
 
-```bash
-docker compose up --build
-```
-
-With Docker Desktop running, run the opt-in deployment smoke test (it uses an
-isolated Compose project and removes all resources it creates):
+## 3. Start the main API
 
 ```powershell
-.\scripts\test-compose-deployment.ps1
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
-Start the main API:
+Verify the local API in a separate terminal or browser:
 
-```bash
-uvicorn app.main:app --reload --port 8000
+```powershell
+Invoke-WebRequest http://localhost:8000/health/live
+Invoke-WebRequest http://localhost:8000/health/ready
 ```
 
-The backend validates the configured database/ledger and starts on
-http://localhost:8000 when that validation succeeds. Admin seeding, if needed,
-is a separate explicit operation.
+- API documentation: <http://localhost:8000/docs>
+- Liveness: <http://localhost:8000/health/live>
+- Readiness: <http://localhost:8000/health/ready>
 
-### 6. Verify Installation
+## 4. Start the frontend
 
-**Liveness Check:**
-```bash
-curl http://localhost:8000/health/live
-```
+In a separate terminal:
 
-**Readiness Check:**
-```bash
-curl http://localhost:8000/health/ready
-```
-
-**API Documentation:**
-Open http://localhost:8000/docs in your browser.
-
-### 7. Test Endpoints
-
-**Register User:**
-```bash
-curl -X POST http://localhost:8000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "TestPass123!",
-    "name": "Test User"
-  }'
-```
-
-**Login:**
-```bash
-curl -X POST http://localhost:8000/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "admin@example.com",
-    "password": "ChangeMe123!"
-  }'
-```
-
-Save the `access_token` for subsequent requests.
-
-**Test Chat:**
-```bash
-curl -X POST http://localhost:8000/api/chat \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "messages": [{"role": "user", "content": "What workout should I do?"}],
-    "session_id": "chat_abc123def456789"
-  }'
-```
-
----
-
-## Frontend Setup
-
-### 1. Navigate to Frontend
-
-```bash
-cd frontend
-```
-
-### 2. Install Dependencies
-
-```bash
+```powershell
+Set-Location C:\dev\multi-agent-coach\frontend
+Copy-Item .env.example .env
 npm install
-```
-
-### 3. Configure Environment
-
-Create `frontend/.env`:
-
-```env
-VITE_API_BASE_URL=http://localhost:8000/api
-```
-
-### 4. Start Development Server
-
-```bash
 npm run dev
 ```
 
-Frontend will be available at: http://localhost:5174
+The frontend defaults to `VITE_API_BASE_URL=http://localhost:8000/api` and is available at <http://localhost:5174>.
 
-### 5. Integration Details
+## 5. Test the local application
 
-For detailed frontend integration instructions, see:
-- **[docs/PHASE-5-FRONTEND.md](docs/PHASE-5-FRONTEND.md)** - Complete integration guide
-- **[frontend/SETUP.md](frontend/SETUP.md)** - Frontend setup details
+### Automated tests
 
----
+From `C:\dev\multi-agent-coach`:
 
-## All-in-One Local Development
-
-### Using Docker Compose
-
-Start everything with one command:
-
-```bash
-docker-compose up -d
+```powershell
+uv run pytest -q
+uv run ruff check .
 ```
 
-This starts:
-- ✅ Backend API (port 8000)
-- ✅ Recovery Agent (port 8001, private microservice)
-- ✅ PostgreSQL database (port 5432)
-- ✅ Redis (port 6379, optional for session testing)
+PostgreSQL-backed Nutrition integration tests require an explicitly disposable database named `nutrition_test`; configure `NUTRITION_TEST_DATABASE_URL` as documented in `.env.example` before running them.
 
-**View logs:**
-```bash
-docker-compose logs -f api
-```
+### Manual API smoke test
 
-**Stop all services:**
-```bash
-docker-compose down
-```
+1. Open <http://localhost:8000/docs>.
+2. Register a user with `POST /api/auth/register`.
+3. Log in with `POST /api/auth/login` and copy the returned access token.
+4. Click **Authorize** and enter `Bearer <access_token>`.
+5. Call an authenticated endpoint such as `GET /api/nutrition/profile` or send a chat request through `POST /api/chat`.
 
----
+## Optional: run local private agents
 
-## Development Workflow (Additional Info)
+Private agents are optional. The main API uses its local fallback behavior unless the corresponding service flag is enabled. Start local PostgreSQL, apply migrations, and start the main API as described above before enabling an agent.
 
-### Hot Reload
+Browsers must communicate only with `http://localhost:8000/api`. Do not expose agent ports through browser-facing configuration or place internal-service tokens in frontend `VITE_*` variables.
 
-Backend automatically reloads on code changes:
+### Nutrition Agent
 
-```bash
-uvicorn app.main:app --reload --port 8000
-```
+The Nutrition Agent provides nutrition profiles, meal logs, targets, meal planning, food lookup, and nutrition-specific chat assistance. Configure the main API in `.env`:
 
-### Code Formatting
-
-```bash
-# Format code
-ruff format app/
-
-# Check for issues
-ruff check app/
-```
-
-### Database Migrations
-
-Migrations never run automatically on application startup. After the database
-has been provisioned, apply and validate them explicitly:
-
-```bash
-uv run python -m app.db.migrate
-uv run python -m app.db.migrate --check
-```
-
-See `docs/nutrition_agent/MIGRATION-RUNNER.md` for the ledger protocol and
-operator requirements.
-
-### Testing
-
-```bash
-# Run tests (when available)
-pytest tests/ -v --cov=app
-```
-
----
-
-## Local Troubleshooting
-
-### Database Connection Failed
-
-```bash
-# Check PostgreSQL is running
-docker-compose ps db
-
-# Verify connection string
-echo $DATABASE_URL
-
-# Test connection
-psql $DATABASE_URL
-```
-
-### Port 8000 Already in Use
-
-```bash
-# Windows: Find process
-netstat -ano | findstr :8000
-# Kill process
-taskkill /PID <PID> /F
-
-# Use different port
-uvicorn app.main:app --reload --port 8001
-```
-
-### Admin User Not Created
-
-Check backend logs for:
-```
-"Admin user seeding completed"
-```
-
-If the database has been migrated and an admin user is needed, run the explicit
-seed operation:
-```bash
-python -c "from app.db.seed import seed_admin_user; from app.db.database import AsyncSessionLocal; import asyncio; asyncio.run(seed_admin_user(AsyncSessionLocal()))"
-```
-
-### JWT Validation Failed
-
-- Ensure `JWT_SECRET_KEY` is set in `.env` (min 32 characters)
-- Check token format: `Authorization: Bearer <token>`
-- Default token expiry: 24 hours
-
----
-
-## Default Credentials
-
-**Admin User** (optional explicit seed configuration):
-- Email: `admin@example.com`
-- Password: `ChangeMe123!`
-
-**Customize in `.env`:**
 ```env
-SEED_ADMIN_EMAIL=your-admin@example.com
-SEED_ADMIN_PASSWORD=YourSecurePassword123!
-SEED_ADMIN_NAME=Your Admin Name
+USE_NUTRITION_AGENT_SERVICE=true
+NUTRITION_AGENT_URL=http://localhost:8003
+NUTRITION_AGENT_ROLLOUT_PERCENT=100
+NUTRITION_INTERNAL_SERVICE_TOKEN=replace-with-a-server-only-token
+NUTRITION_LLM_ENABLED=false
 ```
 
----
+The agent listens privately on port `8003`. Follow [docs/nutrition_agent/LOCAL-NO-DOCKER-VALIDATION.md](docs/nutrition_agent/LOCAL-NO-DOCKER-VALIDATION.md) for its CPython 3.12 service-local environment, startup commands, health and readiness checks, main-API delegation configuration, and end-to-end validation.
 
-## Project Structure
+### Recovery Agent
 
-```
-multi-agent-coach/
-├── app/                        # FastAPI backend
-│   ├── api/
-│   │   ├── routes/            # API endpoints
-│   │   └── schemas/           # Pydantic models
-│   ├── services/              # Business logic
-│   ├── db/                    # Database layer
-│   ├── utils/                 # Utilities
-│   ├── config.py              # Configuration
-│   └── main.py                # Application entry
-├── agents/                     # LangGraph agents
-├── tools/                      # Agent tools
-├── frontend/                   # React frontend
-├── docker-compose.yml          # Local dev services
-├── Dockerfile                  # Production container
-└── .env.example                # Environment template
+The Recovery Agent provides sleep, fatigue, soreness, stress, and recovery assessments. Configure the main API in `.env`:
+
+```env
+USE_RECOVERY_AGENT_SERVICE=true
+RECOVERY_AGENT_URL=http://localhost:8001
+INTERNAL_SERVICE_TOKEN=replace-with-a-server-only-token
 ```
 
----
+In a separate terminal, install and start the Recovery Agent with the same database and internal token values used by the main API:
 
-## API Quick Reference
+```powershell
+Set-Location C:\dev\multi-agent-coach\services\recovery_agent
+python -m pip install -r requirements-dev.txt
+$env:DATABASE_URL = 'postgresql://postgres:YOUR_PASSWORD@localhost:5432/systemdb'
+$env:INTERNAL_SERVICE_TOKEN = 'replace-with-a-server-only-token'
+python -m uvicorn app.main:app --reload --port 8001
+```
 
-### Authentication
-- `POST /api/auth/login` - Login
-- `POST /api/auth/register` - Register
-- `POST /api/auth/refresh` - Refresh token
+Verify its public health endpoint from another terminal:
 
-### Chat
-- `POST /api/chat` - Send message
-- `GET /api/chat/stream` - Stream response (SSE)
-- `POST /api/chat/summary` - Get summary
-- `DELETE /api/chat/history/{id}` - Clear history
+```powershell
+Invoke-RestMethod http://localhost:8001/health
+```
 
-### Session
-- `POST /api/session` - Create session
-- `GET /api/session/{id}` - Get details
-- `DELETE /api/session/{id}` - Delete session
+The Recovery Agent listens privately on port `8001`; all non-health endpoints require `X-Internal-Service-Token`. See [services/recovery_agent/README.md](services/recovery_agent/README.md) for recovery request examples, tests, and optional LLM-response configuration.
 
-### Nutrition
-- Authenticated programmatic routes are under `/api/nutrition/*`; they derive
-  ownership from the JWT and never accept a public `user_id`.
-- The Nutrition Agent is a private service. Its `/v1/nutrition/*` routes require
-  `X-Internal-Service-Token` and must not be exposed to browsers or public
-  ingress.
-- The authenticated `/api/chat` orchestrator path is the intended user-facing
-  nutrition interaction. Direct nutrition routes support programmatic and
-  future-UI workflows.
+### Future private agents
 
-See `docs/nutrition_agent/API-CONTRACT.md` for the complete nutrition route,
-request, response, and error contract. Nutrition remains development-core work;
-production enablement requires the release gates in
-`docs/nutrition_agent/NUTRITION-SERVICE-IMPLEMENTATION-PLAN.md`.
+When adding another specialist service, document it in this section with:
 
----
+1. Its purpose and the local port it uses.
+2. Its `USE_<AGENT>_SERVICE` flag, URL, and server-only token configuration.
+3. Local installation and startup commands.
+4. Its health/readiness check and a link to its detailed validation runbook.
+5. A statement that browsers access it only through the main API.
 
-## Next Steps
+## Local troubleshooting
 
-### For Development
-1. ✅ Backend running locally
-2. ✅ Frontend running locally
-3. ✅ Database setup complete
-4. → Start building features!
+### Database or schema readiness fails
 
-### For Production Deployment
-See **[README-to-be.md](README-to-be.md)** for:
-- AWS deployment guide
-- PostgreSQL container deployment
-- Production configuration
-- Scaling and monitoring
+1. Confirm local PostgreSQL is running and that `DATABASE_URL` points to the intended database.
+2. Apply and validate migrations:
 
----
+   ```powershell
+   uv run python -m app.db.migrate
+   uv run python -m app.db.migrate --check
+   ```
+
+3. Restart the API after changing `.env`.
+
+### Port 8000 is already in use
+
+```powershell
+netstat -ano | findstr :8000
+taskkill /PID <PID> /F
+```
+
+Or run the API on another port:
+
+```powershell
+uv run uvicorn app.main:app --reload --port 8001
+```
+
+### Admin user needed
+
+Admin seeding is an explicit operation after migrations. Configure `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, and `SEED_ADMIN_NAME` in `.env`, then run:
+
+```powershell
+uv run python -c "from app.db.seed import seed_admin_user; from app.db.database import AsyncSessionLocal; import asyncio; asyncio.run(seed_admin_user(AsyncSessionLocal()))"
+```
 
 ## Documentation
 
-**Local Development:**
-- **[README.md](README.md)** - This file (local setup)
-- **[frontend/SETUP.md](frontend/SETUP.md)** - Frontend setup
-
-**Technical:**
-- **[docs/API-REFERENCE.md](docs/API-REFERENCE.md)** - Complete API docs
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
-- **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Troubleshooting guide
-
-**Deployment:**
-- **[README-to-be.md](README-to-be.md)** - AWS deployment guide
-- **[docs/PHASE-6-AWS.md](docs/PHASE-6-AWS.md)** - Detailed AWS guide
-- **[docs/DEPLOYMENT-CHECKLIST.md](docs/DEPLOYMENT-CHECKLIST.md)** - Production checklist
-
----
+- [README-to-be.md](README-to-be.md) — containerized and AWS deployment
+- [frontend/SETUP.md](frontend/SETUP.md) — frontend details
+- [docs/nutrition_agent/LOCAL-NO-DOCKER-VALIDATION.md](docs/nutrition_agent/LOCAL-NO-DOCKER-VALIDATION.md) — local Nutrition Agent validation
+- [docs/nutrition_agent/MIGRATION-RUNNER.md](docs/nutrition_agent/MIGRATION-RUNNER.md) — migration ledger protocol
+- [docs/API-REFERENCE.md](docs/API-REFERENCE.md) — API reference
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — additional troubleshooting

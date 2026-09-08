@@ -141,18 +141,14 @@ async def chat_stream(
             # Get orchestrator
             orchestrator = get_orchestrator()
             
-            # The orchestrator currently resolves the full graph response before
-            # character replay. Retain its final metadata for the completion event.
-            response_text, response_metadata = await orchestrator.process_message_with_metadata(
+            async for event in orchestrator.process_message_stream(
                 session=session,
                 user_message=message,
-                request_summary=False,
-            )
-            for token in response_text:
-                yield f"data: {json.dumps({'token': token, 'session_id': session_id, 'is_complete': False})}\n\n"
-
-            # Send completion signal
-            yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': response_metadata})}\n\n"
+            ):
+                if event["type"] == "token":
+                    yield f"data: {json.dumps({'token': event['token'], 'session_id': session_id, 'is_complete': False})}\n\n"
+                elif event["type"] == "complete":
+                    yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': event['metadata']})}\n\n"
             logger.info("Multi-agent streaming completed")
 
         except Exception as e:
@@ -165,8 +161,7 @@ async def chat_stream(
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "X-Accel-Buffering": "no",
         },
     )
 

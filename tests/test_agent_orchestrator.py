@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.services import agent_orchestrator as orchestrator_module
 from app.services.agent_orchestrator import AgentOrchestrator
 from app.services.session_manager import Session
 
@@ -120,3 +121,59 @@ async def test_process_message_excludes_historical_specialist_responses() -> Non
     assert response == "Sam (Nutrition Advisor): Greek yogurt protein bowl — 430 calories, 40 g protein."
     assert "Alex (Training Planner)" not in response
     assert metadata == {"nutrition_status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_process_message_stream_forwards_custom_tokens_and_persists_completed_turn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class _StreamingGraph:
+        async def astream(self, state: dict, config: dict, stream_mode: list[str]):
+            assert config == {"recursion_limit": 50}
+            assert stream_mode == ["custom", "values"]
+            yield "custom", {"type": "token", "token": "Welcome"}
+            yield "custom", {"type": "token", "token": "!"}
+            yield "values", {
+                "messages": state["messages"] + [{
+                    "role": "assistant",
+                    "name": "Alex (Training Planner)",
+                    "content": "Alex (Training Planner): Welcome!",
+                    "metadata": {"source": "stream"},
+                }],
+                "next_agent": "training_planner",
+                "volley_msg_left": 0,
+            }
+
+    persisted: dict[str, object] = {}
+
+    async def update_session(**kwargs: object) -> bool:
+        persisted.update(kwargs)
+        return True
+
+    monkeypatch.setattr(orchestrator_module.session_manager, "update_session", update_session)
+    orchestrator = AgentOrchestrator()
+    orchestrator.streaming_graph = _StreamingGraph()
+    session = Session(
+        session_id="chat_0123456789abcdef",
+        user_id=42,
+        profile={"name": "Taylor"},
+    )
+
+    events = [
+        event async for event in orchestrator.process_message_stream(session, "hello")
+    ]
+
+    assert events == [
+        {"type": "token", "token": "Welcome"},
+        {"type": "token", "token": "!"},
+        {"type": "complete", "text": "Alex (Training Planner): Welcome!", "metadata": {"source": "stream"}},
+    ]
+    assert persisted["messages"] == [
+        {"role": "user", "content": "hello"},
+        {
+            "role": "assistant",
+            "name": "Alex (Training Planner)",
+            "content": "Alex (Training Planner): Welcome!",
+            "metadata": {"source": "stream"},
+        },
+    ]

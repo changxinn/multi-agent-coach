@@ -24,14 +24,16 @@ class _SessionManager:
 
 
 class _Orchestrator:
-    async def process_message_with_metadata(self, **_: object) -> tuple[str, dict[str, object]]:
-        return (
-            "Profile setup is required.",
-            {
+    async def process_message_stream(self, **_: object):
+        yield {"type": "token", "token": "Profile "}
+        yield {"type": "token", "token": "setup is required."}
+        yield {
+            "type": "complete",
+            "metadata": {
                 "nutrition_status": "profile_required",
                 "nutrition_profile_required": True,
             },
-        )
+        }
 
 
 @pytest.mark.asyncio
@@ -62,3 +64,4 @@ async def test_chat_stream_includes_metadata_in_completion_event(
             "nutrition_profile_required": True,
         },
     }
+    assert response.headers["x-accel-buffering"] == "no"

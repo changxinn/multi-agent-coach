@@ -3,12 +3,12 @@ import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, AsyncIterator
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .agent import NutritionAgent
+from .agent import NutritionAgent, _UNSAFE_OUTPUT_TERMS
 from .assessment import DISCLAIMER, assess_nutrition, escalation_for, safety_findings
 from .config import settings
 from .food_reference import FoodReferenceService
@@ -270,6 +270,72 @@ async def evaluate(user_id: int, payload: NutritionEvaluateRequest):
         assessment = agent.present(assessment, payload.message)
     await repository.save_assessment(user_id, assessment)
     return assessment
+
+
+@app.post("/v1/nutrition/users/{user_id}/evaluate/stream", dependencies=[Depends(require_internal_token)])
+async def evaluate_stream(user_id: int, payload: NutritionEvaluateRequest) -> StreamingResponse:
+    """Stream a completed, persisted safe assessment's presentation as private SSE."""
+    profile = payload.profile.model_dump(mode="json") if payload.profile else {}
+    assessment = assess_nutrition(payload, await repository.history(user_id), profile)
+    if assessment.escalation is None and assessment.meal_recommendations:
+        assessment = _target_context(
+            assessment,
+            await repository.current_target(user_id, datetime.now(UTC).date()),
+        )
+    # The final message is persisted before the completion event, matching the
+    # non-streaming endpoint's history contract.
+    visible_tokens = False
+
+    async def events() -> AsyncIterator[str]:
+        nonlocal visible_tokens, assessment
+        try:
+            if assessment.escalation is not None:
+                message = assessment.message
+                yield f"event: token\ndata: {json.dumps({'token': message})}\n\n"
+                visible_tokens = True
+            else:
+                parts: list[str] = []
+                pending = ""
+                holdback = max(len(term) for term in _UNSAFE_OUTPUT_TERMS)
+                for token in agent.present_stream(assessment, payload.message):
+                    pending += token
+                    if any(term in pending.lower() for term in _UNSAFE_OUTPUT_TERMS):
+                        raise ValueError("Nutrition LLM stream contained unsafe output")
+                    if len(pending) <= holdback:
+                        continue
+                    safe_token, pending = pending[:-holdback], pending[-holdback:]
+                    parts.append(safe_token)
+                    yield f"event: token\ndata: {json.dumps({'token': safe_token})}\n\n"
+                    visible_tokens = True
+                if pending:
+                    parts.append(pending)
+                    yield f"event: token\ndata: {json.dumps({'token': pending})}\n\n"
+                    visible_tokens = True
+                final_message = _safe_message_from_stream(assessment, "".join(parts))
+                suffix = final_message[len("".join(parts)):]
+                if suffix:
+                    yield f"event: token\ndata: {json.dumps({'token': suffix})}\n\n"
+                    visible_tokens = True
+                assessment = assessment.model_copy(update={"message": final_message})
+            await repository.save_assessment(user_id, assessment)
+            yield f"event: complete\ndata: {assessment.model_dump_json()}\n\n"
+        except Exception:
+            logger.exception("Nutrition evaluation stream failed after_visible_tokens=%s", visible_tokens)
+            if not visible_tokens:
+                fallback = assessment.model_copy(update={"message": _safe_message_from_stream(assessment, "")})
+                await repository.save_assessment(user_id, fallback)
+                yield f"event: token\ndata: {json.dumps({'token': fallback.message})}\n\n"
+                yield f"event: complete\ndata: {fallback.model_dump_json()}\n\n"
+            else:
+                yield "event: error\ndata: {\"code\": \"NUTRITION_STREAM_FAILED\"}\n\n"
+
+    return StreamingResponse(events(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+def _safe_message_from_stream(assessment: NutritionEvaluateResponse, content: str) -> str:
+    """Use the established presentation validator for a complete streamed response."""
+    from .agent import _safe_message
+    return _safe_message(assessment, content)
 @app.get("/v1/nutrition/users/{user_id}/assessment-history", response_model=PaginatedAssessments, dependencies=[Depends(require_internal_token)])
 async def assessment_history(user_id: int, limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0, le=10000)):
     items, total = await repository.list_assessments(user_id, limit, offset)

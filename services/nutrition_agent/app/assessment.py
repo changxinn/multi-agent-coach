@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 
 from .schemas import (
     Escalation,
+    MealRecommendation,
     NutritionEvaluateRequest,
     NutritionEvaluateResponse,
-    MealRecommendation,
     SafetyContext,
     SafetyFinding,
     TargetInputs,
@@ -81,10 +81,28 @@ def _meal_requirements(message: str) -> MealRequirements | None:
     )
     balanced_intent = _has(message, "balanced meal", "balanced")
     high_protein_intent = _has(message, "high protein", "high-protein")
+    meal_option_intent = _has(
+        message,
+        "meal option",
+        "food option",
+        "dinner option",
+        "lunch option",
+        "breakfast option",
+        "snack option",
+        "suggest dinner",
+        "suggest lunch",
+        "suggest breakfast",
+        "suggest a snack",
+        "what should i eat",
+        "something for dinner",
+        "something for lunch",
+        "something for breakfast",
+        "something to eat",
+    )
     requested = tuple(
         nutrient for nutrient, aliases in _NUTRIENT_ALIASES.items() if _has(message, *aliases)
     )
-    if not requested and not balanced_intent and not high_protein_intent:
+    if not requested and not balanced_intent and not high_protein_intent and not meal_option_intent:
         return None
 
     # A balanced meal uses documented baseline thresholds for all four macros.

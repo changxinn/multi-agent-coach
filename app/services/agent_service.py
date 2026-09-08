@@ -157,6 +157,32 @@ def build_api_graph():
         raise
 
 
+def build_streaming_api_graph():
+    """Build the chat graph whose specialist node emits LangGraph custom events."""
+    from langgraph.graph import END, START, StateGraph
+
+    from agents import orchestrator as orchestrator_agent
+    from state import State
+
+    builder = StateGraph(State)
+    builder.add_node("human", human_node_api)
+    builder.add_node("orchestrator", orchestrator_agent)
+    builder.add_node("specialist", streaming_specialist_node_api)
+    builder.add_node("summarizer", summarizer_node_api)
+    builder.add_edge(START, "human")
+    builder.add_conditional_edges(
+        "human", check_exit_condition_api,
+        {"summarizer": "summarizer", "orchestrator": "orchestrator", "human": "human"},
+    )
+    builder.add_conditional_edges(
+        "orchestrator", orchestrator_routing_api,
+        {"specialist": "specialist", "end": END},
+    )
+    builder.add_edge("specialist", "orchestrator")
+    builder.add_edge("summarizer", END)
+    return builder.compile()
+
+
 def human_node_api(state: "State") -> dict[str, Any]:
     """
     API version of human node.
@@ -351,6 +377,44 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
 
     logger.warning("Specialist returned no result: %s", next_agent)
     return {"volley_msg_left": new_volley}
+
+
+async def streaming_specialist_node_api(state: "State") -> dict[str, Any]:
+    """Stream local LangChain specialist output as LangGraph custom events.
+
+    Service-backed nutrition and recovery responses are already fully materialized;
+    they use the established node and are emitted as one safe visible chunk.
+    """
+    from langgraph.config import get_stream_writer
+
+    from agents.specialist import specialist_stream
+
+    writer = get_stream_writer()
+    next_agent = state.get("next_agent", "training_planner")
+    volley_left = state.get("volley_msg_left", 1)
+
+    def emit_token(token: str) -> None:
+        writer({"type": "token", "token": token})
+
+    # Preserve the existing service routing and metadata contracts. These services
+    # are non-streaming APIs, so their completed safe response is sent as one chunk.
+    from app.config import get_settings
+    settings = get_settings()
+    if (next_agent == "recovery_coach" and settings.USE_RECOVERY_AGENT_SERVICE) or (
+        next_agent == "nutrition_advisor" and settings.USE_NUTRITION_AGENT_SERVICE
+    ):
+        result = await specialist_node_api(state)
+        for message in result.get("messages", []):
+            content = message.get("content", "")
+            if isinstance(content, str):
+                emit_token(content.split(": ", 1)[-1])
+        return result
+
+    result = await specialist_stream(next_agent, state, emit_token)
+    return {
+        "messages": result.get("messages", []),
+        "volley_msg_left": max(0, volley_left - 1),
+    }
 
 
 def summarizer_node_api(state: "State") -> dict[str, Any]:

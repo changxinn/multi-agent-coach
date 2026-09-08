@@ -117,6 +117,27 @@ def test_assessment_returns_highest_protein_dinner_without_calorie_ceiling() -> 
     assert "42 g protein" in assessment.message
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Give me a food dinner option.",
+        "What should I eat for dinner?",
+        "Suggest dinner.",
+    ],
+)
+def test_assessment_returns_dinner_for_conversational_meal_option_requests(message: str) -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(message=message),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert len(assessment.meal_recommendations) == 1
+    assert assessment.meal_recommendations[0].meal_type == "dinner"
+    assert assessment.meal_recommendations[0].name in assessment.message
+    assert "Log meals consistently" not in assessment.message
+
+
 def test_assessment_returns_fiber_aware_balanced_dinner_instead_of_highest_protein_dinner() -> None:
     assessment = assess_nutrition(
         NutritionEvaluateRequest(message="Give me a balanced dinner with carbs, protein, and fiber."),

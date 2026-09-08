@@ -19,6 +19,7 @@ import {
   wasDemoModeShown,
   clearDemoModeShown,
   type ChatMessage,
+  type MealRecommendation,
   type NutritionProfileWrite,
   upsertNutritionProfile,
 } from '../../lib/chatbot-api'
@@ -31,6 +32,22 @@ import { ChatbotConfig } from '../../lib/chatbot-config'
 import './DeepChatWrapper.css'
 
 const DEFAULT_NUTRITION_TIMEZONE = 'Asia/Singapore'
+
+function missingMealRecommendationText(metadata: Record<string, unknown> | undefined, message: string): string {
+  const recommendations = metadata?.meal_recommendations
+  if (!Array.isArray(recommendations)) return ''
+
+  const missingRecommendations = recommendations.filter((recommendation): recommendation is MealRecommendation => (
+    typeof recommendation === 'object'
+    && recommendation !== null
+    && typeof (recommendation as MealRecommendation).name === 'string'
+    && !message.toLowerCase().includes((recommendation as MealRecommendation).name.toLowerCase())
+  ))
+
+  return missingRecommendations.map((recommendation) => (
+    `**${recommendation.name}**: about ${recommendation.calories} calories, ${recommendation.protein_g} g protein, ${recommendation.carbs_g} g carbohydrates, ${recommendation.fiber_g} g fiber, and ${recommendation.fat_g} g fat.`
+  )).join('\n')
+}
 
 const nutritionTimezoneOptions = (() => {
   const supportedValuesOf = (
@@ -77,6 +94,7 @@ export function DeepChatBot({
   const deepChatRef = useRef<any>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
+  const pendingMessageUpdateFrameRef = useRef<number | null>(null)
   const accumulatedMessageRef = useRef<string>('')
   const isStreamingRef = useRef(false)
   const isInitialized = useRef(false)
@@ -97,39 +115,32 @@ export function DeepChatBot({
    * Uses marked library to render Markdown
    */
   const updateMessageDisplay = useCallback(() => {
-    if (!deepChatRef.current) return
-    
-    // Preserve whitespace by replacing multiple spaces with non-breaking spaces
-    // This prevents HTML from collapsing consecutive spaces
-    const preservedText = accumulatedMessageRef.current.replace(/ {2,}/g, (match) => {
-      return '&nbsp;'.repeat(match.length)
-    })
-    
-    // Convert markdown to HTML using marked
-    const htmlContent = marked.parse(preservedText)
-    
-    const allMessages = deepChatRef.current.getMessages()
-    const lastMessageIndex = allMessages.length - 1
-    const lastMessage = allMessages[lastMessageIndex]
-    
-    if (lastMessage?.html?.includes('typing-dots')) {
-      // Remove loading message and add new message with HTML
-      deepChatRef.current.clearMessages()
-      allMessages.slice(0, -1).forEach((m: any) => deepChatRef.current.addMessage(m))
-      deepChatRef.current.addMessage({
-        role: 'assistant',
-        html: htmlContent
+    if (!deepChatRef.current || streamingMessageIndexRef.current === null) return
+
+    // addMessage() updates Deep Chat's message collection before its bubble is
+    // mounted. Queue the first replacement so updateMessage() never attempts to
+    // access the placeholder's element references before they exist. Coalescing
+    // also avoids rendering once per SSE token when tokens arrive rapidly.
+    if (pendingMessageUpdateFrameRef.current !== null) return
+
+    pendingMessageUpdateFrameRef.current = requestAnimationFrame(() => {
+      pendingMessageUpdateFrameRef.current = null
+
+      const deepChat = deepChatRef.current
+      const messageIndex = streamingMessageIndexRef.current
+      if (!deepChat || messageIndex === null) return
+
+      const message = deepChat.getMessages()[messageIndex]
+      if (message?.role !== 'assistant') return
+
+      const preservedText = accumulatedMessageRef.current.replace(/ {2,}/g, (match) => {
+        return '&nbsp;'.repeat(match.length)
       })
-      streamingMessageIndexRef.current = allMessages.length - 1
-    } else {
-      // Update existing message with HTML
-      deepChatRef.current.updateMessage(
-        { html: htmlContent },
-        streamingMessageIndexRef.current
-      )
-    }
-    
-    deepChatRef.current.scrollToBottom()
+      const htmlContent = marked.parse(preservedText)
+
+      deepChat.updateMessage({ html: htmlContent }, messageIndex)
+      deepChat.scrollToBottom()
+    })
   }, [])
   
   /**
@@ -191,6 +202,20 @@ export function DeepChatBot({
     setIsSending(true)
     const userMessage = (messageOverride ?? inputValue).trim()
     setInputValue('')
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current)
+      typingTimeoutRef.current = null
+    }
+    tokenBufferRef.current = ''
+    isTypingRef.current = false
+    displayIndexRef.current = 0
+    streamingMessageIndexRef.current = null
+
+    if (pendingMessageUpdateFrameRef.current !== null) {
+      cancelAnimationFrame(pendingMessageUpdateFrameRef.current)
+      pendingMessageUpdateFrameRef.current = null
+    }
     
     try {
       if (deepChatRef.current) {
@@ -203,6 +228,7 @@ export function DeepChatBot({
           role: 'assistant',
           html: '<div class="typing-dots"><span class="dot"></span><span class="dot dot-2"></span><span class="dot dot-3"></span></div>'
         })
+        streamingMessageIndexRef.current = deepChatRef.current.getMessages().length - 1
       }
       
       const messages: ChatMessage[] = [
@@ -212,14 +238,6 @@ export function DeepChatBot({
         },
         { role: 'user', content: userMessage }
       ]
-      
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current)
-        typingTimeoutRef.current = null
-      }
-      tokenBufferRef.current = ''
-      isTypingRef.current = false
-      displayIndexRef.current = 0
       
       accumulatedMessageRef.current = ''
       isStreamingRef.current = true
@@ -308,6 +326,17 @@ export function DeepChatBot({
         setNutritionProfileMessage(userMessage)
       }
 
+      if (result.success) {
+        const missingRecommendations = missingMealRecommendationText(
+          result.metadata,
+          accumulatedMessageRef.current,
+        )
+        if (missingRecommendations) {
+          accumulatedMessageRef.current = `${accumulatedMessageRef.current}\n\n${missingRecommendations}`.trim()
+          updateMessageDisplay()
+        }
+      }
+
       if (result.isOllamaResponse && !hasShownOllamaToast.current && wasDemoModeShown()) {
         // messageApi.success({
         //   content: 'Response powered by Ollama AI',
@@ -331,6 +360,11 @@ export function DeepChatBot({
         tokenBufferRef.current = ''
         isTypingRef.current = false
         displayIndexRef.current = 0
+
+        if (pendingMessageUpdateFrameRef.current !== null) {
+          cancelAnimationFrame(pendingMessageUpdateFrameRef.current)
+          pendingMessageUpdateFrameRef.current = null
+        }
         return
       }
       
@@ -374,6 +408,13 @@ export function DeepChatBot({
           checkTyping()
         })
       }
+
+      // Allow the final queued token update to render before invalidating the
+      // placeholder index. This matters when the full SSE response arrives in a
+      // single event before the browser has painted the assistant bubble.
+      if (pendingMessageUpdateFrameRef.current !== null) {
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
       
       accumulatedMessageRef.current = ''
       streamingMessageIndexRef.current = null
@@ -384,6 +425,11 @@ export function DeepChatBot({
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
         typingTimeoutRef.current = null
+      }
+
+      if (pendingMessageUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(pendingMessageUpdateFrameRef.current)
+        pendingMessageUpdateFrameRef.current = null
       }
       
       setTimeout(() => inputRef.current?.focus(), 100)
@@ -403,8 +449,14 @@ export function DeepChatBot({
         streamAbortControllerRef.current = null
       }
       tokenBufferRef.current = ''
+      streamingMessageIndexRef.current = null
       isTypingRef.current = false
       displayIndexRef.current = 0
+
+      if (pendingMessageUpdateFrameRef.current !== null) {
+        cancelAnimationFrame(pendingMessageUpdateFrameRef.current)
+        pendingMessageUpdateFrameRef.current = null
+      }
     }
   }, [])
 

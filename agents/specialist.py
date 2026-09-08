@@ -1,5 +1,5 @@
-import re
 import os
+import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -375,3 +375,133 @@ IMPORTANT:
             }
         ],
     }
+
+
+def _chunk_text(content: object) -> str:
+    """Normalize LangChain chunk content to text without serializing content blocks."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            item if isinstance(item, str) else str(item.get("text", ""))
+            for item in content
+            if isinstance(item, (str, dict))
+        )
+    return ""
+
+
+async def specialist_stream(agent_id: str, state, emit_token) -> dict:
+    """Generate a specialist reply through ``ChatOpenAI.astream``.
+
+    ``emit_token`` is called only for public text following ``Message:``. ReAct
+    thoughts and tool actions remain private until they have been validated.
+    """
+    if agent_id not in AGENTS:
+        message = f"Unknown agent: {agent_id}"
+        emit_token(message)
+        return {"messages": [{"role": "assistant", "content": message}]}
+
+    agent = AGENTS[agent_id]
+    profile = state.get("user_profile", {})
+    messages = state.get("messages", [])
+    conversation_text = "".join(f"{msg.get('content', '')}\n" for msg in messages)
+    available_actions = "".join(
+        f"\n\n{tool}:\n{TOOL_DESCRIPTIONS[tool]}" for tool in agent["tools"]
+    )
+    system_prompt = f"""You are {agent["name"]}, a {agent["role"]}.
+Personality: {agent["personality"]}
+Speech style: {agent["speech_style"]}
+{agent.get("extra_instructions", "")}
+Athlete profile:
+- Goal: {profile.get("goal", "general fitness")}
+- Fitness level: {profile.get("fitness_level", "beginner")}
+
+You are part of a coaching team helping the athlete with training, nutrition, and recovery.
+You run in a loop of Thought, Action, Observation. At the end of the loop output a Message.
+Use Action to call ONE tool listed below when needed. Only one Action per response.
+Observation is the tool result — never invent tool output.
+Available actions:{available_actions}
+You ONLY have access to the tools listed above.
+After enough information, output: Message: [Your coaching response]
+STRICT RESPONSE RULES: Maximum 60 words. Use 2-3 short markdown bullets. Give one clear next step or question. Stay strictly in your specialty.
+IMPORTANT: If asked to log something, call its matching tool first. Never say "logged" unless a tool Observation confirms it.
+"""
+
+    preflight = intents_for_agent(messages, agent_id, agent["tools"])
+    tools_called: set[str] = set()
+    preflight_lines = []
+    for tool_name, argument in preflight:
+        observation = execute_tool(tool_name, argument)
+        tools_called.add(tool_name)
+        preflight_lines.append(f"- {tool_name} -> {observation}")
+
+    internal_context = (
+        f"Recent conversation:\n{conversation_text}\n"
+        f"Preflight tool results:\n" + "\n".join(preflight_lines)
+    )
+    for _ in range(5):
+        try:
+            llm = ChatOpenAI(model="gpt-5-nano", temperature=1, timeout=90)
+            content = ""
+            public_content_start: int | None = None
+            emitted_length = 0
+            async for chunk in llm.astream(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=internal_context),
+                ]
+            ):
+                content += _chunk_text(chunk.content)
+                if public_content_start is None:
+                    marker = re.search(r"Message:\s*", content)
+                    if marker:
+                        public_content_start = marker.end()
+                if public_content_start is not None:
+                    public_content = content[public_content_start:]
+                    token = public_content[emitted_length:]
+                    if token:
+                        emit_token(token)
+                        emitted_length += len(token)
+
+            message_match = re.search(r"Message:\s*(.*)", content, re.DOTALL)
+            if message_match:
+                final_message = message_match.group(1).strip()
+                if _claims_logged_without_tool(final_message, tools_called):
+                    internal_context += "\nCall the correct log tool before saying something was logged.\n"
+                    continue
+                return {
+                    "display_text": final_message,
+                    "messages": [{
+                        "role": "assistant",
+                        "name": agent["name"],
+                        "content": f"{agent['name']}: {final_message}",
+                    }],
+                }
+
+            action_match = re.search(
+                r"Action:\s*(\w+)(?::\s*(.*?))?(?:\n|$)", content, re.DOTALL
+            )
+            if action_match:
+                tool_name = action_match.group(1).lower()
+                argument = re.split(
+                    r"\n\s*Action:", (action_match.group(2) or "").strip(), maxsplit=1
+                )[0].strip()
+                if _agent_allowed_tool(agent_id, tool_name):
+                    observation = execute_tool(tool_name, argument)
+                    tools_called.add(tool_name)
+                else:
+                    observation = f"Access denied: {agent['name']} cannot use tool '{tool_name}'."
+                internal_context += f"\n{content}\n\nObservation: {observation}\n"
+                continue
+            internal_context += f"\n{content}\n"
+        except Exception as error:
+            debug(f"Streaming LLM error: {error}", agent["name"])
+            break
+
+    fallback = "Sorry, I hit a snag — could you repeat that?"
+    emit_token(fallback)
+    return {"messages": [{
+        "role": "assistant",
+        "name": agent["name"],
+        "content": f"{agent['name']}: {fallback}",
+    }]}

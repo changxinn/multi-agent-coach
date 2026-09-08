@@ -3,12 +3,12 @@ Agent orchestrator service for coordinating multi-agent conversations.
 
 Integrates LangGraph workflow with FastAPI.
 """
-import logging
-from typing import List, Dict, Any, Optional
 import asyncio
+import logging
+from collections.abc import AsyncIterator
+from typing import Any, Dict, List
 
 from app.services.session_manager import Session, session_manager
-from app.db.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,7 @@ class AgentOrchestrator:
 
     def __init__(self):
         self.graph = None
+        self.streaming_graph = None
         self._graph_lock = asyncio.Lock()
 
     async def _get_graph(self):
@@ -33,6 +34,35 @@ class AgentOrchestrator:
                     self.graph = build_api_graph()
                     logger.info("LangGraph initialized")
         return self.graph
+
+    async def _get_streaming_graph(self):
+        """Lazy load the graph variant that emits safe, user-visible token events."""
+        if self.streaming_graph is None:
+            async with self._graph_lock:
+                if self.streaming_graph is None:
+                    from app.services.agent_service import build_streaming_api_graph
+
+                    self.streaming_graph = build_streaming_api_graph()
+                    logger.info("Streaming LangGraph initialized")
+        return self.streaming_graph
+
+    @staticmethod
+    def _initial_state(session: Session, user_message: str) -> dict[str, Any]:
+        """Build the common input state for synchronous and streaming graph runs."""
+        user_profile = {
+            "user_id": session.user_id,
+            "name": session.profile.get("name", "Athlete"),
+            "goal": session.profile.get("fitness_goal", "general fitness"),
+            "fitness_level": session.profile.get("fitness_level", "beginner"),
+        }
+        return {
+            "messages": session.messages + [
+                {"role": "user", "content": f"You: {user_message}"}
+            ],
+            "volley_msg_left": 1,
+            "next_agent": None,
+            "user_profile": user_profile,
+        }
 
     async def process_message(
         self,
@@ -76,27 +106,8 @@ class AgentOrchestrator:
             # Get graph
             graph = await self._get_graph()
 
-            # Build initial state
-            # Convert session profile to LangGraph State format
-            user_profile = {
-                "user_id": session.user_id,
-                "name": session.profile.get("name", "Athlete"),
-                "goal": session.profile.get("fitness_goal", "general fitness"),
-                "fitness_level": session.profile.get("fitness_level", "beginner"),
-            }
-
-            # Prepare messages for LangGraph
-            messages = session.messages + [
-                {"role": "user", "content": f"You: {user_message}"}
-            ]
-            input_message_count = len(messages)
-
-            initial_state = {
-                "messages": messages,
-                "volley_msg_left": 1,
-                "next_agent": None,
-                "user_profile": user_profile,
-            }
+            initial_state = self._initial_state(session, user_message)
+            input_message_count = len(initial_state["messages"])
 
             # Invoke graph through its async API because the API workflow
             # contains asynchronous specialist nodes.
@@ -159,37 +170,58 @@ class AgentOrchestrator:
         self,
         session: Session,
         user_message: str,
-        request_summary: bool = False,
-    ):
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield real model text chunks and a final metadata event for one chat turn.
+
+        The streaming graph emits custom events only after its specialist has identified
+        the public ``Message:`` portion of the model output. This prevents internal
+        ReAct tool instructions from reaching API clients.
         """
-        Process user message through multi-agent system with streaming.
+        graph = await self._get_streaming_graph()
+        initial_state = self._initial_state(session, user_message)
+        final_state: dict[str, Any] | None = None
 
-        Args:
-            session: User session
-            user_message: User's message
-            request_summary: If True, generate summary after response
+        async for mode, payload in graph.astream(
+            initial_state,
+            {"recursion_limit": 50},
+            stream_mode=["custom", "values"],
+        ):
+            if mode == "custom":
+                if isinstance(payload, dict) and payload.get("type") == "token":
+                    token = payload.get("token")
+                    if isinstance(token, str) and token:
+                        yield {"type": "token", "token": token}
+            elif mode == "values" and isinstance(payload, dict):
+                final_state = payload
 
-        Yields:
-            Individual tokens/characters for streaming
-        """
-        try:
-            # Get the full response first
-            response_text = await self.process_message(
-                session=session,
-                user_message=user_message,
-                request_summary=request_summary,
-            )
-            
-            # Stream character by character
-            for char in response_text:
-                yield char
+        if final_state is None:
+            raise RuntimeError("Streaming graph completed without a final state")
 
-        except Exception as e:
-            logger.error("Error in streaming: %s", e, exc_info=True)
-            # Yield error message
-            error_text = f"I apologize, but I encountered an error: {str(e)}"
-            for char in error_text:
-                yield char
+        input_message_count = len(initial_state["messages"])
+        new_messages = final_state.get("messages", [])[input_message_count:]
+        response_text = self._aggregate_responses(new_messages)
+        metadata = next(
+            (
+                message.get("metadata")
+                for message in reversed(new_messages)
+                if isinstance(message, dict) and message.get("role") == "assistant"
+            ),
+            None,
+        )
+
+        await session_manager.update_session(
+            session_id=session.session_id,
+            user_id=session.user_id,
+            messages=[
+                {"role": "user", "content": user_message},
+                *new_messages,
+            ],
+            agent_state={
+                "last_agent": final_state.get("next_agent"),
+                "volley_remaining": final_state.get("volley_msg_left", 0),
+            },
+        )
+        yield {"type": "complete", "text": response_text, "metadata": metadata}
 
     def _aggregate_responses(self, messages: List[Dict[str, Any]]) -> str:
         """

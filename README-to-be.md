@@ -1,20 +1,21 @@
 # Multi-Agent Fitness Coach - AWS Production Deployment
 
-Complete guide for deploying Multi-Agent Fitness Coach to AWS production environment.
+Complete guide for deploying Multi-Agent Fitness Coach with Docker Compose or to AWS production.
 
 ---
 
 ## Table of Contents
 
 1. [Architecture Overview](#architecture-overview)
-2. [Prerequisites](#prerequisites)
-3. [Infrastructure Setup](#infrastructure-setup)
-4. [PostgreSQL Container Deployment](#postgresql-container-deployment)
-5. [Backend Deployment](#backend-deployment)
-6. [Frontend Deployment](#frontend-deployment)
-7. [Configuration](#configuration)
-8. [Monitoring & Operations](#monitoring--operations)
-9. [Troubleshooting](#troubleshooting)
+2. [Docker Compose Stack Deployment](#docker-compose-stack-deployment)
+3. [Prerequisites](#prerequisites)
+4. [Infrastructure Setup](#infrastructure-setup)
+5. [PostgreSQL Container Deployment](#postgresql-container-deployment)
+6. [Backend Deployment](#backend-deployment)
+7. [Frontend Deployment](#frontend-deployment)
+8. [Configuration](#configuration)
+9. [Monitoring & Operations](#monitoring--operations)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -43,6 +44,78 @@ Complete guide for deploying Multi-Agent Fitness Coach to AWS production environ
 │ │       │ │Redis │   │          │ │           │ │
 │ └──────┘ └───────┘   └──────────┘ └───────────┘ │
 └─────────────────────────────────────────────────┘
+```
+
+---
+
+## Docker Compose Stack Deployment
+
+Use the repository Compose definition to build and start the containerized application stack, including the main API and private agents. This is separate from the local-only workflow in [README.md](README.md).
+
+### Prerequisites
+
+- Docker Desktop or Docker Engine with the Compose plugin running.
+- Required secrets configured in the shell environment or `C:\dev\multi-agent-coach\.env`; at minimum, provide a valid `OPENAI_API_KEY` if enabled by your configuration. Do not commit real keys.
+
+### Start the complete stack
+
+From `C:\dev\multi-agent-coach`:
+
+```powershell
+docker compose up --build
+```
+
+The Compose stack starts:
+
+- PostgreSQL (`db`) with persistent `postgres_data` storage.
+- Redis (`redis`) with persistent `redis_data` storage.
+- A one-shot `migrations` job.
+- The main FastAPI service (`api`) on <http://localhost:8000>.
+- The private Recovery Agent (`recovery-agent`) bound to `127.0.0.1:8001`.
+- The private Nutrition Agent (`nutrition-agent`) bound to `127.0.0.1:8003`.
+
+The React frontend is not part of `docker-compose.yml`; build or deploy it separately with its API base URL pointed at the main API.
+
+### Migration and startup ordering
+
+Compose owns the startup sequence:
+
+1. PostgreSQL must pass its health check.
+2. The `migrations` service runs `python -m app.db.migrate` against PostgreSQL.
+3. The main API and Nutrition Agent wait for that job to exit successfully.
+4. Runtime services perform connection and schema-readiness validation only; they do not run migrations, seed users, or execute schema DDL.
+
+If the migration job fails, inspect its logs and correct the database or migration problem before starting the runtime services:
+
+```powershell
+docker compose logs migrations
+docker compose logs api nutrition-agent recovery-agent
+```
+
+### Verify and operate the stack
+
+```powershell
+# Follow service logs.
+docker compose logs -f api nutrition-agent recovery-agent
+
+# Check service state.
+docker compose ps
+
+# Stop containers while retaining PostgreSQL and Redis volumes.
+docker compose down
+
+# Remove containers and persistent volumes. This deletes Compose-managed data.
+docker compose down --volumes --remove-orphans
+```
+
+Check main-API health at <http://localhost:8000/health/live> and readiness at <http://localhost:8000/health/ready>. The Nutrition Agent is private: do not publish it through browser-facing ingress or expose its internal-service token.
+
+### Compose deployment smoke test
+
+The opt-in smoke test creates an isolated Compose project, waits for the services, checks that migrations succeed, checks API and Nutrition-Agent readiness, and removes the resources it created:
+
+```powershell
+.\scripts\test-compose-deployment.ps1
 ```
 
 ---

@@ -23,6 +23,17 @@ export interface ChatResponse {
   }
 }
 
+export interface MealRecommendation {
+  meal_type: string
+  name: string
+  calories: number
+  protein_g: number
+  carbs_g: number
+  fiber_g: number
+  fat_g: number
+  satisfies: string[]
+}
+
 export interface StreamResult {
   success: boolean
   isDemoResponse?: boolean

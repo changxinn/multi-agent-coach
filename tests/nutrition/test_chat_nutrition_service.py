@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 
+import httpx
 import pytest
 
 from app.services import agent_service
@@ -168,3 +169,48 @@ async def test_chat_nutrition_dependency_failure_uses_local_fallback(monkeypatch
     monkeypatch.setattr("app.config.get_settings", lambda: type("Settings", (), {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100})())
 
     assert (await agent_service.specialist_node_api(_state({"user_id": 42})))["messages"] == fallback["messages"]
+
+
+@pytest.mark.asyncio
+async def test_chat_nutrition_read_timeout_uses_local_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
+
+    async def profile(_: int) -> dict[str, object]:
+        return {
+            "dietary_preference": "omnivore",
+            "dietary_restrictions": [],
+            "allergies": [],
+            "meals_per_day": 3,
+            "activity_level": "moderate",
+            "age": None,
+            "gender": None,
+            "weight_kg": None,
+            "height_cm": None,
+        }
+
+    async def timed_out(*_: object, **__: object) -> object:
+        request = httpx.Request("POST", "http://nutrition-agent/v1/nutrition/users/42/evaluate")
+        try:
+            raise httpx.ReadTimeout("timed out", request=request)
+        except httpx.HTTPError as error:
+            raise NutritionAgentError() from error
+
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: fallback)
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", profile)
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", timed_out)
+    monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
+    monkeypatch.setattr(
+        "app.config.get_settings",
+        lambda: type(
+            "Settings",
+            (),
+            {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100},
+        )(),
+    )
+
+    result = await agent_service.specialist_node_api(_state({"user_id": 42}))
+
+    assert result["messages"] == fallback["messages"]
+    assert result["volley_msg_left"] == 1

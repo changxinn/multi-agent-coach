@@ -1,5 +1,6 @@
 """LLM presentation layer for the Nutrition Agent."""
 import logging
+from collections.abc import Iterator
 
 from openai import OpenAI
 
@@ -114,3 +115,57 @@ class NutritionAgent:
                 error,
             )
             return assessment.model_copy(update={"message": _safe_message(assessment)})
+
+    def present_stream(
+        self,
+        assessment: NutritionEvaluateResponse,
+        user_message: str,
+    ) -> Iterator[str]:
+        """Yield safe presentation tokens, falling back before output when necessary.
+
+        The deterministic assessment is always authoritative.  Meal recommendations and
+        escalations deliberately bypass generated prose, so their complete safe text can
+        be streamed without exposing optional-model output.
+        """
+        if (
+            assessment.escalation is not None
+            or assessment.meal_recommendations
+            or not self.settings.NUTRITION_LLM_ENABLED
+            or not self.settings.OPENAI_API_KEY
+        ):
+            yield _safe_message(assessment)
+            return
+
+        context = {
+            "status": assessment.status,
+            "score": assessment.score,
+            "recommendations": assessment.recommendations,
+            "meal_recommendations": [],
+            "tdee": assessment.tdee,
+            "macro_targets": assessment.macro_targets,
+        }
+        try:
+            client = OpenAI(api_key=self.settings.OPENAI_API_KEY)
+            stream = client.chat.completions.create(
+                model=self.settings.LLM_MODEL,
+                reasoning_effort="minimal",
+                max_completion_tokens=500,
+                stream=True,
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": f"Structured assessment: {context}"},
+                ],
+            )
+            for chunk in stream:
+                content = getattr(chunk.choices[0].delta, "content", None) if chunk.choices else None
+                if not content:
+                    continue
+                if any(term in content.lower() for term in _UNSAFE_OUTPUT_TERMS):
+                    raise ValueError("Nutrition LLM stream contained unsafe output")
+                yield content
+        except Exception as error:
+            logger.warning("Nutrition LLM stream failed safety checks: %s", error)
+            # This fallback is safe before the first generated token.  If a provider
+            # fails after output has begun, the endpoint reports an error rather than
+            # append a duplicate, potentially contradictory response.
+            raise

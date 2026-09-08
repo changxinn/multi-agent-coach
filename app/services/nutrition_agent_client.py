@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import random
 import time
 from collections import deque
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
@@ -271,6 +273,161 @@ class NutritionAgentClient:
         if profile is not None:
             payload["profile"] = profile
         return await self.request_for_user("POST", user_id, "/evaluate", json=payload)
+
+    async def evaluate_stream(
+        self, user_id: int, message: str, safety_context: dict[str, Any] | None = None,
+        profile: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield validated private Nutrition SSE events through the dependency boundary."""
+        settings = get_settings()
+        payload: dict[str, Any] = {"message": message}
+        if safety_context is not None:
+            payload["safety_context"] = safety_context
+        if profile is not None:
+            payload["profile"] = profile
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+        probe = self._before_request()
+        headers = {"X-Internal-Service-Token": settings.NUTRITION_INTERNAL_SERVICE_TOKEN}
+        if correlation_id := request_id.get():
+            headers["X-Request-ID"] = correlation_id
+        request = self._client.build_request("POST", f"{settings.NUTRITION_AGENT_URL.rstrip('/')}/v1/nutrition/users/{user_id}/evaluate/stream", json=payload, headers=headers)
+        response: httpx.Response | None = None
+        complete = False
+        try:
+            response = await self._client.send(request, stream=True)
+            if response.status_code >= 400:
+                if self._is_qualifying_response(response):
+                    self._record_qualifying_failure(probe)
+                else:
+                    self._half_open_probe_in_flight = False
+                raise NutritionAgentError(response.status_code)
+            event = "message"
+            async for line in response.aiter_lines():
+                if line.startswith("event:"):
+                    event = line.removeprefix("event:").strip()
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    data = json.loads(line.removeprefix("data:").strip())
+                except json.JSONDecodeError as error:
+                    raise NutritionAgentError(code="NUTRITION_STREAM_INVALID") from error
+                if not isinstance(data, dict):
+                    raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                if event == "token":
+                    token = data.get("token")
+                    if not isinstance(token, str) or not token:
+                        raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                    yield {"type": "token", "token": token}
+                elif event == "complete":
+                    if not isinstance(data.get("message"), str):
+                        raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                    complete = True
+                    self._record_success()
+                    yield {"type": "complete", "assessment": data}
+                elif event == "error":
+                    raise NutritionAgentError(code=str(data.get("code") or "NUTRITION_STREAM_FAILED"))
+                event = "message"
+            if not complete:
+                raise NutritionAgentError(code="NUTRITION_STREAM_INCOMPLETE")
+        except httpx.HTTPError as error:
+            if self._is_qualifying_exception(error):
+                self._record_qualifying_failure(probe)
+            else:
+                self._half_open_probe_in_flight = False
+            raise NutritionAgentError() from error
+        finally:
+            if response is not None:
+                await response.aclose()
+
+    async def evaluate_stream(
+        self,
+        user_id: int,
+        message: str,
+        safety_context: dict[str, Any] | None = None,
+        profile: dict[str, Any] | None = None,
+    ) -> AsyncIterator[dict[str, Any]]:
+        """Yield validated private Nutrition SSE events through the dependency boundary."""
+        settings = get_settings()
+        payload: dict[str, Any] = {"message": message}
+        if safety_context is not None:
+            payload["safety_context"] = safety_context
+        if profile is not None:
+            payload["profile"] = profile
+        if self._client is None:
+            await self.start()
+        assert self._client is not None
+
+        probe = self._before_request()
+        headers = {"X-Internal-Service-Token": settings.NUTRITION_INTERNAL_SERVICE_TOKEN}
+        if correlation_id := request_id.get():
+            headers["X-Request-ID"] = correlation_id
+        request = self._client.build_request(
+            "POST",
+            f"{settings.NUTRITION_AGENT_URL.rstrip('/')}/v1/nutrition/users/{user_id}/evaluate/stream",
+            json=payload,
+            headers=headers,
+        )
+        response: httpx.Response | None = None
+        complete = False
+        try:
+            response = await self._client.send(request, stream=True)
+            if response.status_code >= 400:
+                if self._is_qualifying_response(response):
+                    self._record_qualifying_failure(probe)
+                else:
+                    self._half_open_probe_in_flight = False
+                detail: Any = None
+                try:
+                    detail = response.json().get("detail")
+                except (ValueError, AttributeError):
+                    pass
+                raise NutritionAgentError(
+                    response.status_code,
+                    "VALIDATION_ERROR" if response.status_code == 422 else None,
+                    validation_error_message(detail),
+                )
+
+            event = "message"
+            async for line in response.aiter_lines():
+                if line.startswith("event:"):
+                    event = line.removeprefix("event:").strip()
+                    continue
+                if not line.startswith("data:"):
+                    continue
+                try:
+                    data = json.loads(line.removeprefix("data:").strip())
+                except json.JSONDecodeError as error:
+                    raise NutritionAgentError(code="NUTRITION_STREAM_INVALID") from error
+                if not isinstance(data, dict):
+                    raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                if event == "token":
+                    token = data.get("token")
+                    if not isinstance(token, str) or not token:
+                        raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                    yield {"type": "token", "token": token}
+                elif event == "complete":
+                    if not isinstance(data.get("message"), str):
+                        raise NutritionAgentError(code="NUTRITION_STREAM_INVALID")
+                    complete = True
+                    self._record_success()
+                    yield {"type": "complete", "assessment": data}
+                elif event == "error":
+                    raise NutritionAgentError(code=str(data.get("code") or "NUTRITION_STREAM_FAILED"))
+                event = "message"
+            if not complete:
+                raise NutritionAgentError(code="NUTRITION_STREAM_INCOMPLETE")
+        except httpx.HTTPError as error:
+            if self._is_qualifying_exception(error):
+                self._record_qualifying_failure(probe)
+            else:
+                self._half_open_probe_in_flight = False
+            raise NutritionAgentError() from error
+        finally:
+            if response is not None:
+                await response.aclose()
 
 
 nutrition_agent_client = NutritionAgentClient()
