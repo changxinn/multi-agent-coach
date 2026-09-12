@@ -4,7 +4,6 @@ Application configuration using pydantic-settings.
 Loads environment variables from .env file and validates them.
 """
 from functools import lru_cache
-from typing import Optional, List
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -46,18 +45,13 @@ class Settings(BaseSettings):
     SEED_ADMIN_NAME: str = "System Admin"
 
     # ===========================================
-    # Session Configuration
-    # ===========================================
-    SESSION_EXPIRY_HOURS: int = 24
-
-    # ===========================================
     # CORS Configuration
     # ===========================================
     FRONTEND_URL: str = "http://localhost:5174"
     ALLOWED_ORIGINS: str = "http://localhost:5174,http://localhost:3000"
 
     @property
-    def allowed_origins_list(self) -> List[str]:
+    def allowed_origins_list(self) -> list[str]:
         """Parse allowed origins from comma-separated string."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
 
@@ -66,6 +60,8 @@ class Settings(BaseSettings):
     # ===========================================
     OPENAI_API_KEY: str
     LLM_MODEL: str = "gpt-5-nano"
+    CHAT_SUMMARY_TURN_INTERVAL: int = 10
+    CHAT_SUMMARY_MAX_CHARS: int = 12000
 
     # ===========================================
     # Internal Agent Services
@@ -82,10 +78,10 @@ class Settings(BaseSettings):
     # ===========================================
     # AWS Configuration (Optional for Production)
     # ===========================================
-    AWS_REGION: Optional[str] = None
-    AWS_ACCESS_KEY_ID: Optional[str] = None
-    AWS_SECRET_ACCESS_KEY: Optional[str] = None
-    S3_BUCKET: Optional[str] = None
+    AWS_REGION: str | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    S3_BUCKET: str | None = None
     S3_PREFIX: str = "chat-history"
 
     @property
@@ -98,7 +94,7 @@ class Settings(BaseSettings):
     # ===========================================
     # Redis Configuration (Optional for Production)
     # ===========================================
-    REDIS_URL: Optional[str] = None
+    REDIS_URL: str | None = None
 
     @property
     def is_redis_configured(self) -> bool:

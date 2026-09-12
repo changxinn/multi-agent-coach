@@ -49,7 +49,6 @@ services:
       - JWT_SECRET_KEY=dev-secret-key-change-in-production
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRY_HOURS=24
-      - SESSION_EXPIRY_HOURS=24
       - FRONTEND_URL=http://localhost:5174
       - ALLOWED_ORIGINS=http://localhost:5174,http://localhost:3000
       - OPENAI_API_KEY=${OPENAI_API_KEY}

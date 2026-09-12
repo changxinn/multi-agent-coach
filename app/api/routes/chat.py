@@ -1,10 +1,12 @@
 """
 Chat routes for multi-agent conversations.
 """
+import hashlib
 import json
 import logging
+import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette import status
@@ -18,7 +20,11 @@ from app.api.schemas.chat import (
 )
 from app.db.database import get_db
 from app.services.agent_orchestrator import get_orchestrator
-from app.services.session_manager import get_session_manager
+from app.services.chat_history_service import (
+    ChatHistoryService,
+    ChatSessionNotFoundError,
+    ChatTurnConflictError,
+)
 from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -29,6 +35,7 @@ router = APIRouter()
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
     request: ChatRequest,
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -41,6 +48,8 @@ async def chat(
     **Authentication Required**: JWT token in Authorization header
     """
     user_id = current_user["id"]
+    if not isinstance(idempotency_key, str):
+        idempotency_key = None
 
     # Get user profile from database
     profile_service = UserProfileService(db)
@@ -53,45 +62,57 @@ async def chat(
             detail="User profile not found",
         )
 
-    # Get or create session
-    session_mgr = get_session_manager()
     try:
-        session = await session_mgr.get_or_create_session(
-            session_id=request.session_id,
-            user_id=user_id,
-            profile=profile,
-        )
-    except ValueError as e:
+        history = ChatHistoryService(db)
+        session = await history.build_view(user_id, request.session_id, profile)
+    except ChatSessionNotFoundError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
-    except PermissionError as e:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
 
-    # Process message through multi-agent system
+    user_message = request.messages[0].content
+    if idempotency_key is not None:
+        _validate_idempotency_key(idempotency_key)
+        try:
+            session, turn, claimed = await history.claim_turn(
+                user_id,
+                request.session_id,
+                idempotency_key,
+                _fingerprint(user_message),
+                user_message,
+            )
+        except ChatTurnConflictError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        if not claimed:
+            return _chat_response(session.session_id, turn.response_text or "", turn.response_metadata)
+    else:
+        await history.append_user_message(session, user_message)
+
     orchestrator = get_orchestrator()
-    response_text, response_metadata = await orchestrator.process_message_with_metadata(
-        session=session,
-        user_message=request.messages[-1].content,
-        request_summary=False,
-    )
-
-    return ChatResponse(
-        message=response_text,
-        session_id=session.session_id,
-        model="gpt-5-nano",
-        metadata=response_metadata,
-    )
+    try:
+        chat_context = await history.nutrition_context(session)
+        response_text, response_metadata = await orchestrator.process_message_with_metadata(
+            session=session, user_message=user_message, request_summary=False, chat_context=chat_context,
+        )
+        if idempotency_key is not None:
+            await history.complete_turn(
+                user_id, request.session_id, idempotency_key, response_text, response_metadata
+            )
+        else:
+            await history.append_assistant_message(session, response_text, None, response_metadata)
+    except Exception:
+        if idempotency_key is not None:
+            await history.fail_turn(user_id, request.session_id, idempotency_key)
+        raise
+    return _chat_response(session.session_id, response_text, response_metadata)
 
 
 @router.get("/chat/stream")
 async def chat_stream(
-    message: str = Query(..., description="User message"),
-    session_id: str = Query(..., description="Session ID"),
+    message: str = Query(..., min_length=1, max_length=4000, description="User message"),
+    session_id: str = Query(..., pattern=r"^chat_[a-f0-9]{32}$", description="Session ID"),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -108,6 +129,8 @@ async def chat_stream(
     ```
     """
     user_id = current_user["id"]
+    if not isinstance(idempotency_key, str):
+        idempotency_key = None
 
     # Get user profile
     profile_service = UserProfileService(db)
@@ -119,40 +142,67 @@ async def chat_stream(
             detail="User profile not found",
         )
 
-    # Get or create session
-    session_mgr = get_session_manager()
     try:
-        session = await session_mgr.get_or_create_session(
-            session_id=session_id,
-            user_id=user_id,
-            profile=profile,
-        )
-    except (ValueError, PermissionError) as e:
+        history = ChatHistoryService(db)
+        history = ChatHistoryService(db)
+        session = await history.build_view(user_id, session_id, profile)
+    except ChatSessionNotFoundError as e:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
 
-    # Create async generator for SSE
-    async def generate():
+    replay_text: str | None = None
+    replay_metadata: dict | None = None
+    if idempotency_key is not None:
+        _validate_idempotency_key(idempotency_key)
         try:
+            session, turn, claimed = await history.claim_turn(
+                user_id, session_id, idempotency_key, _fingerprint(message), message
+            )
+        except ChatTurnConflictError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+        if not claimed:
+            replay_text = turn.response_text or ""
+            replay_metadata = turn.response_metadata
+
+    async def generate():
+        response_parts: list[str] = []
+        try:
+            if replay_text is not None:
+                yield f"data: {json.dumps({'token': replay_text, 'session_id': session_id, 'is_complete': False})}\n\n"
+                yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': replay_metadata})}\n\n"
+                return
             logger.info("Processing message through multi-agent system: %s", message)
-            
+            if idempotency_key is None:
+                await history.append_user_message(session, message)
             # Get orchestrator
             orchestrator = get_orchestrator()
+            chat_context = await history.nutrition_context(session)
             
             async for event in orchestrator.process_message_stream(
                 session=session,
                 user_message=message,
+                chat_context=chat_context,
             ):
                 if event["type"] == "token":
+                    response_parts.append(event["token"])
                     yield f"data: {json.dumps({'token': event['token'], 'session_id': session_id, 'is_complete': False})}\n\n"
                 elif event["type"] == "complete":
-                    yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': event['metadata']})}\n\n"
+                    response_text = event.get("text") or "".join(response_parts)
+                    if idempotency_key is not None:
+                        await history.complete_turn(
+                            user_id, session_id, idempotency_key, response_text, event.get("metadata")
+                        )
+                    else:
+                        await history.append_assistant_message(session, response_text, None, event.get("metadata"))
+                    yield f"data: {json.dumps({'token': '', 'session_id': session_id, 'is_complete': True, 'metadata': event.get('metadata')})}\n\n"
             logger.info("Multi-agent streaming completed")
 
         except Exception as e:
             logger.exception("Streaming error")
+            if idempotency_key is not None:
+                await history.fail_turn(user_id, session_id, idempotency_key)
             yield f"data: {json.dumps({'error': str(e), 'session_id': session_id})}\n\n"
 
     return StreamingResponse(
@@ -164,6 +214,24 @@ async def chat_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+def _validate_idempotency_key(value: str) -> None:
+    try:
+        uuid.UUID(value)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Idempotency-Key must be a UUID",
+        ) from error
+
+
+def _fingerprint(content: str) -> str:
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def _chat_response(session_id: str, message: str, metadata: dict | None) -> ChatResponse:
+    return ChatResponse(message=message, session_id=session_id, model="gpt-5-nano", metadata=metadata)
 
 
 @router.post("/chat/summary", response_model=SummaryResponse)
@@ -181,11 +249,10 @@ async def request_summary(
     """
     user_id = current_user["id"]
 
-    # Get session
-    session_mgr = get_session_manager()
-    session = await session_mgr.get_session(request.session_id, user_id)
-
-    if not session:
+    try:
+        profile = await UserProfileService(db).get_user_profile(user_id)
+        session = await ChatHistoryService(db).build_view(user_id, request.session_id, profile)
+    except (ValueError, ChatSessionNotFoundError):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Session not found",
@@ -208,27 +275,15 @@ async def request_summary(
 async def clear_history(
     session_id: str,
     current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """
     Clear chat history for a session.
 
     **Authentication Required**: JWT token in Authorization header
     """
-    session_mgr = get_session_manager()
-
     try:
-        success = await session_mgr.clear_session(session_id, current_user["id"])
-
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Session not found",
-            )
-
+        await ChatHistoryService(db).clear(current_user["id"], session_id)
         return {"status": "cleared", "session_id": session_id}
-
-    except PermissionError:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot access another user's session",
-        )
+    except ChatSessionNotFoundError as error:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(error)) from error

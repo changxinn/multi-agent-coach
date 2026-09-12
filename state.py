@@ -11,3 +11,4 @@ class State(TypedDict):
     volley_msg_left: int
     next_agent: str | None
     user_profile: dict
+    nutrition_follow_up: dict | None

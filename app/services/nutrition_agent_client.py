@@ -266,12 +266,18 @@ class NutritionAgentClient:
         message: str,
         safety_context: dict[str, Any] | None = None,
         profile: dict[str, Any] | None = None,
+        chat_context: dict[str, Any] | None = None,
+        nutrition_follow_up: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         payload: dict[str, Any] = {"message": message}
         if safety_context is not None:
             payload["safety_context"] = safety_context
         if profile is not None:
             payload["profile"] = profile
+        if chat_context is not None:
+            payload["chat_context"] = chat_context
+        if nutrition_follow_up is not None:
+            payload["nutrition_follow_up"] = nutrition_follow_up
         return await self.request_for_user("POST", user_id, "/evaluate", json=payload)
 
     async def evaluate_stream(

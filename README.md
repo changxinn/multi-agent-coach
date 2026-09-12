@@ -93,7 +93,7 @@ uv run pytest -q
 uv run ruff check .
 ```
 
-PostgreSQL-backed Nutrition integration tests require an explicitly disposable database named `nutrition_test`; configure `NUTRITION_TEST_DATABASE_URL` as documented in `.env.example` before running them.
+PostgreSQL-backed Nutrition and chat-history integration tests require an explicitly disposable database named `nutrition_test`; configure `NUTRITION_TEST_DATABASE_URL` as documented in `.env.example` before running them. Durable chat transcripts are retained until the authenticated owner explicitly clears or soft-deletes the session; PostgreSQL, not Redis or process memory, is the canonical store.
 
 ### Manual API smoke test
 

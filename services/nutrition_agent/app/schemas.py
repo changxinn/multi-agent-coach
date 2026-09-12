@@ -162,10 +162,26 @@ class NutritionTargetResponse(StrictModel):
     escalation: Escalation | None = None
 
 
+class NutritionChatContext(StrictModel):
+    """Versioned, bounded context assembled exclusively by the main API."""
+    version: Literal["chat-history-v1"]
+    summary: str | None = Field(default=None, max_length=12000)
+    messages: list[dict[str, str]] = Field(default_factory=list, max_length=24)
+
+
+class NutritionFollowUpIntent(StrictModel):
+    """Validated, non-authoritative semantic intent from the main orchestrator."""
+
+    nutrition_follow_up: Literal["revise_recent_meal"]
+    activity_type: Literal["resistance", "endurance", "mixed", "unspecified"]
+
+
 class NutritionEvaluateRequest(StrictModel):
     message: str = Field(min_length=1, max_length=4000)
     safety_context: SafetyContext | None = None
     profile: NutritionProfileUpsert | None = None
+    chat_context: NutritionChatContext | None = None
+    nutrition_follow_up: NutritionFollowUpIntent | None = None
 
     @field_validator("message")
     @classmethod

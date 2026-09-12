@@ -13,6 +13,7 @@ marked.setOptions({
 import { useAuthStore } from '../../lib/authStore'
 import {
   getSessionId,
+  createSession,
   clearSessionId,
   callChatbotAPI,
   streamChatbotAPI,
@@ -92,9 +93,10 @@ export function DeepChatBot({
   const { token, user, logout } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
-  const sessionId = useRef<string>(getSessionId(userEmail))
+  const sessionId = useRef<string | null>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
   const pendingMessageUpdateFrameRef = useRef<number | null>(null)
+  const messageUpdateRetryCountRef = useRef(0)
   const accumulatedMessageRef = useRef<string>('')
   const isStreamingRef = useRef(false)
   const isInitialized = useRef(false)
@@ -114,13 +116,12 @@ export function DeepChatBot({
    * Update message display in DeepChat UI
    * Uses marked library to render Markdown
    */
-  const updateMessageDisplay = useCallback(() => {
+  const updateMessageDisplay = useCallback(function updateMessageDisplay() {
     if (!deepChatRef.current || streamingMessageIndexRef.current === null) return
 
     // addMessage() updates Deep Chat's message collection before its bubble is
-    // mounted. Queue the first replacement so updateMessage() never attempts to
-    // access the placeholder's element references before they exist. Coalescing
-    // also avoids rendering once per SSE token when tokens arrive rapidly.
+    // mounted. Coalesce updates to avoid rendering once per SSE token, and retry
+    // when Deep Chat has not yet created the placeholder's element references.
     if (pendingMessageUpdateFrameRef.current !== null) return
 
     pendingMessageUpdateFrameRef.current = requestAnimationFrame(() => {
@@ -138,9 +139,31 @@ export function DeepChatBot({
       })
       const htmlContent = marked.parse(preservedText)
 
-      deepChat.updateMessage({ html: htmlContent }, messageIndex)
-      deepChat.scrollToBottom()
+      try {
+        deepChat.updateMessage({ html: htmlContent }, messageIndex)
+        // messageUpdateRetryCountRef.current = 0
+        deepChat.scrollToBottom()
+      } catch (error) {
+        // Deep Chat can expose a new message through getMessages() one or more
+        // frames before its internal outerContainer reference is mounted.
+        // Retain the accumulated stream content and try again after the mount.
+        if (messageUpdateRetryCountRef.current >= 10) {
+          console.error('Unable to render the streamed assistant message:', error)
+          return
+        }
+
+        // messageUpdateRetryCountRef.current += 1
+        // updateMessageDisplay()
+      }
     })
+  }, [])
+
+  const waitForPendingMessageUpdate = useCallback(async () => {
+    // A retry can require several frames if a stream starts immediately after
+    // addMessage(). Do not clear the placeholder target until it has rendered.
+    for (let frame = 0; pendingMessageUpdateFrameRef.current !== null && frame < 12; frame += 1) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    }
   }, [])
   
   /**
@@ -148,7 +171,7 @@ export function DeepChatBot({
    */
   const typeNextCharacter = useCallback(() => {
     if (!isTypingRef.current || !deepChatRef.current) {
-      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
+      console.log('Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
       isTypingRef.current = false
       return
     }
@@ -160,7 +183,7 @@ export function DeepChatBot({
       accumulatedMessageRef.current += char
       displayIndexRef.current++
       
-      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
+      console.log('Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
       
       // Update UI
       updateMessageDisplay()
@@ -169,15 +192,15 @@ export function DeepChatBot({
       typingTimeoutRef.current = setTimeout(typeNextCharacter, ChatbotConfig.TYPEWRITER.SPEED_MS)
     } else {
       // Finished typing current buffer, check if more tokens arrived
-      console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Buffer exhausted, checking for more tokens...')
+      console.log('Buffer exhausted, checking for more tokens...')
       if (tokenBufferRef.current.length > 0) {
-        console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Clearing buffer and continuing')
+        console.log('Clearing buffer and continuing')
         tokenBufferRef.current = ''
         displayIndexRef.current = 0
         // Keep typing if there's more content
         typeNextCharacter()
       } else {
-        console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Typewriter finished - no more tokens')
+        console.log('Typewriter finished - no more tokens')
         isTypingRef.current = false
       }
     }
@@ -189,6 +212,7 @@ export function DeepChatBot({
       clearSessionId(userEmail)
       clearDemoModeShown()
       hasShownOllamaToast.current = false
+      sessionId.current = null
     }
   }, [token, userEmail])
 
@@ -211,6 +235,7 @@ export function DeepChatBot({
     isTypingRef.current = false
     displayIndexRef.current = 0
     streamingMessageIndexRef.current = null
+    messageUpdateRetryCountRef.current = 0
 
     if (pendingMessageUpdateFrameRef.current !== null) {
       cancelAnimationFrame(pendingMessageUpdateFrameRef.current)
@@ -218,6 +243,10 @@ export function DeepChatBot({
     }
     
     try {
+      if (!sessionId.current) {
+        sessionId.current = await createSession(token || '', userEmail)
+      }
+      const activeSessionId = sessionId.current
       if (deepChatRef.current) {
         deepChatRef.current.addMessage({
           role: 'user',
@@ -231,13 +260,8 @@ export function DeepChatBot({
         streamingMessageIndexRef.current = deepChatRef.current.getMessages().length - 1
       }
       
-      const messages: ChatMessage[] = [
-        {
-          role: 'system',
-          content: 'You are a helpful AI assistant for a Workforce Console application. You help users with employee management, project tracking, system navigation, and general questions. Be concise, friendly, and professional.',
-        },
-        { role: 'user', content: userMessage }
-      ]
+      const messages: ChatMessage[] = [{ role: 'user', content: userMessage }]
+      const idempotencyKey = crypto.randomUUID()
       
       accumulatedMessageRef.current = ''
       isStreamingRef.current = true
@@ -258,21 +282,22 @@ export function DeepChatBot({
         result = await streamChatbotAPI(
           messages,
           token || '',
-          sessionId.current,
+          activeSessionId,
+          idempotencyKey,
           (tokenContent) => {
-            console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Token received:', tokenContent, '| Buffer length:', tokenBufferRef.current.length)
+            console.log('Token received:', tokenContent, '| Buffer length:', tokenBufferRef.current.length)
             if (useTypewriter) {
               tokenBufferRef.current += tokenContent
-              console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Added to buffer, new length:', tokenBufferRef.current.length)
+              console.log('Added to buffer, new length:', tokenBufferRef.current.length)
               
               if (!isTypingRef.current) {
-                console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Starting typewriter')
+                console.log('Starting typewriter')
                 isTypingRef.current = true
                 typeNextCharacter()
               }
             } else {
               accumulatedMessageRef.current += tokenContent
-              console.log('=Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã‚Â´Ãƒâ€šÃ‚Â¥ Direct update, accumulated length:', accumulatedMessageRef.current.length)
+              console.log('Direct update, accumulated length:', accumulatedMessageRef.current.length)
               updateMessageDisplay()
             }
           },
@@ -295,7 +320,8 @@ export function DeepChatBot({
         result = await callChatbotAPI(
           messages,
           token || '',
-          sessionId.current
+          activeSessionId,
+          idempotencyKey,
         )
         
         if (result.success && result.message) {
@@ -409,15 +435,11 @@ export function DeepChatBot({
         })
       }
 
-      // Allow the final queued token update to render before invalidating the
-      // placeholder index. This matters when the full SSE response arrives in a
-      // single event before the browser has painted the assistant bubble.
-      if (pendingMessageUpdateFrameRef.current !== null) {
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      }
+      await waitForPendingMessageUpdate()
       
       accumulatedMessageRef.current = ''
       streamingMessageIndexRef.current = null
+      messageUpdateRetryCountRef.current = 0
       tokenBufferRef.current = ''
       isTypingRef.current = false
       displayIndexRef.current = 0
@@ -434,7 +456,7 @@ export function DeepChatBot({
       
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay])
+  }, [inputValue, isSending, token, userEmail, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, waitForPendingMessageUpdate, messageApi])
 
   // Cleanup typewriter timeout and abort streaming on component unmount
   useEffect(() => {
@@ -450,6 +472,7 @@ export function DeepChatBot({
       }
       tokenBufferRef.current = ''
       streamingMessageIndexRef.current = null
+      messageUpdateRetryCountRef.current = 0
       isTypingRef.current = false
       displayIndexRef.current = 0
 

@@ -11,3 +11,4 @@ frontend/.env
 frontend/environments/.env.*
 node_modules/
 *.egg-info/
+docs/nutrition_agent/*

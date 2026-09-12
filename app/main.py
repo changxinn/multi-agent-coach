@@ -4,7 +4,6 @@ FastAPI application entry point.
 Configures middleware, routes, and lifecycle events.
 """
 
-import asyncio
 import logging
 import string
 import uuid
@@ -25,7 +24,6 @@ from app.api.routes import auth, chat, nutrition, session
 from app.config import get_settings
 from app.db.database import close_db, engine, init_db
 from app.services.nutrition_agent_client import nutrition_agent_client
-from app.services.session_manager import session_manager
 
 # Configure logging
 logging.basicConfig(
@@ -50,8 +48,6 @@ async def lifespan(app: FastAPI):
     # Initialize database
     await init_db()
 
-    # Start session cleanup task
-    cleanup_task = await session_manager.start_cleanup_task(interval_hours=1)
     await nutrition_agent_client.start()
 
     logger.info("Application started successfully")
@@ -60,13 +56,6 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down application...")
-
-    # Cancel cleanup task
-    cleanup_task.cancel()
-    try:
-        await cleanup_task
-    except asyncio.CancelledError:
-        pass
 
     # Close database connections
     await nutrition_agent_client.close()

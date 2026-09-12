@@ -84,6 +84,12 @@ def _nutrition_profile_required_response(volley_left: int) -> dict[str, Any]:
     }
 
 
+def _nutrition_service_unavailable_response(volley_left: int) -> dict[str, Any]:
+    """Never replace a failed Nutrition safety policy with generic LLM output."""
+    message = "The nutrition service is temporarily unavailable, so I can’t safely provide personalized nutrition guidance right now. Please try again shortly."
+    return {"messages": [{"role": "assistant", "name": "Sam (Nutrition Advisor)", "content": f"Sam (Nutrition Advisor): {message}", "metadata": {"nutrition_status": "unavailable", "nutrition_service_unavailable": True}}], "volley_msg_left": max(0, volley_left - 1)}
+
+
 def build_api_graph():
     """
     Build LangGraph for API usage.
@@ -325,6 +331,8 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
                     user_id=user_id,
                     message=latest_user_message,
                     profile=nutrition_profile,
+                    chat_context=state.get("chat_context"),
+                    nutrition_follow_up=state.get("nutrition_follow_up"),
                 )
                 message_text = response["message"]
                 is_meal_recommendation = bool(response.get("meal_recommendations"))
@@ -360,8 +368,8 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
             if _is_missing_nutrition_profile(error):
                 logger.info("Nutrition profile is required before chat evaluation")
                 return _nutrition_profile_required_response(volley_left)
-            # The existing in-process agent is a deliberate development fallback.
-            logger.exception("Nutrition Agent service failed; using local nutrition fallback")
+            logger.exception("Nutrition Agent service failed; returning deterministic safe fallback")
+            return _nutrition_service_unavailable_response(volley_left)
 
     result = specialist(next_agent, state)
 

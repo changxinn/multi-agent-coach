@@ -6,9 +6,9 @@ Integrates LangGraph workflow with FastAPI.
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from typing import Any, Dict, List
+from typing import Any
 
-from app.services.session_manager import Session, session_manager
+from app.services.session_manager import Session
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,9 @@ class AgentOrchestrator:
         return self.streaming_graph
 
     @staticmethod
-    def _initial_state(session: Session, user_message: str) -> dict[str, Any]:
+    def _initial_state(
+        session: Any, user_message: str, chat_context: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
         """Build the common input state for synchronous and streaming graph runs."""
         user_profile = {
             "user_id": session.user_id,
@@ -55,14 +57,18 @@ class AgentOrchestrator:
             "goal": session.profile.get("fitness_goal", "general fitness"),
             "fitness_level": session.profile.get("fitness_level", "beginner"),
         }
-        return {
-            "messages": session.messages + [
-                {"role": "user", "content": f"You: {user_message}"}
-            ],
+        messages = list(session.messages)
+        if not messages or messages[-1].get("role") != "user" or messages[-1].get("content") != user_message:
+            messages.append({"role": "user", "content": f"You: {user_message}"})
+        state = {
+            "messages": messages,
             "volley_msg_left": 1,
             "next_agent": None,
             "user_profile": user_profile,
         }
+        if chat_context is not None:
+            state["chat_context"] = chat_context
+        return state
 
     async def process_message(
         self,
@@ -82,6 +88,7 @@ class AgentOrchestrator:
         session: Session,
         user_message: str,
         request_summary: bool = False,
+        chat_context: dict[str, Any] | None = None,
     ) -> tuple[str, dict[str, Any] | None]:
         """
         Process user message through multi-agent system.
@@ -106,7 +113,7 @@ class AgentOrchestrator:
             # Get graph
             graph = await self._get_graph()
 
-            initial_state = self._initial_state(session, user_message)
+            initial_state = self._initial_state(session, user_message, chat_context)
             input_message_count = len(initial_state["messages"])
 
             # Invoke graph through its async API because the API workflow
@@ -137,20 +144,6 @@ class AgentOrchestrator:
                 summary = await self._generate_summary(session, user_message)
                 response_text = f"{response_text}\n\n---\n\n**Session Summary:**\n{summary}"
 
-            # Update session with new messages
-            new_messages = [
-                {"role": "user", "content": user_message},
-            ] + assistant_messages
-
-            await session_manager.update_session(
-                session_id=session.session_id,
-                user_id=session.user_id,
-                messages=new_messages,
-                agent_state={
-                    "volley_msg_left": result.get("volley_msg_left", 0),
-                },
-            )
-
             logger.info(
                 "Message processed successfully. Response length: %d chars",
                 len(response_text),
@@ -158,11 +151,13 @@ class AgentOrchestrator:
 
             return response_text, response_metadata
 
-        except Exception as e:
-            logger.error("Error processing message: %s", e, exc_info=True)
+        except Exception:
+            logger.exception("Error processing message")
             return (
-                "I apologize, but I encountered an error processing your request. "
-                "Please try again.",
+                (
+                    "I apologize, but I encountered an error processing your request. "
+                    "Please try again."
+                ),
                 None,
             )
 
@@ -170,6 +165,7 @@ class AgentOrchestrator:
         self,
         session: Session,
         user_message: str,
+        chat_context: dict[str, Any] | None = None,
     ) -> AsyncIterator[dict[str, Any]]:
         """Yield real model text chunks and a final metadata event for one chat turn.
 
@@ -178,8 +174,9 @@ class AgentOrchestrator:
         ReAct tool instructions from reaching API clients.
         """
         graph = await self._get_streaming_graph()
-        initial_state = self._initial_state(session, user_message)
+        initial_state = self._initial_state(session, user_message, chat_context)
         final_state: dict[str, Any] | None = None
+        emitted_visible_token = False
 
         async for mode, payload in graph.astream(
             initial_state,
@@ -190,6 +187,7 @@ class AgentOrchestrator:
                 if isinstance(payload, dict) and payload.get("type") == "token":
                     token = payload.get("token")
                     if isinstance(token, str) and token:
+                        emitted_visible_token = True
                         yield {"type": "token", "token": token}
             elif mode == "values" and isinstance(payload, dict):
                 final_state = payload
@@ -200,6 +198,18 @@ class AgentOrchestrator:
         input_message_count = len(initial_state["messages"])
         new_messages = final_state.get("messages", [])[input_message_count:]
         response_text = self._aggregate_responses(new_messages)
+        if not emitted_visible_token:
+            direct_messages = [
+                message
+                for message in new_messages
+                if isinstance(message, dict)
+                and message.get("role") == "assistant"
+                and message.get("name") == "Head Coach"
+            ]
+            if direct_messages:
+                content = direct_messages[-1].get("content", "")
+                if isinstance(content, str) and content:
+                    yield {"type": "token", "token": content.removeprefix("Head Coach: ")}
         metadata = next(
             (
                 message.get("metadata")
@@ -209,21 +219,9 @@ class AgentOrchestrator:
             None,
         )
 
-        await session_manager.update_session(
-            session_id=session.session_id,
-            user_id=session.user_id,
-            messages=[
-                {"role": "user", "content": user_message},
-                *new_messages,
-            ],
-            agent_state={
-                "last_agent": final_state.get("next_agent"),
-                "volley_remaining": final_state.get("volley_msg_left", 0),
-            },
-        )
         yield {"type": "complete", "text": response_text, "metadata": metadata}
 
-    def _aggregate_responses(self, messages: List[Dict[str, Any]]) -> str:
+    def _aggregate_responses(self, messages: list[dict[str, Any]]) -> str:
         """
         Combine multiple agent messages into single response.
 
@@ -237,7 +235,7 @@ class AgentOrchestrator:
             return ""
 
         # Group by agent name
-        by_agent: Dict[str, List[str]] = {}
+        by_agent: dict[str, list[str]] = {}
         for msg in messages:
             agent_name = msg.get("name", "Coach")
             content = msg.get("content", "").strip()

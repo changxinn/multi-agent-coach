@@ -72,6 +72,23 @@ def test_database_url() -> str:
     return test_url
 
 
+def chat_history_test_database_url() -> str:
+    """Return the dedicated disposable chat-history integration-test URL."""
+    import os
+
+    test_url = os.environ.get("CHAT_HISTORY_TEST_DATABASE_URL")
+    if not test_url:
+        raise RuntimeError("CHAT_HISTORY_TEST_DATABASE_URL must be configured for database tests")
+    configured_url = os.environ.get("DATABASE_URL")
+    if configured_url and test_url == configured_url:
+        raise RuntimeError("CHAT_HISTORY_TEST_DATABASE_URL must not equal DATABASE_URL")
+    if make_url(test_url).database != "chat_history_test":
+        raise RuntimeError(
+            "CHAT_HISTORY_TEST_DATABASE_URL must target database chat_history_test"
+        )
+    return test_url
+
+
 def _discover_migrations() -> list[Migration]:
     migrations: list[Migration] = []
     versions: set[str] = set()
@@ -193,29 +210,42 @@ def _validate_ledger(
 
 
 def _migration_statements(script: str) -> list[str]:
-    """Split migration SQL on unquoted semicolons for asyncpg prepared statements."""
+    """Split migration SQL on semicolons outside quotes, comments, and dollar blocks."""
     statements: list[str] = []
     start = 0
     quote: str | None = None
+    dollar_quote: str | None = None
     in_line_comment = False
-    for index, character in enumerate(script):
+    index = 0
+    while index < len(script):
+        character = script[index]
         previous = script[index - 1] if index else ""
         following = script[index + 1] if index + 1 < len(script) else ""
         if in_line_comment:
             if character == "\n":
                 in_line_comment = False
-            continue
-        if quote:
+        elif dollar_quote and script.startswith(dollar_quote, index):
+            index += len(dollar_quote) - 1
+            dollar_quote = None
+        elif dollar_quote:
+            pass
+        elif quote:
             if character == quote and previous != "\\":
                 quote = None
         elif character == "-" and following == "-":
             in_line_comment = True
         elif character in {"'", '"'}:
             quote = character
+        elif character == "$":
+            match = re.match(r"\$[A-Za-z_][A-Za-z0-9_]*\$|\$\$", script[index:])
+            if match:
+                dollar_quote = match.group(0)
+                index += len(dollar_quote) - 1
         elif character == ";":
             if statement := script[start:index].strip():
                 statements.append(statement)
             start = index + 1
+        index += 1
     if quote:
         raise RuntimeError("Migration contains an unterminated SQL quote")
     if statement := script[start:].strip():
@@ -334,6 +364,9 @@ async def _validate_connection(
             "food_cache",
             "food_search_suppressions",
             "nutrition_targets",
+            "chat_sessions",
+            "chat_messages",
+            "chat_turns",
         )
         missing_tables = [
             table for table in required_tables if not await _table_exists(connection, table)
@@ -344,6 +377,23 @@ async def _validate_connection(
                 checks,
                 f"Required application tables are absent: {', '.join(missing_tables)}",
             )
+        required_columns = {
+            "chat_sessions": {"session_id", "user_id", "history_start_sequence", "next_sequence", "summary", "summary_through_sequence", "deleted_at"},
+            "chat_messages": {"session_id", "sequence", "role", "agent_name", "content", "metadata"},
+            "chat_turns": {"session_id", "idempotency_key", "request_fingerprint", "status", "response_text", "response_metadata"},
+        }
+        for table, columns in required_columns.items():
+            result = await connection.execute(text("SELECT column_name FROM information_schema.columns WHERE table_schema = 'systemdb' AND table_name = :table"), {"table": table})
+            missing = columns - set(result.scalars())
+            if missing:
+                return MigrationValidationResult(False, checks, f"Required columns are absent from {table}: {sorted(missing)}")
+        required_indexes = {"idx_chat_sessions_user_active_updated", "idx_chat_messages_session_sequence", "idx_chat_turns_session_status"}
+        result = await connection.execute(text("SELECT indexname FROM pg_indexes WHERE schemaname = 'systemdb' AND tablename IN ('chat_sessions', 'chat_messages', 'chat_turns')"))
+        if missing := required_indexes - set(result.scalars()):
+            return MigrationValidationResult(False, checks, f"Required chat indexes are absent: {sorted(missing)}")
+        result = await connection.execute(text("SELECT conname FROM pg_constraint WHERE connamespace = 'systemdb'::regnamespace AND conrelid = 'systemdb.chat_messages'::regclass"))
+        if "chat_messages_session_id_sequence_key" not in set(result.scalars()):
+            return MigrationValidationResult(False, checks, "Chat message sequence uniqueness constraint is absent")
         checks["schema"] = "ok"
         return MigrationValidationResult(True, checks)
     except Exception as error:

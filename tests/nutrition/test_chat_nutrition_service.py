@@ -67,6 +67,52 @@ async def test_chat_uses_service_with_valid_user_and_preserves_escalation(
 
 
 @pytest.mark.asyncio
+async def test_chat_forwards_chronological_context_to_nutrition_service(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    async def get_profile(_: int) -> dict[str, object]:
+        return {"timezone": "America/New_York"}
+
+    async def evaluate(*, user_id: int, message: str, **kwargs: object) -> dict[str, object]:
+        assert user_id == 42
+        captured["message"] = message
+        captured["chat_context"] = kwargs.get("chat_context")
+        captured["nutrition_follow_up"] = kwargs.get("nutrition_follow_up")
+        return {"message": "Lunch option.", "status": "green", "meal_recommendations": []}
+
+    state = _state({"user_id": 42})
+    state["messages"] = [{"role": "user", "content": "You: What about lunch?"}]
+    state["chat_context"] = {
+        "version": "chat-history-v1",
+        "summary": None,
+        "messages": [
+            {"role": "user", "content": "Give me a high-protein dinner under 520 calories."},
+            {"role": "assistant", "content": "Dinner option."},
+            {"role": "user", "content": "What about lunch?"},
+        ],
+    }
+    state["nutrition_follow_up"] = {
+        "nutrition_follow_up": "revise_recent_meal",
+        "activity_type": "endurance",
+    }
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("local fallback"))
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", get_profile)
+    monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", evaluate)
+    monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
+    monkeypatch.setattr("app.config.get_settings", lambda: type("Settings", (), {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100})())
+
+    await agent_service.specialist_node_api(state)
+
+    assert captured == {
+        "message": "What about lunch?",
+        "chat_context": state["chat_context"],
+        "nutrition_follow_up": state["nutrition_follow_up"],
+    }
+
+
+@pytest.mark.asyncio
 async def test_chat_missing_user_id_uses_local_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
     fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
 
@@ -134,25 +180,24 @@ async def test_chat_meal_response_uses_target_context_without_adherence_status(
 
 
 @pytest.mark.asyncio
-async def test_chat_invalid_nutrition_profile_uses_local_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
+async def test_chat_invalid_nutrition_profile_uses_safe_unavailable_response(monkeypatch: pytest.MonkeyPatch) -> None:
 
     async def get_profile(_: int) -> object:
         return {"dietary_preference": "unverified"}
 
-    monkeypatch.setattr(specialist_module, "specialist", lambda *_: fallback)
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("unsafe local fallback"))
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", get_profile)
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", lambda *_: pytest.fail("evaluation"))
     monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
     monkeypatch.setattr("app.config.get_settings", lambda: type("Settings", (), {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100})())
 
-    assert (await agent_service.specialist_node_api(_state({"user_id": 42})))["messages"] == fallback["messages"]
+    result = await agent_service.specialist_node_api(_state({"user_id": 42}))
+    assert result["messages"][0]["metadata"]["nutrition_service_unavailable"] is True
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure_stage", ["profile", "evaluate"])
-async def test_chat_nutrition_dependency_failure_uses_local_fallback(monkeypatch: pytest.MonkeyPatch, failure_stage: str) -> None:
-    fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
+async def test_chat_nutrition_dependency_failure_uses_safe_unavailable_response(monkeypatch: pytest.MonkeyPatch, failure_stage: str) -> None:
 
     async def profile(_: int) -> dict[str, object]:
         if failure_stage == "profile":
@@ -162,20 +207,20 @@ async def test_chat_nutrition_dependency_failure_uses_local_fallback(monkeypatch
     async def unavailable(*_: object, **__: object) -> object:
         raise NutritionAgentError(503)
 
-    monkeypatch.setattr(specialist_module, "specialist", lambda *_: fallback)
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("unsafe local fallback"))
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", profile)
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", unavailable)
     monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
     monkeypatch.setattr("app.config.get_settings", lambda: type("Settings", (), {"USE_NUTRITION_AGENT_SERVICE": True, "NUTRITION_AGENT_ROLLOUT_PERCENT": 100})())
 
-    assert (await agent_service.specialist_node_api(_state({"user_id": 42})))["messages"] == fallback["messages"]
+    result = await agent_service.specialist_node_api(_state({"user_id": 42}))
+    assert result["messages"][0]["metadata"]["nutrition_service_unavailable"] is True
 
 
 @pytest.mark.asyncio
-async def test_chat_nutrition_read_timeout_uses_local_fallback(
+async def test_chat_nutrition_read_timeout_uses_safe_unavailable_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fallback = {"messages": [{"role": "assistant", "content": "Local response"}]}
 
     async def profile(_: int) -> dict[str, object]:
         return {
@@ -197,7 +242,7 @@ async def test_chat_nutrition_read_timeout_uses_local_fallback(
         except httpx.HTTPError as error:
             raise NutritionAgentError() from error
 
-    monkeypatch.setattr(specialist_module, "specialist", lambda *_: fallback)
+    monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("unsafe local fallback"))
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", profile)
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.evaluate", timed_out)
     monkeypatch.setattr("app.services.nutrition_rollout.is_nutrition_agent_enabled_for_user", lambda *_: True)
@@ -212,5 +257,5 @@ async def test_chat_nutrition_read_timeout_uses_local_fallback(
 
     result = await agent_service.specialist_node_api(_state({"user_id": 42}))
 
-    assert result["messages"] == fallback["messages"]
+    assert result["messages"][0]["metadata"]["nutrition_service_unavailable"] is True
     assert result["volley_msg_left"] == 1

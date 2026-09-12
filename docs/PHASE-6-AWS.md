@@ -366,8 +366,7 @@ JWT_SECRET_KEY=your-super-secret-key-min-32-chars
 JWT_ALGORITHM=HS256
 JWT_EXPIRY_HOURS=24
 
-# Session
-SESSION_EXPIRY_HOURS=24
+# Redis is optional for derived caches only. PostgreSQL remains canonical for chat history.
 REDIS_URL=redis://multi-agent-coach-redis.xxxx.ng.0001.use1.cache.amazonaws.com:6379
 
 # LLM

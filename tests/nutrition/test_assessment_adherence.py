@@ -138,6 +138,157 @@ def test_assessment_returns_dinner_for_conversational_meal_option_requests(messa
     assert "Log meals consistently" not in assessment.message
 
 
+def test_assessment_returns_lunch_for_literal_lunch_follow_up() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(message="What about lunch?"),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert len(assessment.meal_recommendations) == 1
+    assert assessment.meal_recommendations[0].meal_type == "lunch"
+    assert "Log meals consistently" not in assessment.message
+
+
+def test_assessment_returns_lunch_for_contextual_follow_up_and_inherits_user_constraints() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="What about lunch?",
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Give me a high-protein dinner under 520 calories after cardio.",
+                    },
+                    {
+                        "role": "assistant",
+                        "content": "Dinner recommendation text is not a trusted constraint source.",
+                    },
+                    {"role": "user", "content": "What about lunch?"},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert len(assessment.meal_recommendations) == 1
+    lunch = assessment.meal_recommendations[0]
+    assert lunch.meal_type == "lunch"
+    assert lunch.calories <= 520
+    assert lunch.protein_g >= 30
+    assert lunch.satisfies == ["protein"]
+    assert "Log meals consistently" not in assessment.message
+
+
+def test_assessment_revises_recent_dinner_for_validated_strength_follow_up() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="I also did strength training earlier.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "resistance",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a dinner option."},
+                    {"role": "assistant", "content": "Lean beef with sweet potato."},
+                    {"role": "user", "content": "I also did strength training earlier."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    dinner = assessment.meal_recommendations[0]
+    assert dinner.meal_type == "dinner"
+    assert dinner.protein_g >= 30
+    assert dinner.carbs_g >= 30
+    assert dinner.satisfies == ["protein", "carbohydrates"]
+    assert assessment.message.startswith("- After your resistance activity, revise your dinner to")
+
+
+def test_assessment_revises_recent_dinner_for_validated_cardio_follow_up() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="I went for a run after work.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "endurance",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a dinner option."},
+                    {"role": "assistant", "content": "Lean beef with sweet potato."},
+                    {"role": "user", "content": "I went for a run after work."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert assessment.meal_recommendations[0].meal_type == "dinner"
+    assert assessment.message.startswith("- After your endurance activity, revise your dinner to")
+
+
+def test_assessment_revises_recent_lunch_for_validated_cardio_follow_up() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="I did cardio earlier.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "endurance",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a lunch option."},
+                    {"role": "assistant", "content": "Grilled chicken salad with quinoa."},
+                    {"role": "user", "content": "I did cardio earlier."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    lunch = assessment.meal_recommendations[0]
+    assert lunch.meal_type == "lunch"
+    assert lunch.protein_g >= 30
+    assert lunch.carbs_g >= 30
+    assert lunch.satisfies == ["protein", "carbohydrates"]
+    assert assessment.message.startswith("- After your endurance activity, revise your lunch to")
+
+
+def test_assessment_does_not_revise_activity_text_without_validated_intent() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="I went for a run after work.",
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a dinner option."},
+                    {"role": "user", "content": "I went for a run after work."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert assessment.meal_recommendations == []
+
+
 def test_assessment_returns_fiber_aware_balanced_dinner_instead_of_highest_protein_dinner() -> None:
     assessment = assess_nutrition(
         NutritionEvaluateRequest(message="Give me a balanced dinner with carbs, protein, and fiber."),

@@ -1,10 +1,9 @@
-import CryptoJS from 'crypto-js'
 import ChatbotConfig, { ChatbotConfig as ChatbotSettings } from './chatbot-config'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api'
 
 export interface ChatMessage {
-  role: 'system' | 'user' | 'assistant'
+  role: 'user'
   content: string
 }
 
@@ -94,29 +93,14 @@ export function clearDemoModeShown(): void {
   sessionStorage.removeItem(DEMO_MODE_SHOWN_KEY)
 }
 
-// Session ID generation with hash
-export function generateSessionId(userEmail: string): string {
-  const timestamp = Date.now()
-  const raw = `${userEmail}_${timestamp}`
-  const hash = CryptoJS.SHA256(raw).toString(CryptoJS.enc.Hex)
-  return `chat_${hash.substring(0, 16)}`
-}
-
 export function isValidSessionId(sessionId: string): boolean {
-  return /^chat_[a-f0-9]{16}$/.test(sessionId)
+  return /^chat_[a-f0-9]{32}$/.test(sessionId)
 }
 
-export function getSessionId(userEmail: string): string {
+export function getSessionId(userEmail: string): string | null {
   const sessionKey = `chat_session_${userEmail}`
   const stored = localStorage.getItem(sessionKey)
-  
-  if (stored && isValidSessionId(stored)) {
-    return stored
-  }
-  
-  const newId = generateSessionId(userEmail)
-  localStorage.setItem(sessionKey, newId)
-  return newId
+  return stored && isValidSessionId(stored) ? stored : null
 }
 
 export function setSessionId(id: string): void {
@@ -127,10 +111,20 @@ export function clearSessionId(userEmail: string): void {
   localStorage.removeItem(`chat_session_${userEmail}`)
 }
 
+export async function createSession(token: string, userEmail: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+  if (!response.ok) throw new Error('Unable to create a chat session.')
+  const data: { session_id: string } = await response.json()
+  if (!isValidSessionId(data.session_id)) throw new Error('The server returned an invalid chat session.')
+  localStorage.setItem(`chat_session_${userEmail}`, data.session_id)
+  return data.session_id
+}
+
 export async function callChatbotAPI(
   messages: ChatMessage[],
   token: string,
   sessionId: string,
+  idempotencyKey: string,
   config: any = defaultConfig
 ): Promise<ApiResult> {
   const backendUrl = config.backendUrl || API_BASE_URL
@@ -149,6 +143,7 @@ export async function callChatbotAPI(
       headers: { 
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
+        'Idempotency-Key': idempotencyKey,
       },
       body: JSON.stringify({
         messages: messages,
@@ -190,7 +185,7 @@ export async function callChatbotAPI(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Failed to get response'
-    console.error('Ã¢ÂÅ’ Backend error:', errorMessage)
+    console.error('Backend error:', errorMessage)
     
     if (config.enableDemoResponse) {
       const lastUserMessage = messages.filter(m => m.role === 'user').pop()?.content || ''
@@ -207,7 +202,7 @@ export async function callChatbotAPI(
         error: `Backend unavailable (using demo mode): ${errorMessage}`,
       }
     } else {
-      console.error('Ã¢ÂÅ’ Demo mode disabled - returning error to user')
+      console.error('Demo mode disabled - returning error to user')
       return {
         success: false,
         error: `Unable to connect to backend: ${errorMessage}. Please ensure the backend server is running at ${backendUrl}`,
@@ -282,6 +277,7 @@ export async function streamChatbotAPI(
   messages: ChatMessage[],
   token: string,
   sessionId: string,
+  idempotencyKey: string,
   onToken: (token: string) => void,
   configOrAbortController: InternalChatbotConfig | AbortController = defaultConfig,
   config: InternalChatbotConfig = defaultConfig
@@ -293,7 +289,7 @@ export async function streamChatbotAPI(
     ? configOrAbortController 
     : new AbortController()
   
-  console.log('Ã°Å¸â€œÂ¡ Attempting to connect to backend:', {
+  console.log(' Attempting to connect to backend:', {
     url: backendUrl,
     hasToken: !!token,
     tokenLength: token?.length,
@@ -304,7 +300,7 @@ export async function streamChatbotAPI(
   try {
     const message = messages.filter(m => m.role === 'user').pop()?.content || ''
     
-    console.log('Ã°Å¸â€œÂ¡ Fetching stream endpoint:', `${backendUrl}/chat/stream?message=${encodeURIComponent(message.substring(0, 50))}...&session_id=${sessionId}`)
+    console.log(' Fetching stream endpoint:', `${backendUrl}/chat/stream?message=${encodeURIComponent(message.substring(0, 50))}...&session_id=${sessionId}`)
     
     const response = await fetch(
       `${backendUrl}/chat/stream?message=${encodeURIComponent(message)}&session_id=${sessionId}`,
@@ -312,23 +308,24 @@ export async function streamChatbotAPI(
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Idempotency-Key': idempotencyKey,
         },
         signal: abortController.signal
       }
     )
     
-    console.log('Ã°Å¸â€œÂ¡ Response status:', response.status, response.ok ? 'Ã¢Å“â€¦' : 'Ã¢ÂÅ’')
+    console.log(' Response status:', response.status, response.ok)
     
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('Ã¢ÂÅ’ Error response body:', errorText)
+      console.error('Error response body:', errorText)
       throw new Error(`Server error: ${response.status} - ${errorText}`)
     }
     
     let reader;
     if (response && response.body) {
       reader = response.body.getReader()
-      console.log('Ã°Å¸â€œÂ¡ Stream reader initialized')
+      console.log(' Stream reader initialized')
     }
     const decoder = new TextDecoder()
     
@@ -339,7 +336,7 @@ export async function streamChatbotAPI(
       while (true && reader) {
         const { done, value } = await reader.read()
         if (done) {
-          console.log('Ã°Å¸â€œÂ¡ Stream completed, total tokens:', tokenCount)
+          console.log(' Stream completed, total tokens:', tokenCount)
           break
         }
         
@@ -364,14 +361,14 @@ export async function streamChatbotAPI(
                 if (data.token !== undefined) {
                   tokenCount++
                   if (tokenCount <= 5 || tokenCount % 50 === 0) {
-                    console.log(`Ã°Å¸â€œÂ¡ Token ${tokenCount}:`, data.token.substring(0, 20))
+                    console.log(` Token ${tokenCount}:`, data.token.substring(0, 20))
                   }
                   onToken(data.token)
                 }
                 
                 // Check for completion or error
                 if (data.is_complete === true) {
-                  console.log('Ã°Å¸â€œÂ¡ Stream marked as complete')
+                  console.log(' Stream marked as complete')
                   return { success: true, isOllamaResponse: true, metadata: data.metadata }
                 }
                 

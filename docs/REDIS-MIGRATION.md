@@ -95,7 +95,7 @@ class RedisSessionStore:
     def __init__(self, redis_url: Optional[str] = None):
         self.redis_url = redis_url or settings.REDIS_URL
         self.client: Optional[redis.Redis] = None
-        self.default_ttl = settings.SESSION_EXPIRY_HOURS * 3600  # Convert to seconds
+        # Derived cache entries may use a separate explicit TTL; never expire or own transcripts.
 
     async def connect(self) -> None:
         """Initialize Redis connection."""

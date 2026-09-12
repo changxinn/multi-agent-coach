@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 
 from .schemas import (
@@ -10,6 +10,7 @@ from .schemas import (
     MealRecommendation,
     NutritionEvaluateRequest,
     NutritionEvaluateResponse,
+    NutritionFollowUpIntent,
     SafetyContext,
     SafetyFinding,
     TargetInputs,
@@ -61,8 +62,6 @@ _NUTRIENT_ALIASES = {
     "fiber": ("fiber", "fibre"),
     "fat": ("fat", "fats"),
 }
-
-
 def _gram_bound(message: str, nutrient: str, direction: str) -> int | None:
     aliases = "|".join(re.escape(alias) for alias in _NUTRIENT_ALIASES[nutrient])
     if direction == "minimum":
@@ -102,7 +101,13 @@ def _meal_requirements(message: str) -> MealRequirements | None:
     requested = tuple(
         nutrient for nutrient, aliases in _NUTRIENT_ALIASES.items() if _has(message, *aliases)
     )
-    if not requested and not balanced_intent and not high_protein_intent and not meal_option_intent:
+    if (
+        named_meal_type is None
+        and not requested
+        and not balanced_intent
+        and not high_protein_intent
+        and not meal_option_intent
+    ):
         return None
 
     # A balanced meal uses documented baseline thresholds for all four macros.
@@ -175,12 +180,20 @@ def escalation_for(findings: list[SafetyFinding]) -> Escalation | None:
 
 
 def _meal_recommendation_request(
-    message: str, profile: dict
+    message: str,
+    profile: dict,
+    chat_context: object = None,
+    nutrition_follow_up: NutritionFollowUpIntent | None = None,
 ) -> tuple[list[str], list[MealRecommendation]] | None:
     """Select trusted meal options and legacy display strings from parsed constraints."""
     requirements = _meal_requirements(message)
+    recovery_revision = False
+    if requirements is None:
+        requirements = _recovery_follow_up_requirements(chat_context, nutrition_follow_up)
+        recovery_revision = requirements is not None
     if requirements is None:
         return None
+    requirements = _inherit_contextual_constraints(requirements, chat_context)
     constraint_description = ", ".join(requirements.requested_nutrients) or "requested"
     recommendations: list[str] = []
     meal_recommendations: list[MealRecommendation] = []
@@ -215,7 +228,105 @@ def _meal_recommendation_request(
         )
         meal_recommendations.append(meal_recommendation)
         recommendations.append(_format_meal_recommendation(meal_recommendation))
+    if recovery_revision and meal_recommendations:
+        recommendations[0] = (
+            f"After your {nutrition_follow_up.activity_type} activity, revise your "
+            f"{meal_recommendations[0].meal_type} to "
+            f"{recommendations[0]}"
+        )
     return recommendations, meal_recommendations
+
+
+def _recovery_follow_up_requirements(
+    chat_context: object, nutrition_follow_up: NutritionFollowUpIntent | None
+) -> MealRequirements | None:
+    """Revise a trusted immediate meal request only for validated follow-up intent."""
+    if nutrition_follow_up is None:
+        return None
+    context = chat_context.model_dump() if hasattr(chat_context, "model_dump") else chat_context
+    if not isinstance(context, dict) or not isinstance(context.get("messages"), list):
+        return None
+    user_messages = [
+        item.get("content")
+        for item in context["messages"]
+        if isinstance(item, dict) and item.get("role") == "user" and isinstance(item.get("content"), str)
+    ]
+    if len(user_messages) < 2:
+        return None
+    prior = _meal_requirements(user_messages[-2])
+    if prior is None or len(prior.meal_types) != 1:
+        return None
+    return MealRequirements(
+        meal_types=prior.meal_types,
+        max_calories=prior.max_calories,
+        min_protein_g=max(prior.min_protein_g, 30),
+        min_carbs_g=max(prior.min_carbs_g, 30),
+        min_fiber_g=prior.min_fiber_g,
+        min_fat_g=prior.min_fat_g,
+        max_fat_g=prior.max_fat_g,
+        requested_nutrients=tuple(dict.fromkeys((*prior.requested_nutrients, "protein", "carbohydrates"))),
+        prioritize_fiber=prior.prioritize_fiber,
+    )
+
+
+def _inherit_contextual_constraints(
+    requirements: MealRequirements, chat_context: object
+) -> MealRequirements:
+    """Apply the newest prior user meal constraints to an otherwise bare meal follow-up.
+
+    Context is assembled by the main API, but only prior user turns may supply
+    deterministic constraints. The explicitly requested current meal type always wins.
+    """
+    if (
+        len(requirements.meal_types) != 1
+        or requirements.max_calories is not None
+        or requirements.min_protein_g
+        or requirements.min_carbs_g
+        or requirements.min_fiber_g
+        or requirements.min_fat_g
+        or requirements.max_fat_g is not None
+        or requirements.requested_nutrients
+        or requirements.prioritize_fiber
+    ):
+        return requirements
+
+    context = (
+        chat_context.model_dump()
+        if hasattr(chat_context, "model_dump")
+        else chat_context
+    )
+    if not isinstance(context, dict):
+        return requirements
+    messages = context.get("messages")
+    if not isinstance(messages, list):
+        return requirements
+    for item in reversed(messages[:-1]):
+        if not isinstance(item, dict) or item.get("role") != "user":
+            continue
+        content = item.get("content")
+        if not isinstance(content, str):
+            continue
+        prior = _meal_requirements(content)
+        if prior is None:
+            continue
+        if (
+            prior.max_calories is not None
+            or prior.min_protein_g
+            or prior.min_carbs_g
+            or prior.min_fiber_g
+            or prior.min_fat_g
+            or prior.max_fat_g is not None
+            or prior.requested_nutrients
+            or prior.prioritize_fiber
+        ):
+            return replace(requirements, **{
+                field: getattr(prior, field)
+                for field in (
+                    "max_calories", "min_protein_g", "min_carbs_g", "min_fiber_g",
+                    "min_fat_g", "max_fat_g", "requested_nutrients", "prioritize_fiber",
+                )
+            })
+    return requirements
 
 
 def assess_nutrition(request: NutritionEvaluateRequest, history: NutritionHistory, profile: dict) -> NutritionEvaluateResponse:
@@ -223,7 +334,9 @@ def assess_nutrition(request: NutritionEvaluateRequest, history: NutritionHistor
     escalation = escalation_for(findings)
     if escalation:
         return NutritionEvaluateResponse(status="escalate", score=10, message=f"{escalation.message}\n\n*{DISCLAIMER}*", recommendations=["Seek qualified healthcare support."], safety_findings=findings, escalation=escalation, created_at=datetime.now(UTC))
-    meal_request = _meal_recommendation_request(request.message, profile)
+    meal_request = _meal_recommendation_request(
+        request.message, profile, request.chat_context, request.nutrition_follow_up
+    )
     score = 0 if history.meal_logs_last_7_days >= 7 else 1
     if history.adherence_percentage is not None and history.adherence_percentage < 70:
         score += 1

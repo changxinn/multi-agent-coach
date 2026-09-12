@@ -2,19 +2,21 @@
 SQLAlchemy ORM models for database tables.
 """
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    Numeric,
+    JSON,
+    BigInteger,
     Boolean,
+    Column,
     DateTime,
     ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Uuid,
     text,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -28,7 +30,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__ = ({"schema": "systemdb"},)
 
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -58,7 +60,7 @@ class UserFitnessProfile(Base):
     """
 
     __tablename__ = "user_fitness_profiles"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__ = ({"schema": "systemdb"},)
 
     user_id = Column(
         Integer,
@@ -84,3 +86,55 @@ class UserFitnessProfile(Base):
 
     def __repr__(self):
         return f"<UserFitnessProfile(user_id={self.user_id}, goal={self.fitness_goal})>"
+
+
+class ChatSession(Base):
+    """Durable, user-owned chat session lifecycle and summary state."""
+
+    __tablename__ = "chat_sessions"
+    __table_args__ = ({"schema": "systemdb"},)
+
+    id = Column(BigInteger, primary_key=True)
+    session_id = Column(String(37), unique=True, nullable=False)
+    user_id = Column(BigInteger, ForeignKey("systemdb.users.id", ondelete="CASCADE"), nullable=False)
+    history_start_sequence = Column(BigInteger, nullable=False, default=0)
+    next_sequence = Column(BigInteger, nullable=False, default=1)
+    summary = Column(String, nullable=True)
+    summary_through_sequence = Column(BigInteger, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+
+class ChatMessageRecord(Base):
+    """Append-only durable chat message record."""
+
+    __tablename__ = "chat_messages"
+    __table_args__ = ({"schema": "systemdb"},)
+
+    id = Column(BigInteger, primary_key=True)
+    session_id = Column(BigInteger, ForeignKey("systemdb.chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    sequence = Column(BigInteger, nullable=False)
+    role = Column(String(16), nullable=False)
+    agent_name = Column(String(100), nullable=True)
+    content = Column(String, nullable=False)
+    message_metadata = Column("metadata", JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+
+
+class ChatTurn(Base):
+    """Durable idempotency and response-replay state for one submitted turn."""
+
+    __tablename__ = "chat_turns"
+    __table_args__ = ({"schema": "systemdb"},)
+
+    id = Column(BigInteger, primary_key=True)
+    session_id = Column(BigInteger, ForeignKey("systemdb.chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    idempotency_key = Column(Uuid(as_uuid=False), nullable=False)
+    request_fingerprint = Column(String(64), nullable=False)
+    status = Column(String(16), nullable=False)
+    response_text = Column(String, nullable=True)
+    response_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP"))
+    completed_at = Column(DateTime(timezone=True), nullable=True)

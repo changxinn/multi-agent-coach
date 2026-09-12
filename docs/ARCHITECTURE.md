@@ -57,7 +57,7 @@ Multi-Agent Coach is a fitness coaching application powered by multiple AI agent
 │  │  ┌──────────────────────────────────────────────────┐  │  │
 │  │  │  Business Logic (Services)                       │  │  │
 │  │  │  - JWT Service                                   │  │  │
-│  │  │  - Session Manager (In-memory / Redis)           │  │  │
+│  │  │  - Durable Chat History (PostgreSQL)             │  │
 │  │  │  - User Profile Service                          │  │  │
 │  │  │  - Agent Orchestrator                            │  │  │
 │  │  │  - S3 Archival Service                           │  │  │
@@ -83,8 +83,9 @@ Multi-Agent Coach is a fitness coaching application powered by multiple AI agent
 │  │    (RDS)   │  │  │ │ Cache    │  │  │ │  Bucket  │  │ │ │Watch   │  │
 │  │            │  │  │ │ (Redis)  │  │  │ │          │  │ │ │        │  │
 │  │ - Users    │  │  │ │          │  │  │ │ - Chat   │  │ │ │ - Logs │  │
-│  │ - Profiles │  │  │ │ -Sessions│  │  │ │ History  │  │ │ │ -Metrics│ │
-│  │ - Fitness  │  │  │ │          │  │  │ │          │  │ │ │ -Alarms│  │
+│  │ - Profiles │  │ │ -Derived │  │  │ │ - Chat   │  │ │ │ -Metrics│ │
+│  │ - Chat     │  │ │ only     │  │  │ │ (legacy) │  │ │ │ -Alarms│ │
+│  │   History  │  │ │          │  │  │ │          │  │ │ │         │ │
 │  └────────────┘  │  │ └──────────┘  │  │ └──────────┘  │ │ └────────┘  │
 └──────────────────┘  └───────────────┘  └───────────────┘ └─────────────┘
 ```

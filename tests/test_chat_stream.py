@@ -18,13 +18,26 @@ class _ProfileService:
         return {"name": "Taylor"}
 
 
-class _SessionManager:
-    async def get_or_create_session(self, **_: object) -> SimpleNamespace:
-        return SimpleNamespace(session_id="chat_0123456789abcdef")
+class _HistoryService:
+    def __init__(self, _: object) -> None:
+        pass
+
+    async def build_view(self, *_: object) -> SimpleNamespace:
+        return SimpleNamespace(session_id="chat_0123456789abcdef", messages=[])
+
+    async def append_user_message(self, *_: object) -> None:
+        pass
+
+    async def append_assistant_message(self, *_: object) -> None:
+        pass
+
+    async def nutrition_context(self, *_: object) -> dict[str, object]:
+        return {"version": "chat-history-v1", "summary": None, "messages": []}
 
 
 class _Orchestrator:
-    async def process_message_stream(self, **_: object):
+    async def process_message_stream(self, **kwargs: object):
+        assert kwargs["chat_context"] == {"version": "chat-history-v1", "summary": None, "messages": []}
         yield {"type": "token", "token": "Profile "}
         yield {"type": "token", "token": "setup is required."}
         yield {
@@ -41,7 +54,7 @@ async def test_chat_stream_includes_metadata_in_completion_event(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(chat_route, "UserProfileService", _ProfileService)
-    monkeypatch.setattr(chat_route, "get_session_manager", lambda: _SessionManager())
+    monkeypatch.setattr(chat_route, "ChatHistoryService", _HistoryService)
     monkeypatch.setattr(chat_route, "get_orchestrator", lambda: _Orchestrator())
 
     response = await chat_route.chat_stream(
