@@ -96,6 +96,7 @@ async def test_chat_forwards_chronological_context_to_nutrition_service(
     state["nutrition_follow_up"] = {
         "nutrition_follow_up": "revise_recent_meal",
         "activity_type": "endurance",
+        "meal_adjustment": "recovery",
     }
     monkeypatch.setattr(specialist_module, "specialist", lambda *_: pytest.fail("local fallback"))
     monkeypatch.setattr("app.services.nutrition_agent_client.nutrition_agent_client.get_profile", get_profile)

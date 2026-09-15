@@ -39,8 +39,63 @@ async def test_context_uses_one_summary_and_only_messages_after_authoritative_bo
             {"role": "user" if index % 2 else "assistant", "content": f"m{index}"}
             for index in range(21, 27)
         ],
+        "recent_meal_recommendations": [],
     }
     assert repository.calls == [(20, 24)]
+
+
+@pytest.mark.asyncio
+async def test_context_preserves_newest_structured_meal_recommendations_not_prose() -> None:
+    messages = [
+        SimpleNamespace(
+            sequence=1,
+            role="assistant",
+            content="Old meal prose that must not become structured context.",
+            message_metadata={"meal_recommendations": [{"name": "Old meal"}]},
+        ),
+        SimpleNamespace(
+            sequence=2,
+            role="assistant",
+            content="Rendered response may be freely formatted.",
+            message_metadata={
+                "meal_recommendations": [
+                    {
+                        "meal_type": "supper",
+                        "name": "Turkey and rice bowl",
+                        "description": "Turkey, rice, and vegetables.",
+                        "rationale": "Matches the stated protein focus.",
+                        "calories": 760,
+                        "protein_g": 52,
+                        "carbs_g": 92,
+                        "fiber_g": 14,
+                        "fat_g": 20,
+                        "satisfies": ["protein", "carbohydrates"],
+                        "untrusted_extra": "discarded",
+                    }
+                ]
+            },
+        ),
+    ]
+    view = SimpleNamespace(record=SimpleNamespace(
+        history_start_sequence=0, summary_through_sequence=0, summary=None
+    ))
+
+    context = await ChatContextBuilder(_Repository(messages)).build(view)
+
+    assert context["recent_meal_recommendations"] == [
+        {
+            "meal_type": "supper",
+            "name": "Turkey and rice bowl",
+            "description": "Turkey, rice, and vegetables.",
+            "rationale": "Matches the stated protein focus.",
+            "calories": 760,
+            "protein_g": 52,
+            "carbs_g": 92,
+            "fiber_g": 14,
+            "fat_g": 20,
+            "satisfies": ["protein", "carbohydrates"],
+        }
+    ]
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,5 @@
 """Canonical private request and response contracts for Nutrition Agent."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -10,11 +11,33 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 NutritionStatus = Literal["green", "amber", "red", "escalate"]
 DietaryPreference = Literal["omnivore", "vegetarian", "vegan", "pescatarian", "other"]
 ActivityLevel = Literal["sedentary", "light", "moderate", "active", "very_active"]
-MealType = Literal["breakfast", "lunch", "dinner", "snack"]
+MealType = Literal["breakfast", "lunch", "dinner", "supper", "snack"]
 Gender = Literal["male", "female", "other"]
-PregnancyStatus = Literal["unknown", "not_pregnant_or_breastfeeding", "pregnant", "breastfeeding", "pregnant_and_breastfeeding"]
-MedicalCondition = Literal["diabetes", "uses_insulin_or_glucose_lowering_medication", "kidney_disease", "heart_disease", "hypertension", "eating_disorder_history"]
-RiskFlag = Literal["under_18", "current_disordered_eating_behaviors", "chest_pain_or_breathing_difficulty", "fainting_or_severe_dizziness", "purging_or_laxative_use", "severe_food_restriction", "rapid_weight_loss_request", "other_medical_condition"]
+PregnancyStatus = Literal[
+    "unknown",
+    "not_pregnant_or_breastfeeding",
+    "pregnant",
+    "breastfeeding",
+    "pregnant_and_breastfeeding",
+]
+MedicalCondition = Literal[
+    "diabetes",
+    "uses_insulin_or_glucose_lowering_medication",
+    "kidney_disease",
+    "heart_disease",
+    "hypertension",
+    "eating_disorder_history",
+]
+RiskFlag = Literal[
+    "under_18",
+    "current_disordered_eating_behaviors",
+    "chest_pain_or_breathing_difficulty",
+    "fainting_or_severe_dizziness",
+    "purging_or_laxative_use",
+    "severe_food_restriction",
+    "rapid_weight_loss_request",
+    "other_medical_condition",
+]
 
 
 def _normal_strings(values: list[str]) -> list[str]:
@@ -37,7 +60,9 @@ class StrictModel(BaseModel):
 
 class SafetyContext(StrictModel):
     pregnancy_lactation_status: PregnancyStatus | None = None
-    medical_conditions: list[MedicalCondition] = Field(default_factory=list, max_length=6)
+    medical_conditions: list[MedicalCondition] = Field(
+        default_factory=list, max_length=6
+    )
     risk_flags: list[RiskFlag] = Field(default_factory=list)
 
     @field_validator("medical_conditions", "risk_flags")
@@ -162,18 +187,52 @@ class NutritionTargetResponse(StrictModel):
     escalation: Escalation | None = None
 
 
-class NutritionChatContext(StrictModel):
-    """Versioned, bounded context assembled exclusively by the main API."""
-    version: Literal["chat-history-v1"]
-    summary: str | None = Field(default=None, max_length=12000)
-    messages: list[dict[str, str]] = Field(default_factory=list, max_length=24)
-
-
 class NutritionFollowUpIntent(StrictModel):
     """Validated, non-authoritative semantic intent from the main orchestrator."""
 
-    nutrition_follow_up: Literal["revise_recent_meal"]
+    nutrition_follow_up: Literal["revise_recent_meal", "recall_recent_meal"]
     activity_type: Literal["resistance", "endurance", "mixed", "unspecified"]
+    meal_adjustment: Literal[
+        "none", "recovery", "higher_energy", "more_satiating", "higher_protein", "lower_energy"
+    ] = "recovery"
+    revision_instruction: str | None = Field(default=None, max_length=240)
+
+    @field_validator("revision_instruction")
+    @classmethod
+    def normalize_revision_instruction(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
+
+
+class MealRecommendation(StrictModel):
+    """A validated meal option and its bounded nutrition estimates."""
+
+    meal_type: MealType
+    name: str = Field(min_length=1, max_length=120)
+    description: str | None = Field(default=None, max_length=500)
+    rationale: str | None = Field(default=None, max_length=400)
+    calories: int = Field(ge=0, le=2500)
+    protein_g: int = Field(ge=0, le=250)
+    carbs_g: int = Field(ge=0, le=350)
+    fiber_g: int = Field(ge=0, le=100)
+    fat_g: int = Field(ge=0, le=150)
+    satisfies: list[Literal["protein", "carbohydrates", "fiber", "fat"]] = Field(
+        default_factory=list
+    )
+    target_percentages: dict[str, int] | None = None
+
+
+class NutritionChatContext(StrictModel):
+    """Versioned, bounded context assembled exclusively by the main API."""
+
+    version: Literal["chat-history-v1"]
+    summary: str | None = Field(default=None, max_length=12000)
+    messages: list[dict[str, str]] = Field(default_factory=list, max_length=24)
+    recent_meal_recommendations: list[MealRecommendation] = Field(
+        default_factory=list, max_length=4
+    )
 
 
 class NutritionEvaluateRequest(StrictModel):
@@ -192,20 +251,17 @@ class NutritionEvaluateRequest(StrictModel):
         return value
 
 
-class MealRecommendation(StrictModel):
-    """A deterministic meal option and its trusted nutrition facts."""
+class NutritionMealRecommendationDecision(StrictModel):
+    """Strict, user-safe LLM meal recommendation result."""
 
-    meal_type: MealType
-    name: str
-    calories: int = Field(ge=0)
-    protein_g: int = Field(ge=0)
-    carbs_g: int = Field(ge=0)
-    fiber_g: int = Field(ge=0)
-    fat_g: int = Field(ge=0)
-    satisfies: list[Literal["protein", "carbohydrates", "fiber", "fat"]] = Field(
-        default_factory=list
-    )
-    target_percentages: dict[str, int] | None = None
+    recommendations: list[MealRecommendation] = Field(default_factory=list, max_length=4)
+    clarification: str | None = Field(default=None, min_length=1, max_length=300)
+
+    @model_validator(mode="after")
+    def recommendations_or_clarification(self) -> NutritionMealRecommendationDecision:
+        if bool(self.recommendations) == bool(self.clarification):
+            raise ValueError("Provide recommendations or clarification, but not both")
+        return self
 
 
 class NutritionEvaluateResponse(StrictModel):
@@ -213,8 +269,11 @@ class NutritionEvaluateResponse(StrictModel):
     status: NutritionStatus
     score: int = Field(ge=0, le=10)
     message: str
+    request_summary: str | None = Field(default=None, max_length=300)
     recommendations: list[str] = Field(max_length=10)
-    meal_recommendations: list[MealRecommendation] = Field(default_factory=list, max_length=4)
+    meal_recommendations: list[MealRecommendation] = Field(
+        default_factory=list, max_length=4
+    )
     target_available: bool = False
     tdee: int | None = None
     macro_targets: dict[str, float | int] | None = None

@@ -52,6 +52,7 @@ def test_strength_update_after_lunch_request_deterministically_revises_lunch(mon
         "nutrition_follow_up": {
             "nutrition_follow_up": "revise_recent_meal",
             "activity_type": "resistance",
+            "meal_adjustment": "recovery",
         },
         "volley_msg_left": 0,
     }
@@ -80,6 +81,136 @@ def test_cardio_update_after_lunch_request_deterministically_revises_lunch(monke
     assert result["nutrition_follow_up"] == {
         "nutrition_follow_up": "revise_recent_meal",
         "activity_type": "endurance",
+        "meal_adjustment": "recovery",
+    }
+
+
+def test_explicit_prior_meal_recall_routes_to_nutrition_without_llm(monkeypatch) -> None:
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ChatOpenAI",
+        lambda **_: (_ for _ in ()).throw(AssertionError("LLM routing must not run")),
+    )
+
+    result = orchestrator_module.orchestrator(
+        {
+            "volley_msg_left": 1,
+            "messages": [
+                {"role": "user", "content": "You: Give me a dinner option."},
+                {"role": "assistant", "content": "Sam: Salmon with brown rice and broccoli."},
+                {"role": "user", "content": "You: What did you mention for dinner?"},
+            ],
+            "user_profile": {},
+        }
+    )
+
+    assert result == {
+        "next_agent": "nutrition_advisor",
+        "nutrition_follow_up": {
+            "nutrition_follow_up": "recall_recent_meal",
+            "activity_type": "unspecified",
+            "meal_adjustment": "none",
+        },
+        "volley_msg_left": 0,
+    }
+
+
+def test_chained_weight_loss_revision_uses_earlier_dinner_anchor(monkeypatch) -> None:
+    class _LLM:
+        def with_structured_output(self, schema: object) -> object:
+            assert schema is orchestrator_module.NutritionFollowUpClassification
+            return self
+
+        def invoke(self, messages: list[object]) -> object:
+            assert "Give me a dinner option." in messages[-1].content
+            assert "I'm trying to lose weight now." in messages[-1].content
+            return orchestrator_module.NutritionFollowUpClassification(
+                specialist="nutrition_advisor",
+                nutrition_follow_up="revise_recent_meal",
+                activity_type="unspecified",
+                meal_adjustment="lower_energy",
+            )
+
+    monkeypatch.setattr(orchestrator_module, "ChatOpenAI", lambda **_: _LLM())
+
+    result = orchestrator_module.orchestrator(
+        {
+            "volley_msg_left": 1,
+            "messages": [
+                {"role": "user", "content": "You: Give me a dinner option."},
+                {"role": "assistant", "content": "Sam: Salmon with brown rice and broccoli."},
+                {"role": "user", "content": "You: Make that better for bulking."},
+                {"role": "assistant", "content": "Sam: Lean beef with sweet potato."},
+                {"role": "user", "content": "You: I'm trying to lose weight now."},
+            ],
+            "user_profile": {},
+        }
+    )
+
+    assert result["next_agent"] == "nutrition_advisor"
+    assert result["nutrition_follow_up"] == {
+        "nutrition_follow_up": "revise_recent_meal",
+        "activity_type": "unspecified",
+        "meal_adjustment": "lower_energy",
+        "revision_instruction": None,
+    }
+
+
+def test_no_anchor_history_is_not_classified_as_meal_revision(monkeypatch) -> None:
+    monkeypatch.setattr(
+        orchestrator_module,
+        "ChatOpenAI",
+        lambda **_: (_ for _ in ()).throw(AssertionError("LLM routing must not run")),
+    )
+
+    result = orchestrator_module._nutrition_follow_up(
+        [
+            {"role": "user", "content": "You: How should I improve my sleep?"},
+            {"role": "user", "content": "You: Make that lower calorie."},
+        ]
+    )
+
+    assert result is None
+
+
+def test_natural_language_meal_revision_routes_to_nutrition(monkeypatch) -> None:
+    class _LLM:
+        def with_structured_output(self, schema: object) -> object:
+            assert schema is orchestrator_module.NutritionFollowUpClassification
+            return self
+
+        def invoke(self, _: object) -> object:
+            return orchestrator_module.NutritionFollowUpClassification(
+                specialist="nutrition_advisor",
+                nutrition_follow_up="revise_recent_meal",
+                activity_type="unspecified",
+                meal_adjustment="higher_energy",
+                revision_instruction="Tailor the prior meal for a muscle-gain goal.",
+            )
+
+    monkeypatch.setattr(orchestrator_module, "ChatOpenAI", lambda **_: _LLM())
+
+    result = orchestrator_module.orchestrator(
+        {
+            "volley_msg_left": 1,
+            "messages": [
+                {"role": "user", "content": "You: Give me a lunch option."},
+                {"role": "assistant", "content": "Sam: Grilled chicken salad with quinoa."},
+                {"role": "user", "content": "You: Tailor the previous meal recommendation if I want to bulk up."},
+            ],
+            "user_profile": {},
+        }
+    )
+
+    assert result == {
+        "next_agent": "nutrition_advisor",
+        "nutrition_follow_up": {
+            "nutrition_follow_up": "revise_recent_meal",
+            "activity_type": "unspecified",
+            "meal_adjustment": "higher_energy",
+            "revision_instruction": "Tailor the prior meal for a muscle-gain goal.",
+        },
+        "volley_msg_left": 0,
     }
 
 

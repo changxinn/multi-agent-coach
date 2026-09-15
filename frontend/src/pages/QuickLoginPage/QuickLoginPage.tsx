@@ -80,23 +80,6 @@ export function QuickLoginPage() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
       <Card className="w-full max-w-2xl shadow-2xl" variant="borderless">
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-            <CheckCircleOutlined className="text-3xl text-blue-600" />
-          </div>
-          <Title level={2} className="mb-2">
-            {envConfig.appName}
-          </Title>
-          <Text type="secondary">Quick Login - {envConfig.appEnv.toUpperCase()} Environment</Text>
-        </div>
-
-        <Alert
-          title="Backend Authentication"
-          description="Login with email and password. Users are stored in the PostgreSQL database."
-          type="info"
-          showIcon
-          className="mb-6"
-        />
 
         <Card className="mb-6 bg-gray-50" size="small">
           <Title level={5} className="mb-3">Select User to Login As:</Title>
@@ -149,18 +132,6 @@ export function QuickLoginPage() {
                   Default: {currentUser.password}
                 </Text>
               </div>
-              
-              <div>
-                <Text type="secondary" className="text-xs">Roles:</Text>
-                <div className="mt-1 flex gap-2">
-                  {getRoleTags(currentUser.role)}
-                </div>
-              </div>
-              
-              <div>
-                <Text type="secondary" className="text-xs">Description:</Text>
-                <p className="mt-1 text-sm text-gray-600">{currentUser.description}</p>
-              </div>
             </div>
           )}
         </Card>
@@ -169,7 +140,7 @@ export function QuickLoginPage() {
           type="primary"
           size="large"
           block
-          className="h-12 text-lg mb-4"
+          className="h-12 text-lg"
           icon={<LoginOutlined />}
           onClick={handleQuickLogin}
           loading={isLoggingIn}
@@ -177,29 +148,6 @@ export function QuickLoginPage() {
         >
           {quickLoginUsers.length === 0 ? 'No valid users' : `Login as ${currentUser?.name}`}
         </Button>
-
-        {quickLoginUsers.length > 0 && (
-          <>
-            <Divider plain>
-              <Text type="secondary" className="text-xs">Role Information</Text>
-            </Divider>
-
-            <div className="text-xs text-gray-500 space-y-2">
-              <div className="flex items-start gap-2">
-                <Tag color="green">Staff</Tag>
-                <span>Dashboard, Forms</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Tag color="blue">Supervisor</Tag>
-                <span>Staff pages + Team, Reports</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <Tag color="red">Admin</Tag>
-                <span>All pages including Table Listing, Timeline</span>
-              </div>
-            </div>
-          </>
-        )}
       </Card>
     </div>
   )

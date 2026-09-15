@@ -12,3 +12,4 @@ class State(TypedDict):
     next_agent: str | None
     user_profile: dict
     nutrition_follow_up: dict | None
+    input_guardrail: dict | None

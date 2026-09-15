@@ -22,6 +22,23 @@ Copy-Item .env.example .env
 uv sync --group dev
 ```
 
+### Optional secondary input guardrail scanner
+
+The deterministic input guardrails always run without extra dependencies. To install the optional
+LLM Guard prompt-injection scanner, synchronize its extra and explicitly enable it in `.env`:
+
+```powershell
+uv sync --extra llm-guard --group dev
+```
+
+```env
+INPUT_GUARDRAILS_LLM_GUARD_ENABLED=true
+```
+
+LLM Guard downloads its prompt-injection model on first use. Keep the flag disabled until the
+model has been evaluated for the target environment; deterministic guardrails remain active when
+the optional scanner is disabled or unavailable.
+
 Update `C:\dev\multi-agent-coach\.env` with values appropriate for your local PostgreSQL instance:
 
 ```env

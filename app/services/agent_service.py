@@ -4,6 +4,7 @@ Agent service for LangGraph integration.
 Wraps LangGraph workflow for API usage.
 """
 import logging
+import re
 from typing import Any
 
 from pydantic import ValidationError
@@ -11,6 +12,13 @@ from pydantic import ValidationError
 from services.nutrition_agent.app.schemas import NutritionProfileUpsert
 
 logger = logging.getLogger(__name__)
+
+_DIETARY_PREFERENCE_DECLARATIONS = (
+    ("vegetarian", re.compile(r"^\s*(?:i(?:\s+am|'m)|make\s+me)\s+(?:a\s+)?vegetarian\s*[.!]*\s*$", re.IGNORECASE)),
+    ("vegan", re.compile(r"^\s*(?:i(?:\s+am|'m)|make\s+me)\s+(?:a\s+)?vegan\s*[.!]*\s*$", re.IGNORECASE)),
+    ("pescatarian", re.compile(r"^\s*(?:i(?:\s+am|'m)|make\s+me)\s+(?:a\s+)?pescatarian\s*[.!]*\s*$", re.IGNORECASE)),
+    ("omnivore", re.compile(r"^\s*(?:i(?:\s+am|'m)|make\s+me)\s+(?:an?\s+)?omnivore\s*[.!]*\s*$", re.IGNORECASE)),
+)
 
 # Import State at module level for LangGraph type inspection
 try:
@@ -48,6 +56,36 @@ def _nutrition_profile(profile: object) -> dict[str, Any] | None:
         ).model_dump(mode="json")
     except ValidationError:
         return None
+
+
+def _declared_dietary_preference(message: str) -> str | None:
+    """Return an explicit preference without inferring one from a meal request."""
+    for preference, pattern in _DIETARY_PREFERENCE_DECLARATIONS:
+        if pattern.fullmatch(message):
+            return preference
+    return None
+
+
+def _dietary_preference_updated_response(preference: str, volley_left: int) -> dict[str, Any]:
+    """Acknowledge a saved dietary preference without exposing planning internals."""
+    message = (
+        f"Got it—I’ve updated your dietary preference to {preference}. "
+        "What meal or nutrition goal would you like help with?"
+    )
+    return {
+        "messages": [
+            {
+                "role": "assistant",
+                "name": "Sam (Nutrition Advisor)",
+                "content": f"Sam (Nutrition Advisor): {message}",
+                "metadata": {
+                    "nutrition_profile_updated": True,
+                    "dietary_preference": preference,
+                },
+            }
+        ],
+        "volley_msg_left": max(0, volley_left - 1),
+    }
 
 
 def _is_missing_nutrition_profile(error: object) -> bool:
@@ -327,6 +365,18 @@ async def specialist_node_api(state: "State") -> dict[str, Any]:
                 if nutrition_profile is None:
                     logger.warning("Nutrition Agent returned an invalid profile; using local fallback")
                     raise ValueError("Nutrition profile validation failed")
+                if preference := _declared_dietary_preference(latest_user_message):
+                    updated_profile = {
+                        **nutrition_profile,
+                        "dietary_preference": preference,
+                    }
+                    await nutrition_agent_client.upsert_profile(user_id, updated_profile)
+                    logger.info(
+                        "Nutrition dietary preference updated from chat: user_id=%s preference=%s",
+                        user_id,
+                        preference,
+                    )
+                    return _dietary_preference_updated_response(preference, volley_left)
                 response = await nutrition_agent_client.evaluate(
                     user_id=user_id,
                     message=latest_user_message,

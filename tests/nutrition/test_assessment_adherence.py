@@ -269,6 +269,66 @@ def test_assessment_revises_recent_lunch_for_validated_cardio_follow_up() -> Non
     assert assessment.message.startswith("- After your endurance activity, revise your lunch to")
 
 
+def test_assessment_revises_prior_lunch_for_validated_natural_language_goal_change() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="Tailor the previous meal recommendation if I want to bulk up.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "higher_energy",
+                "revision_instruction": "Tailor the prior meal for a muscle-gain goal.",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a lunch option."},
+                    {"role": "assistant", "content": "Grilled chicken salad with quinoa."},
+                    {"role": "user", "content": "Tailor the previous meal recommendation if I want to bulk up."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    lunch = assessment.meal_recommendations[0]
+    assert lunch.meal_type == "lunch"
+    assert lunch.calories == 450
+    assert lunch.protein_g >= 25
+    assert lunch.carbs_g >= 30
+    assert lunch.satisfies == ["protein", "carbohydrates"]
+    assert assessment.message.startswith("- Tailor the prior meal for a muscle-gain goal., revise your lunch to")
+    assert "Log meals consistently" not in assessment.message
+
+
+def test_assessment_does_not_revise_goal_change_without_prior_meal_request() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="Make that meal more filling.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "more_satiating",
+                "revision_instruction": "Make the prior meal more filling.",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "How should I improve my sleep?"},
+                    {"role": "user", "content": "Make that meal more filling."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert assessment.meal_recommendations == []
+
+
 def test_assessment_does_not_revise_activity_text_without_validated_intent() -> None:
     assessment = assess_nutrition(
         NutritionEvaluateRequest(
@@ -287,6 +347,109 @@ def test_assessment_does_not_revise_activity_text_without_validated_intent() -> 
     )
 
     assert assessment.meal_recommendations == []
+
+
+def test_assessment_recalls_nearest_prior_meal_recommendation() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="What did you mention for dinner?",
+            nutrition_follow_up={
+                "nutrition_follow_up": "recall_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "none",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a dinner option."},
+                    {
+                        "role": "assistant",
+                        "content": (
+                            "Sam (Nutrition Advisor): - **Salmon with brown rice and broccoli**: "
+                            "about 550 calories, 40 g protein, 45 g carbohydrates, 8 g fiber, and 22 g fat."
+                        ),
+                    },
+                    {"role": "user", "content": "What did you mention for dinner?"},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {},
+    )
+
+    assert assessment.meal_recommendations == []
+    assert "Salmon with brown rice and broccoli" in assessment.message
+    assert "550 calories" in assessment.message
+    assert "40 g protein" in assessment.message
+
+
+def test_assessment_recall_uses_structured_meal_facts_not_assistant_prose() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="Why is the supper option best?",
+            nutrition_follow_up={
+                "nutrition_follow_up": "recall_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "none",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a supper option."},
+                    {"role": "assistant", "content": "Incorrect prose: 200 calories."},
+                    {"role": "user", "content": "Why is the supper option best?"},
+                ],
+                "recent_meal_recommendations": [
+                    {
+                        "meal_type": "supper",
+                        "name": "Turkey and rice bowl",
+                        "description": "Turkey, rice, and vegetables.",
+                        "rationale": "It best matches the stated protein and carbohydrate focus.",
+                        "calories": 760,
+                        "protein_g": 52,
+                        "carbs_g": 92,
+                        "fiber_g": 14,
+                        "fat_g": 20,
+                        "satisfies": ["protein", "carbohydrates"],
+                    }
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {},
+    )
+
+    assert assessment.meal_recommendations == []
+    assert "Turkey and rice bowl" in assessment.message
+    assert "760 calories" in assessment.message
+    assert "52 g protein" in assessment.message
+    assert "Incorrect prose" not in assessment.message
+
+
+def test_assessment_recall_reports_absent_prior_meal_recommendation() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="What was the previous meal recommendation?",
+            nutrition_follow_up={
+                "nutrition_follow_up": "recall_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "none",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [{"role": "user", "content": "How should I improve my sleep?"}],
+            },
+        ),
+        NutritionHistory(),
+        {},
+    )
+
+    assert assessment.recommendations == [
+        "I don’t have a prior meal recommendation in this chat to recall."
+    ]
 
 
 def test_assessment_returns_fiber_aware_balanced_dinner_instead_of_highest_protein_dinner() -> None:
@@ -414,6 +577,36 @@ def test_assessment_dinner_suggestion_respects_calorie_ceiling() -> None:
     assert "Chicken stir-fry with vegetables" in assessment.message
     assert "480 calories" in assessment.message
     assert "38 g protein" in assessment.message
+
+
+def test_assessment_chained_weight_loss_revision_selects_lowest_calorie_dinner() -> None:
+    assessment = assess_nutrition(
+        NutritionEvaluateRequest(
+            message="I'm trying to lose weight now.",
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "lower_energy",
+            },
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [
+                    {"role": "user", "content": "Give me a dinner option."},
+                    {"role": "assistant", "content": "Sam: Salmon with brown rice and broccoli."},
+                    {"role": "user", "content": "Make that better for bulking."},
+                    {"role": "assistant", "content": "Sam: Lean beef with sweet potato."},
+                    {"role": "user", "content": "I'm trying to lose weight now."},
+                ],
+            },
+        ),
+        NutritionHistory(),
+        {"dietary_preference": "omnivore", "allergies": [], "dietary_restrictions": []},
+    )
+
+    assert assessment.meal_recommendations[0].meal_type == "dinner"
+    assert assessment.meal_recommendations[0].name == "Chicken stir-fry with vegetables"
+    assert assessment.meal_recommendations[0].calories == 480
 
 
 def test_assessment_dinner_suggestion_respects_profile_exclusions() -> None:

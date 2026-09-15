@@ -12,9 +12,7 @@ marked.setOptions({
 
 import { useAuthStore } from '../../lib/authStore'
 import {
-  getSessionId,
   createSession,
-  clearSessionId,
   callChatbotAPI,
   streamChatbotAPI,
   wasDemoModeShown,
@@ -87,13 +85,15 @@ export function DeepChatBot({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
+  const [isSessionReady, setIsSessionReady] = useState(false)
   const [nutritionProfileMessage, setNutritionProfileMessage] = useState<string | null>(null)
   const [isSavingNutritionProfile, setIsSavingNutritionProfile] = useState(false)
   const [nutritionProfileForm] = Form.useForm<NutritionProfileWrite>()
-  const { token, user, logout } = useAuthStore()
-  const userEmail = user?.email || 'anonymous'
+  const { token } = useAuthStore()
   const deepChatRef = useRef<any>(null)
-  const sessionId = useRef<string | null>(getSessionId(userEmail))
+  const sessionId = useRef<string | null>(null)
+  const sessionCreationTokenRef = useRef<string | null>(null)
+  const sessionCreationPromiseRef = useRef<Promise<string> | null>(null)
   const streamingMessageIndexRef = useRef<number | null>(null)
   const pendingMessageUpdateFrameRef = useRef<number | null>(null)
   const messageUpdateRetryCountRef = useRef(0)
@@ -206,25 +206,65 @@ export function DeepChatBot({
     }
   }, [updateMessageDisplay])
 
-  // Clear session on logout
+  // Each mounted chat gets a fresh server-owned session. The ID remains in
+  // memory only, so refreshing the page starts a separate empty conversation.
   useEffect(() => {
     if (!token) {
-      clearSessionId(userEmail)
       clearDemoModeShown()
       hasShownOllamaToast.current = false
       sessionId.current = null
+      sessionCreationTokenRef.current = null
+      sessionCreationPromiseRef.current = null
+      setIsSessionReady(false)
+      return
     }
-  }, [token, userEmail])
+
+    let cancelled = false
+    sessionId.current = null
+    setIsSessionReady(false)
+
+    // React Strict Mode may re-run this effect during development. Share the
+    // outstanding request so one mounted chat receives one new session.
+    if (sessionCreationTokenRef.current !== token || !sessionCreationPromiseRef.current) {
+      sessionCreationTokenRef.current = token
+      sessionCreationPromiseRef.current = createSession(token)
+    }
+
+    void sessionCreationPromiseRef.current
+      .then((createdSessionId) => {
+        if (!cancelled && sessionCreationTokenRef.current === token) {
+          sessionId.current = createdSessionId
+          setIsSessionReady(true)
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          messageApi.error(error instanceof Error ? error.message : 'Unable to start a new chat.')
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [token, messageApi])
 
   const handleSend = useCallback(async (messageOverride?: string) => {
-    if (!(messageOverride ?? inputValue).trim() || isSending) {
+    console.log(messageOverride, inputValue);
+    if (
+      (
+        inputValue === undefined
+        || !inputValue.trim()
+      )
+      || isSending
+      || !isSessionReady
+    ) {
       console.log('handleSend: Skipping - isSending:', isSending, 'inputValue:', inputValue)
       return
     }
     
     console.log('handleSend: Starting with message:', inputValue)
     setIsSending(true)
-    const userMessage = (messageOverride ?? inputValue).trim()
+    const userMessage = (inputValue).trim()
     setInputValue('')
 
     if (typingTimeoutRef.current) {
@@ -243,10 +283,10 @@ export function DeepChatBot({
     }
     
     try {
-      if (!sessionId.current) {
-        sessionId.current = await createSession(token || '', userEmail)
-      }
       const activeSessionId = sessionId.current
+      if (!activeSessionId) {
+        throw new Error('Chat session is not ready.')
+      }
       if (deepChatRef.current) {
         deepChatRef.current.addMessage({
           role: 'user',
@@ -456,7 +496,7 @@ export function DeepChatBot({
       
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [inputValue, isSending, token, userEmail, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, waitForPendingMessageUpdate, messageApi])
+  }, [inputValue, isSending, isSessionReady, token, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, waitForPendingMessageUpdate, messageApi])
 
   // Cleanup typewriter timeout and abort streaming on component unmount
   useEffect(() => {
@@ -646,7 +686,7 @@ export function DeepChatBot({
                   placeholder="Type your message..."
                   className="chat-input"
                   autoSize={{ minRows: 1, maxRows: 4 }}
-                  disabled={isSending}
+                  disabled={!isSessionReady || isSending}
                 />
                 <Button
                   type="primary"
@@ -654,7 +694,7 @@ export function DeepChatBot({
                   icon={<SendOutlined />}
                   size="large"
                   onClick={handleSend}
-                  disabled={!inputValue.trim() || isSending}
+                  disabled={!isSessionReady || !inputValue.trim() || isSending}
                   className="send-btn"
                 />
               </div>

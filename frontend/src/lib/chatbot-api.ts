@@ -97,26 +97,16 @@ export function isValidSessionId(sessionId: string): boolean {
   return /^chat_[a-f0-9]{32}$/.test(sessionId)
 }
 
-export function getSessionId(userEmail: string): string | null {
-  const sessionKey = `chat_session_${userEmail}`
-  const stored = localStorage.getItem(sessionKey)
-  return stored && isValidSessionId(stored) ? stored : null
-}
-
-export function setSessionId(id: string): void {
-  localStorage.setItem('matechat_session_id', id)
-}
-
-export function clearSessionId(userEmail: string): void {
-  localStorage.removeItem(`chat_session_${userEmail}`)
-}
-
-export async function createSession(token: string, userEmail: string): Promise<string> {
-  const response = await fetch(`${API_BASE_URL}/session`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+/** Create a server-owned session for the current mounted chat instance. */
+export async function createSession(token: string): Promise<string> {
+  const response = await fetch(`${API_BASE_URL}/session`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  })
   if (!response.ok) throw new Error('Unable to create a chat session.')
+
   const data: { session_id: string } = await response.json()
   if (!isValidSessionId(data.session_id)) throw new Error('The server returned an invalid chat session.')
-  localStorage.setItem(`chat_session_${userEmail}`, data.session_id)
   return data.session_id
 }
 

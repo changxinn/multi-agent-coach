@@ -4,7 +4,7 @@ from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from display import AGENT_META, print_backend
 from utils import debug
@@ -12,6 +12,18 @@ from utils import debug
 _NUTRITION_REQUEST_TERMS = re.compile(
     r"\b(?:food|meal|breakfast|lunch|dinner|snack|diet|protein|calories?|"
     r"macros?|hydration|fuel(?:ing)?)\b",
+    re.IGNORECASE,
+)
+_DIETARY_PREFERENCE_DECLARATION = re.compile(
+    r"^\s*(?:i(?:\s+am|'m)|make\s+me)\s+(?:(?:a|an)\s+)?"
+    r"(?:vegetarian|vegan|pescatarian|omnivore)\s*[.!]*\s*$",
+    re.IGNORECASE,
+)
+_SINGLE_MEAL_TYPE_TERMS = re.compile(
+    r"\b(?:breakfast|lunch|dinner|snack)\b", re.IGNORECASE
+)
+_MEAL_REQUEST_VERBS = re.compile(
+    r"\b(?:give|suggest|recommend|plan|make|need|want|what(?:\s+should)?\s+i\s+eat)\b",
     re.IGNORECASE,
 )
 _EXPLICIT_TRAINING_PLAN_TERMS = re.compile(
@@ -39,21 +51,48 @@ class NutritionFollowUpClassification(BaseModel):
     """Bounded semantic decision for an immediate meal-related follow-up."""
 
     specialist: Literal["training_planner", "nutrition_advisor", "recovery_coach"]
-    nutrition_follow_up: Literal["none", "revise_recent_meal"]
+    nutrition_follow_up: Literal["none", "revise_recent_meal", "recall_recent_meal"]
     activity_type: Literal["resistance", "endurance", "mixed", "unspecified"]
+    meal_adjustment: Literal[
+        "none",
+        "recovery",
+        "higher_energy",
+        "more_satiating",
+        "higher_protein",
+        "lower_energy",
+    ] = "none"
+    revision_instruction: str | None = Field(default=None, max_length=240)
+
+    @field_validator("revision_instruction")
+    @classmethod
+    def normalize_revision_instruction(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        return value or None
 
 
 class RoutingDecision(BaseModel):
     """Bounded Head Coach decision to delegate or answer without a specialist."""
 
     route: Literal["specialist", "direct_response"]
-    specialist: Literal["training_planner", "nutrition_advisor", "recovery_coach"] | None = None
+    specialist: (
+        Literal["training_planner", "nutrition_advisor", "recovery_coach"] | None
+    ) = None
     response: str | None = None
 
 
 _VALID_SPECIALISTS = {"training_planner", "nutrition_advisor", "recovery_coach"}
-_VALID_FOLLOW_UPS = {"none", "revise_recent_meal"}
+_VALID_FOLLOW_UPS = {"none", "revise_recent_meal", "recall_recent_meal"}
 _VALID_ACTIVITY_TYPES = {"resistance", "endurance", "mixed", "unspecified"}
+_VALID_MEAL_ADJUSTMENTS = {
+    "none",
+    "recovery",
+    "higher_energy",
+    "more_satiating",
+    "higher_protein",
+    "lower_energy",
+}
 _DIRECT_RESPONSE_FALLBACK = (
     "Hi! I can help with workout planning, nutrition, recovery, and progress tracking. "
     "What would you like to work on today?"
@@ -73,20 +112,29 @@ def _latest_user_message(messages: list[dict]) -> str:
     return ""
 
 
-def _previous_user_message(messages: list[dict]) -> str:
-    """Return the immediately preceding user message, if the latest user turn has one."""
+def _prior_single_meal_request(messages: list[dict]) -> str:
+    """Return the nearest explicit, single-meal request before the latest user turn."""
     user_messages = [
         str(message.get("content", "")).removeprefix("You: ").strip()
         for message in messages
         if message.get("role") == "user"
     ]
-    return user_messages[-2] if len(user_messages) >= 2 else ""
+    for message in reversed(user_messages[:-1]):
+        if (
+            len(_SINGLE_MEAL_TYPE_TERMS.findall(message)) == 1
+            and _MEAL_REQUEST_VERBS.search(message)
+        ):
+            return message
+    return ""
 
 
 def _deterministic_specialist(messages: list[dict]) -> str | None:
-    """Route explicit nutrition requests without an LLM."""
+    """Route explicit Nutrition requests and preference declarations without an LLM."""
     latest_message = _latest_user_message(messages)
-    if _NUTRITION_REQUEST_TERMS.search(latest_message):
+    if (
+        _NUTRITION_REQUEST_TERMS.search(latest_message)
+        or _DIETARY_PREFERENCE_DECLARATION.fullmatch(latest_message)
+    ):
         return "nutrition_advisor"
     return None
 
@@ -107,13 +155,13 @@ def _reported_activity_type(message: str) -> str | None:
 
 
 def _nutrition_follow_up(messages: list[dict]) -> dict | None:
-    """Route clear activity updates or classify ambiguous immediate meal follow-ups."""
+    """Route clear activity updates or classify revisions of an earlier meal request."""
     latest_message = _latest_user_message(messages)
-    previous_message = _previous_user_message(messages)
+    anchored_meal_request = _prior_single_meal_request(messages)
     if (
         not latest_message
         or _EXPLICIT_TRAINING_PLAN_TERMS.search(latest_message)
-        or not _NUTRITION_REQUEST_TERMS.search(previous_message)
+        or not anchored_meal_request
     ):
         return None
 
@@ -121,6 +169,19 @@ def _nutrition_follow_up(messages: list[dict]) -> dict | None:
         return {
             "nutrition_follow_up": "revise_recent_meal",
             "activity_type": activity_type,
+            "meal_adjustment": "recovery",
+        }
+
+    if re.search(
+        r"\b(?:what(?:\s+was|\s+did\s+you\s+mention)|recall|remind\s+me)\b.*"
+        r"\b(?:previous|prior|last)?\s*(?:meal|breakfast|lunch|dinner|snack|recommendation)\b",
+        latest_message,
+        re.IGNORECASE,
+    ):
+        return {
+            "nutrition_follow_up": "recall_recent_meal",
+            "activity_type": "unspecified",
+            "meal_adjustment": "none",
         }
 
     try:
@@ -130,29 +191,38 @@ def _nutrition_follow_up(messages: list[dict]) -> dict | None:
     except Exception:
         model = "gpt-5-nano"
 
-    prompt = """Classify the latest user message in the immediate context of a prior meal request.
+    prompt = """Classify the latest user message against the supplied earlier meal request.
 Return only the requested schema.
 - specialist must be training_planner, nutrition_advisor, or recovery_coach.
-- nutrition_follow_up is revise_recent_meal only when the latest message semantically reports
-  completed physical activity and should revise the immediately preceding meal request. Otherwise none.
+- nutrition_follow_up is revise_recent_meal only when the user asks to modify, tailor, replace, or
+   reinterpret that earlier meal request. Use recall_recent_meal only when the user explicitly asks
+   what the earlier meal recommendation said. Otherwise none.
 - A clear cardio, run, cycling, swimming, strength, weights, or resistance-training update immediately
-  after a meal request is meal context unless the user explicitly asks for a training plan.
+  after a meal request is a recovery revision unless the user explicitly asks for a training plan.
 - activity_type is resistance, endurance, mixed, or unspecified.
+- meal_adjustment must be one of: recovery, higher_energy, more_satiating, higher_protein,
+  lower_energy, or none. Choose higher_energy for a request to make the meal support gaining mass,
+  have more calories, or be more substantial; choose more_satiating for fullness; choose higher_protein
+  for protein emphasis; choose lower_energy for fewer calories. Do not invent nutrition facts.
+- revision_instruction is a short neutral restatement of the requested meal change, at most 240
+  characters, and is null when nutrition_follow_up is none.
 - An explicit request for a workout plan, program, routine, or schedule is training_planner and none.
 Do not infer medical facts or nutrition facts."""
     try:
-        classified = ChatOpenAI(model=model, temperature=0, timeout=30).with_structured_output(
-            NutritionFollowUpClassification
-        ).invoke(
-            [
-                SystemMessage(content=prompt),
-                HumanMessage(
-                    content=(
-                        f"Prior user meal request: {previous_message}\n"
-                        f"Latest user message: {latest_message}"
-                    )
-                ),
-            ]
+        classified = (
+            ChatOpenAI(model=model, temperature=0, timeout=30)
+            .with_structured_output(NutritionFollowUpClassification)
+            .invoke(
+                [
+                    SystemMessage(content=prompt),
+                    HumanMessage(
+                        content=(
+                            f"Prior user meal request: {anchored_meal_request}\n"
+                            f"Latest user message: {latest_message}"
+                        )
+                    ),
+                ]
+            )
         )
         if not isinstance(classified, NutritionFollowUpClassification):
             return None
@@ -160,18 +230,24 @@ Do not infer medical facts or nutrition facts."""
             classified.specialist not in _VALID_SPECIALISTS
             or classified.nutrition_follow_up not in _VALID_FOLLOW_UPS
             or classified.activity_type not in _VALID_ACTIVITY_TYPES
+            or classified.meal_adjustment not in _VALID_MEAL_ADJUSTMENTS
         ):
             return None
         if (
             classified.specialist == "nutrition_advisor"
-            and classified.nutrition_follow_up == "revise_recent_meal"
+            and classified.nutrition_follow_up in {"revise_recent_meal", "recall_recent_meal"}
         ):
             return {
                 "nutrition_follow_up": classified.nutrition_follow_up,
                 "activity_type": classified.activity_type,
+                "meal_adjustment": classified.meal_adjustment,
+                "revision_instruction": classified.revision_instruction,
             }
     except Exception:
-        debug("Nutrition follow-up classification unavailable; failing closed", "HEAD COACH")
+        debug(
+            "Nutrition follow-up classification unavailable; failing closed",
+            "HEAD COACH",
+        )
     return None
 
 
@@ -190,13 +266,31 @@ def _direct_response_result(response: str, volley_left: int) -> dict:
     }
 
 
+def _guardrail_response_result(response: str, metadata: dict[str, str]) -> dict:
+    """Return a policy response without delegating to routing or specialists."""
+    return {
+        "messages": [
+            {
+                "role": "assistant",
+                "name": "Head Coach",
+                "content": f"Head Coach: {response}",
+                "metadata": metadata,
+            }
+        ],
+        "next_agent": "human",
+        "volley_msg_left": 0,
+    }
+
+
 def _user_visible_direct_response(response: str) -> str:
     """Remove known leading orchestration narration from a direct user reply."""
     return _INTERNAL_ROUTING_PREFIX.sub("", response).strip()
 
+
 # Load API key from config if available
 try:
     from app.config import get_settings
+
     _settings = get_settings()
     if _settings.OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = _settings.OPENAI_API_KEY
@@ -209,6 +303,16 @@ def orchestrator(state):
       Head Coach: route the conversation to the best specialist agent.
     Updates next_agent and decrements volley_msg_left.
     """
+    # This must remain the first operation: blocked input never reaches routing,
+    # tools, or a specialist LLM.
+    from app.policies.input_guardrails.policy_v1 import GuardrailAction
+    from app.services.input_guardrails import evaluate_latest_user_message
+
+    guardrail = evaluate_latest_user_message(state)
+    if guardrail.action is not GuardrailAction.ALLOW:
+        debug(f"Input guardrail triggered: {guardrail.rule_id}", "HEAD COACH")
+        return _guardrail_response_result(guardrail.response or "", guardrail.metadata)
+
     volley_left = state.get("volley_msg_left", 0)
     debug(f"Volley messages left: {volley_left}", "HEAD COACH")
 
@@ -222,9 +326,21 @@ def orchestrator(state):
     messages = state.get("messages", [])
     profile = state.get("user_profile", {})
 
+    nutrition_follow_up = _nutrition_follow_up(messages)
+    if nutrition_follow_up:
+        debug("Semantic nutrition follow-up selected", "HEAD COACH")
+        return {
+            "next_agent": "nutrition_advisor",
+            "nutrition_follow_up": nutrition_follow_up,
+            "volley_msg_left": volley_left - 1,
+        }
+
     deterministic_selection = _deterministic_specialist(messages)
     if deterministic_selection:
-        debug(f"Deterministic nutrition selection: {deterministic_selection}", "HEAD COACH")
+        debug(
+            f"Deterministic nutrition selection: {deterministic_selection}",
+            "HEAD COACH",
+        )
         agent_label = AGENT_META.get(deterministic_selection, {}).get(
             "short_name", deterministic_selection
         )
@@ -235,15 +351,6 @@ def orchestrator(state):
         )
         return {
             "next_agent": deterministic_selection,
-            "volley_msg_left": volley_left - 1,
-        }
-
-    nutrition_follow_up = _nutrition_follow_up(messages)
-    if nutrition_follow_up:
-        debug("Semantic nutrition follow-up selected", "HEAD COACH")
-        return {
-            "next_agent": "nutrition_advisor",
-            "nutrition_follow_up": nutrition_follow_up,
             "volley_msg_left": volley_left - 1,
         }
 
@@ -293,18 +400,23 @@ Return the routing decision."""
         from app.config import get_settings
 
         model = get_settings().LLM_MODEL
-        decision = ChatOpenAI(model=model, temperature=0, timeout=90).with_structured_output(
-            RoutingDecision
-        ).invoke(
-            [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt),
-            ]
+        decision = (
+            ChatOpenAI(model=model, temperature=0, timeout=90)
+            .with_structured_output(RoutingDecision)
+            .invoke(
+                [
+                    SystemMessage(content=system_prompt),
+                    HumanMessage(content=user_prompt),
+                ]
+            )
         )
         if not isinstance(decision, RoutingDecision):
             raise TypeError("Routing model returned an invalid structured decision")
     except Exception:
-        debug("Routing model unavailable or invalid; asking for clarification", "HEAD COACH")
+        debug(
+            "Routing model unavailable or invalid; asking for clarification",
+            "HEAD COACH",
+        )
         return _direct_response_result(_DIRECT_RESPONSE_FALLBACK, volley_left)
 
     if decision.route == "direct_response":
@@ -312,12 +424,17 @@ Return the routing decision."""
         if response and decision.specialist is None:
             debug("Head Coach responding directly", "HEAD COACH")
             return _direct_response_result(response, volley_left)
-        debug("Invalid direct Head Coach response; asking for clarification", "HEAD COACH")
+        debug(
+            "Invalid direct Head Coach response; asking for clarification", "HEAD COACH"
+        )
         return _direct_response_result(_DIRECT_RESPONSE_FALLBACK, volley_left)
 
     selected = decision.specialist
     if selected not in _VALID_SPECIALISTS or decision.response is not None:
-        debug("Invalid specialist routing decision; asking for clarification", "HEAD COACH")
+        debug(
+            "Invalid specialist routing decision; asking for clarification",
+            "HEAD COACH",
+        )
         return _direct_response_result(_DIRECT_RESPONSE_FALLBACK, volley_left)
 
     debug(

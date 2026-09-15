@@ -11,13 +11,19 @@ import pytest
 from app.services.nutrition_agent_client import NutritionAgentClient
 from services.nutrition_agent.app import main as nutrition_main
 from services.nutrition_agent.app.assessment import NutritionHistory
-from services.nutrition_agent.app.schemas import NutritionEvaluateRequest, NutritionEvaluateResponse
+from services.nutrition_agent.app.schemas import (
+    NutritionEvaluateRequest,
+    NutritionEvaluateResponse,
+)
 
 
 def _assessment() -> NutritionEvaluateResponse:
     return NutritionEvaluateResponse(
-        status="green", score=0, message="Deterministic assessment.",
-        recommendations=["Continue consistent habits."], created_at=datetime.now(UTC),
+        status="green",
+        score=0,
+        message="Deterministic assessment.",
+        recommendations=["Continue consistent habits."],
+        created_at=datetime.now(UTC),
     )
 
 
@@ -35,15 +41,21 @@ async def test_private_stream_emits_tokens_then_persisted_completion(
 
     monkeypatch.setattr(nutrition_main.repository, "history", history)
     monkeypatch.setattr(nutrition_main.repository, "save_assessment", save)
-    monkeypatch.setattr(nutrition_main.agent, "present_stream", lambda *_: iter(["Hello", " world."]))
+    monkeypatch.setattr(
+        nutrition_main.agent, "present_stream", lambda *_: iter(["Hello", " world."])
+    )
 
-    response = await nutrition_main.evaluate_stream(42, NutritionEvaluateRequest(message="Help me eat well."))
+    response = await nutrition_main.evaluate_stream(
+        42, NutritionEvaluateRequest(message="Help me eat well.")
+    )
     body = "".join([chunk async for chunk in response.body_iterator])
 
-    assert "event: token\ndata: {\"token\": \"Hello world.\"}" in body
+    assert 'event: token\ndata: {"token": "Hello world."}' in body
     assert "event: complete" in body
     assert len(saved) == 1
-    assert saved[0].message.startswith("Hello world.")
+    assert saved[0].message.startswith(
+        "**You asked about:** general nutrition guidance\n\nHello world."
+    )
     assert response.headers["x-accel-buffering"] == "no"
 
 
@@ -65,7 +77,9 @@ async def test_private_stream_uses_deterministic_fallback_before_visible_output(
     monkeypatch.setattr(nutrition_main.repository, "save_assessment", save)
     monkeypatch.setattr(nutrition_main.agent, "present_stream", broken_stream)
 
-    response = await nutrition_main.evaluate_stream(42, NutritionEvaluateRequest(message="Help me eat well."))
+    response = await nutrition_main.evaluate_stream(
+        42, NutritionEvaluateRequest(message="Help me eat well.")
+    )
     body = "".join([chunk async for chunk in response.body_iterator])
 
     assert "event: error" not in body
@@ -74,11 +88,20 @@ async def test_private_stream_uses_deterministic_fallback_before_visible_output(
 
 
 @pytest.mark.asyncio
-async def test_client_parses_token_and_complete_events(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_client_parses_token_and_complete_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = NutritionAgentClient()
     monkeypatch.setattr(
         "app.services.nutrition_agent_client.get_settings",
-        lambda: type("Settings", (), {"NUTRITION_INTERNAL_SERVICE_TOKEN": "token", "NUTRITION_AGENT_URL": "http://nutrition"})(),
+        lambda: type(
+            "Settings",
+            (),
+            {
+                "NUTRITION_INTERNAL_SERVICE_TOKEN": "token",
+                "NUTRITION_AGENT_URL": "http://nutrition",
+            },
+        )(),
     )
     completion = _assessment().model_dump(mode="json")
     stream = (
@@ -86,11 +109,42 @@ async def test_client_parses_token_and_complete_events(monkeypatch: pytest.Monke
         f"event: complete\ndata: {json.dumps(completion)}\n\n"
     ).encode()
 
-    async def handler(_: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, content=stream, headers={"content-type": "text/event-stream"})
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert json.loads(request.content) == {
+            "message": "Hello",
+            "chat_context": {
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [{"role": "user", "content": "Give me dinner."}],
+            },
+            "nutrition_follow_up": {
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "higher_energy",
+            },
+        }
+        return httpx.Response(
+            200, content=stream, headers={"content-type": "text/event-stream"}
+        )
 
     client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
-    events = [event async for event in client.evaluate_stream(42, "Hello")]
+    events = [
+        event
+        async for event in client.evaluate_stream(
+            42,
+            "Hello",
+            chat_context={
+                "version": "chat-history-v1",
+                "summary": None,
+                "messages": [{"role": "user", "content": "Give me dinner."}],
+            },
+            nutrition_follow_up={
+                "nutrition_follow_up": "revise_recent_meal",
+                "activity_type": "unspecified",
+                "meal_adjustment": "higher_energy",
+            },
+        )
+    ]
     await client.close()
 
     assert events == [

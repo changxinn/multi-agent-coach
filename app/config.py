@@ -62,6 +62,7 @@ class Settings(BaseSettings):
     LLM_MODEL: str = "gpt-5-nano"
     CHAT_SUMMARY_TURN_INTERVAL: int = 10
     CHAT_SUMMARY_MAX_CHARS: int = 12000
+    INPUT_GUARDRAILS_LLM_GUARD_ENABLED: bool = False
 
     # ===========================================
     # Internal Agent Services

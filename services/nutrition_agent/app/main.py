@@ -1,14 +1,15 @@
 """Private, token-protected Nutrition Agent API."""
 import json
 import logging
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import UTC, date, datetime, timedelta
-from typing import Annotated, AsyncIterator
+from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .agent import NutritionAgent, _UNSAFE_OUTPUT_TERMS
+from .agent import _UNSAFE_OUTPUT_TERMS, NutritionAgent
 from .assessment import DISCLAIMER, assess_nutrition, escalation_for, safety_findings
 from .config import settings
 from .food_reference import FoodReferenceService
@@ -127,6 +128,83 @@ def _target_context(assessment: NutritionEvaluateResponse, target: dict | None) 
         "macro_targets": macro_targets,
         "meal_recommendations": meals,
     })
+
+
+def _recommendation_assessment(
+    assessment: NutritionEvaluateResponse, decision: object, profile: dict
+) -> NutritionEvaluateResponse | None:
+    """Validate and deterministically render structured LLM recommendation fields."""
+    clarification = getattr(decision, "clarification", None)
+    if clarification:
+        return assessment.model_copy(update={
+            "message": f"- {clarification}\n\n*{DISCLAIMER}*",
+            "recommendations": [clarification],
+            "meal_recommendations": [],
+        })
+    meals = getattr(decision, "recommendations", [])
+    if not meals:
+        return None
+    restrictions = [
+        value.casefold()
+        for value in [*profile.get("allergies", []), *profile.get("dietary_restrictions", [])]
+        if value.strip()
+    ]
+    visible_text = " ".join(
+        f"{meal.name} {meal.description or ''} {meal.rationale or ''}" for meal in meals
+    ).casefold()
+    if any(restriction in visible_text for restriction in restrictions) or any(
+        term in visible_text for term in _UNSAFE_OUTPUT_TERMS
+    ):
+        logger.warning("Nutrition LLM recommendation failed visible-output validation")
+        return None
+    recommendations = []
+    for meal in meals:
+        rendered = (
+            f"**{meal.name}** ({meal.meal_type}): about {meal.calories} calories, "
+            f"{meal.protein_g} g protein, {meal.carbs_g} g carbohydrates, "
+            f"{meal.fiber_g} g fiber, and {meal.fat_g} g fat."
+        )
+        if meal.description:
+            rendered += f" {meal.description}"
+        if meal.rationale:
+            rendered += f" {meal.rationale}"
+        recommendations.append(rendered)
+    return assessment.model_copy(update={
+        "message": f"{'\n'.join(f'- {item}' for item in recommendations)}\n\n*{DISCLAIMER}*",
+        "recommendations": recommendations,
+        "meal_recommendations": meals,
+    })
+
+
+def _meal_recommendation_unavailable(assessment: NutritionEvaluateResponse) -> NutritionEvaluateResponse:
+    """Do not substitute a catalog template when contextual generation is unavailable."""
+    message = "I’m unable to generate a personalized meal recommendation right now. Please try again shortly."
+    return assessment.model_copy(update={
+        "message": f"- {message}\n\n*{DISCLAIMER}*",
+        "recommendations": [message],
+        "meal_recommendations": [],
+    })
+
+
+async def _current_target_for_recommendation(user_id: int) -> dict | None:
+    """Targets enrich generation but are not required for its safe availability fallback."""
+    try:
+        return await repository.current_target(user_id, datetime.now(UTC).date())
+    except Exception as error:
+        logger.warning("Nutrition recommendation target lookup failed: %s", error)
+        return None
+
+
+def _may_need_meal_recommendation(payload: NutritionEvaluateRequest, assessment: NutritionEvaluateResponse) -> bool:
+    """Keep optional generation scoped to meal requests or validated meal revisions."""
+    message = payload.message.casefold()
+    return bool(
+        (
+            payload.nutrition_follow_up is not None
+            and payload.nutrition_follow_up.nutrition_follow_up == "revise_recent_meal"
+        )
+        or any(term in message for term in ("meal", "breakfast", "lunch", "dinner", "supper", "snack"))
+    )
 
 @app.get("/health/live")
 async def live(): return {"status": "live"}
@@ -262,10 +340,24 @@ async def evaluate(user_id: int, payload: NutritionEvaluateRequest):
     # Escalations are terminal deterministic safety outcomes. They must never
     # enter the optional presentation/LLM path, which could add advice.
     if assessment.escalation is None:
+        if _may_need_meal_recommendation(payload, assessment):
+            target = await _current_target_for_recommendation(user_id)
+            decision = agent.recommend_meals(
+                user_message=payload.message,
+                profile=profile,
+                chat_context=payload.chat_context.model_dump() if payload.chat_context else None,
+                targets=target,
+                safety_context=payload.safety_context.model_dump() if payload.safety_context else None,
+            )
+            assessment = (
+                _recommendation_assessment(assessment, decision, profile)
+                if decision is not None
+                else _meal_recommendation_unavailable(assessment)
+            ) or _meal_recommendation_unavailable(assessment)
         if assessment.meal_recommendations:
             assessment = _target_context(
                 assessment,
-                await repository.current_target(user_id, datetime.now(UTC).date()),
+                await _current_target_for_recommendation(user_id),
             )
         assessment = agent.present(assessment, payload.message)
     await repository.save_assessment(user_id, assessment)
@@ -277,10 +369,24 @@ async def evaluate_stream(user_id: int, payload: NutritionEvaluateRequest) -> St
     """Stream a completed, persisted safe assessment's presentation as private SSE."""
     profile = payload.profile.model_dump(mode="json") if payload.profile else {}
     assessment = assess_nutrition(payload, await repository.history(user_id), profile)
+    if assessment.escalation is None and _may_need_meal_recommendation(payload, assessment):
+        target = await _current_target_for_recommendation(user_id)
+        decision = agent.recommend_meals(
+            user_message=payload.message,
+            profile=profile,
+            chat_context=payload.chat_context.model_dump() if payload.chat_context else None,
+            targets=target,
+            safety_context=payload.safety_context.model_dump() if payload.safety_context else None,
+        )
+        assessment = (
+            _recommendation_assessment(assessment, decision, profile)
+            if decision is not None
+            else _meal_recommendation_unavailable(assessment)
+        ) or _meal_recommendation_unavailable(assessment)
     if assessment.escalation is None and assessment.meal_recommendations:
         assessment = _target_context(
             assessment,
-            await repository.current_target(user_id, datetime.now(UTC).date()),
+            await _current_target_for_recommendation(user_id),
         )
     # The final message is persisted before the completion event, matching the
     # non-streaming endpoint's history contract.
