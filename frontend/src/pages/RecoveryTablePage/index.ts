@@ -1,0 +1,1 @@
+export { RecoveryTablePage } from './RecoveryTablePage'

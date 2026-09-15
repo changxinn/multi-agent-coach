@@ -4,6 +4,7 @@ import { QuickLoginPage } from '@/pages/QuickLoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { RoleDashboard } from '@/pages/RoleDashboard'
 import { TableListingPage } from '@/pages/TableListingPage'
+import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
 import { ChatPage } from '@/pages/ChatPage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
 import { MainLayout } from '@/common/MainLayout'
@@ -85,6 +86,16 @@ function App() {
             <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
               <MainLayout>
                 <ChatPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.RecoveryTable}
+          element={
+            <ProtectedRoute allowedRoles={[Roles.Admin]}>
+              <MainLayout>
+                <RecoveryTablePage />
               </MainLayout>
             </ProtectedRoute>
           }

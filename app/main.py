@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.db.database import init_db, close_db
 from app.services.session_manager import session_manager
-from app.api.routes import auth, chat, session
+from app.api.routes import auth, chat, session, recovery
 
 # Configure logging
 logging.basicConfig(
@@ -81,6 +81,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
+app.include_router(recovery.router, prefix="/api", tags=["Recovery"])
 
 
 # Health check endpoint
