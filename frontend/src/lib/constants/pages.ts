@@ -9,6 +9,7 @@ export const PageIds = {
   Landing: 'landing',
   Forms: 'forms',
   TableListing: 'table-listing',
+  RecoveryTable: 'recovery-table',
   Timeline: 'timeline',
   Chat: 'chat',
 } as const

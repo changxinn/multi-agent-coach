@@ -9,6 +9,7 @@ export const Routes = {
   Dashboard: '/dashboard',
   Forms: '/forms',
   TableListing: '/table-listing',
+  RecoveryTable: '/recovery-table',
   Timeline: '/timeline',
   Login: '/login',
   QuickLogin: '/quick-login',

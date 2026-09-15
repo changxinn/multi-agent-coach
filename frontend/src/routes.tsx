@@ -38,6 +38,15 @@ export const routePages: RoutePage[] = [
     allowedRoles: [Roles.Admin] 
   },
   { 
+    id: PageIds.RecoveryTable,
+    label: 'Recovery Table',
+    path: Routes.RecoveryTable,
+    component: <></>,
+    section: Sections.Admin,
+    icon: <Table size={DEFAULT_ICON_SIZE} />,
+    allowedRoles: [Roles.Admin]
+  },
+  {
     id: PageIds.Chat, 
     label: 'Chat', 
     path: Routes.Chat, 
@@ -81,6 +90,11 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: Routes.Timeline,
+    element: <></>,
+    allowedRoles: [Roles.Admin],
+  },
+  {
+    path: Routes.RecoveryTable,
     element: <></>,
     allowedRoles: [Roles.Admin],
   },
