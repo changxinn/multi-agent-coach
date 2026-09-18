@@ -1,5 +1,5 @@
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, NotRequired, TypedDict
 
 
 class State(TypedDict):
@@ -11,3 +11,7 @@ class State(TypedDict):
     volley_msg_left: int
     next_agent: str | None
     user_profile: dict
+    routing_reason: NotRequired[str]
+    needs_clarification: NotRequired[bool]
+    safety_flags: NotRequired[list]
+    prompt_versions: NotRequired[dict]
