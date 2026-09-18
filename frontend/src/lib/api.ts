@@ -21,10 +21,13 @@ export async function fetcher<T>(endpoint: string, options?: RequestInit): Promi
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ message: 'Request failed' }))
-    throw new Error(error.detail || error.message || `HTTP ${response.status}`)
+    const detail = Array.isArray(error.detail)
+      ? error.detail.map((item: { msg: string }) => item.msg).join('; ')
+      : error.detail
+    throw new Error(detail || error.message || `HTTP ${response.status}`)
   }
 
-  return response.json()
+  return response.status === 204 ? undefined as T : response.json()
 }
 
 export const api = {

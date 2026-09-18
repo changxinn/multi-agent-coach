@@ -14,6 +14,7 @@ from app.api.routes import auth, chat, coach, session
 from app.config import get_settings
 from app.db.database import close_db, init_db
 from app.services.session_manager import session_manager
+from app.api.routes import auth, chat, session, recovery
 
 # Configure logging
 logging.basicConfig(
@@ -83,6 +84,7 @@ app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
 app.include_router(coach.router, prefix="/api", tags=["Coach"])
+app.include_router(recovery.router, prefix="/api", tags=["Recovery"])
 
 
 # Health check endpoint

@@ -10,6 +10,7 @@ export const Routes = {
   Forms: '/forms',
   TableListing: '/table-listing',
   CoachData: '/coach-data',
+  RecoveryTable: '/recovery-table',
   Timeline: '/timeline',
   Login: '/login',
   QuickLogin: '/quick-login',

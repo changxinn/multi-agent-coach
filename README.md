@@ -324,6 +324,38 @@ multi-agent-coach/
 
 ## API Quick Reference
 
+### Recovery Data Table
+
+Sign in with a real administrator account and open **Recovery Table** (`/recovery-table`) to manage
+**Sleep logs**, **Recovery check-ins**, and **Recovery assessments**. Each tab
+supports paginated listing, filtering by user ID, creating, editing, and deleting
+records. Expand an assessment row to inspect its response and tool trace.
+
+The frontend uses `VITE_API_BASE_URL` and the signed-in user's bearer token to
+call the backend. The backend connects using `DATABASE_URL` from `.env` to the
+existing `systemdb` recovery tables created by migration `003`. Database
+credentials and the Recovery Agent's internal token stay on the server.
+Restart the backend after updating to register the new routes; the Recovery
+Agent service does not need to be running to manage these records.
+
+Records require an existing user ID. Sleep duration is in minutes (0–1440),
+sleep quality is 1–5, and energy, soreness, and stress are 1–10. Assessment
+responses use a JSON object and tool traces use a JSON array of strings.
+Editing an assessment changes the stored record; it does not run a new assessment.
+
+All recovery CRUD endpoints require an enabled administrator account:
+
+- `GET /api/recovery/{resource}?page=1&page_size=10&user_id=1` — list records
+- `POST /api/recovery/{resource}` — create a record
+- `PUT /api/recovery/{resource}/{id}` — update a record
+- `DELETE /api/recovery/{resource}/{id}` — delete a record
+
+`{resource}` is `sleep-logs`, `check-ins`, or `assessments`. The list response
+contains `items` and `total`. Creation returns 201, deletion returns 204,
+invalid fields return 422, and missing records return 404.
+
+Run API contract tests with `python -m pytest tests/test_recovery_crud.py -q`.
+
 ### Authentication
 - `POST /api/auth/login` - Login
 - `POST /api/auth/register` - Register
