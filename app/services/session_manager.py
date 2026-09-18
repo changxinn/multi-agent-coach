@@ -340,6 +340,15 @@ class SessionManager:
 
             return False
 
+    async def list_user_messages(self, user_id: int) -> List[Dict[str, Any]]:
+        """Return in-memory messages for this user across active sessions."""
+        async with self.lock:
+            messages: List[Dict[str, Any]] = []
+            for session in self.sessions.values():
+                if session.user_id == user_id and not session.is_expired():
+                    messages.extend(session.messages)
+            return messages
+
     async def cleanup_expired_sessions(self) -> int:
         """
         Remove all expired sessions.

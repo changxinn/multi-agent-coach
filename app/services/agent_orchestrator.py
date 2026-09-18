@@ -3,12 +3,12 @@ Agent orchestrator service for coordinating multi-agent conversations.
 
 Integrates LangGraph workflow with FastAPI.
 """
-import logging
-from typing import List, Dict, Any, Optional
 import asyncio
+import logging
+from typing import Any
 
 from app.services.session_manager import Session, session_manager
-from app.db.models import User
+from app.services.chat_response import new_assistant_messages, strip_speaker_prefix
 
 logger = logging.getLogger(__name__)
 
@@ -93,13 +93,17 @@ class AgentOrchestrator:
             )
 
             # Extract assistant messages from result
-            assistant_messages = [
-                m for m in result.get("messages", [])
-                if m.get("role") == "assistant"
-            ]
+            assistant_messages = new_assistant_messages(
+                session.messages,
+                result.get("messages", []),
+            )
 
             # Aggregate responses
             response_text = self._aggregate_responses(assistant_messages)
+            if not response_text.strip():
+                response_text = (
+                    "I'm here. Ask me about training, food, or recovery whenever you're ready."
+                )
 
             # If summary requested, generate it
             if request_summary:
@@ -118,6 +122,18 @@ class AgentOrchestrator:
                 agent_state={
                     "volley_msg_left": result.get("volley_msg_left", 0),
                 },
+            )
+
+            from app.services.coach_event_store import persist_routing_event
+
+            await persist_routing_event(
+                user_id=session.user_id,
+                session_id=session.session_id,
+                next_agent=result.get("next_agent"),
+                routing_reason=result.get("routing_reason"),
+                needs_clarification=bool(result.get("needs_clarification")),
+                safety_flags=result.get("safety_flags") or [],
+                user_message=user_message,
             )
 
             logger.info(
@@ -166,11 +182,11 @@ class AgentOrchestrator:
         except Exception as e:
             logger.error("Error in streaming: %s", e, exc_info=True)
             # Yield error message
-            error_text = f"I apologize, but I encountered an error: {str(e)}"
+            error_text = f"I apologize, but I encountered an error: {e!s}"
             for char in error_text:
                 yield char
 
-    def _aggregate_responses(self, messages: List[Dict[str, Any]]) -> str:
+    def _aggregate_responses(self, messages: list[dict[str, Any]]) -> str:
         """
         Combine multiple agent messages into single response.
 
@@ -184,7 +200,7 @@ class AgentOrchestrator:
             return ""
 
         # Group by agent name
-        by_agent: Dict[str, List[str]] = {}
+        by_agent: dict[str, list[str]] = {}
         for msg in messages:
             agent_name = msg.get("name", "Coach")
             content = msg.get("content", "").strip()
@@ -200,10 +216,11 @@ class AgentOrchestrator:
         for agent_name, contents in by_agent.items():
             # Clean up content (remove "You: " prefix if present)
             cleaned_contents = [
-                c.replace("You: ", "").strip()
+                strip_speaker_prefix(c.replace("You: ", ""))
                 for c in contents
             ]
-            section_content = " ".join(cleaned_contents)
+            cleaned_contents = [c for c in cleaned_contents if c]
+            section_content = " ".join(dict.fromkeys(cleaned_contents))
 
             # Add agent name as header if multiple agents
             if len(by_agent) > 1:
@@ -250,6 +267,14 @@ class AgentOrchestrator:
             summary = summarizer_agent(state)
 
             logger.info("Generated session summary")
+            from app.services.coach_event_store import persist_summary
+
+            await persist_summary(
+                user_id=session.user_id,
+                session_id=session.session_id,
+                summary_type="session",
+                summary_text=summary,
+            )
             return summary
 
         except Exception as e:
