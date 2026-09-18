@@ -22,6 +22,11 @@ export const ApiEndpoints = {
     Stream: '/chat/stream',
     Summary: '/chat/summary',
     History: '/chat/history',
+    DailySummary: '/summaries/daily',
+  },
+  Admin: {
+    HeadCoachRoutes: '/admin/head-coach-routes',
+    Summaries: '/admin/summaries',
   },
   Session: {
     Create: '/session',

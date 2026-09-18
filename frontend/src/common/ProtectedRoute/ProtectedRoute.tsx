@@ -1,7 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../lib/authStore'
-import { Spin } from 'antd'
-import { Roles, type Role } from '@/lib/constants'
+import { type Role, Routes } from '@/lib/constants'
 import { useEffect } from 'react'
 
 interface ProtectedRouteProps {
@@ -21,11 +20,7 @@ export function ProtectedRoute({
   }, [])
 
   if (!token) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
-        <Spin size="large" description="Loading..." />
-      </div>
-    )
+    return <Navigate to={Routes.Login} state={{ from: location }} replace />
   }
 
   if (allowedRoles) {

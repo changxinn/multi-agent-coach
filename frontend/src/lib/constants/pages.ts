@@ -9,6 +9,7 @@ export const PageIds = {
   Landing: 'landing',
   Forms: 'forms',
   TableListing: 'table-listing',
+  CoachData: 'coach-data',
   Timeline: 'timeline',
   Chat: 'chat',
 } as const

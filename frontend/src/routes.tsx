@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react'
 import { Roles, PageIds, Routes, Sections, type Role, PageId, RoutePath, type Section } from '@/lib/constants'
 import { 
   Bot,
+  ClipboardList,
   LayoutDashboard, 
   Table
 } from 'lucide-react'
@@ -35,6 +36,15 @@ export const routePages: RoutePage[] = [
     component: <></>,
     section: Sections.Admin,
     icon: <Table size={DEFAULT_ICON_SIZE} />,
+    allowedRoles: [Roles.Admin] 
+  },
+  { 
+    id: PageIds.CoachData, 
+    label: 'Coach Data', 
+    path: Routes.CoachData, 
+    component: <></>,
+    section: Sections.Admin,
+    icon: <ClipboardList size={DEFAULT_ICON_SIZE} />,
     allowedRoles: [Roles.Admin] 
   },
   { 
@@ -76,6 +86,11 @@ export const routeConfigs: RouteConfig[] = [
   },
   {
     path: Routes.TableListing,
+    element: <></>,
+    allowedRoles: [Roles.Admin],
+  },
+  {
+    path: Routes.CoachData,
     element: <></>,
     allowedRoles: [Roles.Admin],
   },
