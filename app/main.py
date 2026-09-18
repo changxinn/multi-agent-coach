@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.request_context import request_id
-from app.api.routes import auth, chat, nutrition, session
+from app.api.routes import auth, chat, nutrition, nutrition_management, session
 from app.config import get_settings
 from app.db.database import close_db, engine, init_db
 from app.services.nutrition_agent_client import nutrition_agent_client
@@ -202,6 +202,7 @@ app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
 app.include_router(nutrition.router, prefix="/api", tags=["Nutrition"])
+app.include_router(nutrition_management.router, prefix="/api", tags=["Nutrition Management"])
 
 
 # Health check endpoints

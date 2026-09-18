@@ -5,6 +5,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { RoleDashboard } from '@/pages/RoleDashboard'
 import { TableListingPage } from '@/pages/TableListingPage'
 import { ChatPage } from '@/pages/ChatPage'
+import { NutritionManagementPage } from '@/pages/NutritionManagementPage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
 import { MainLayout } from '@/common/MainLayout'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
@@ -85,6 +86,16 @@ function App() {
             <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
               <MainLayout>
                 <ChatPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.NutritionManagement}
+          element={
+            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+              <MainLayout>
+                <NutritionManagementPage />
               </MainLayout>
             </ProtectedRoute>
           }

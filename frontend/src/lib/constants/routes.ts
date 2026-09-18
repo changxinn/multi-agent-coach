@@ -13,6 +13,7 @@ export const Routes = {
   Login: '/login',
   QuickLogin: '/quick-login',
   Chat: '/chat',
+  NutritionManagement: '/nutrition-management',
 } as const
 
 export type RoutePath = typeof Routes[keyof typeof Routes]

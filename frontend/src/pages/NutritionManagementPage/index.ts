@@ -1,0 +1,1 @@
+export { NutritionManagementPage as default, NutritionManagementPage } from './NutritionManagementPage'

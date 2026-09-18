@@ -3,7 +3,8 @@ import { Roles, PageIds, Routes, Sections, type Role, PageId, RoutePath, type Se
 import { 
   Bot,
   LayoutDashboard, 
-  Table
+  Table,
+  Utensils
 } from 'lucide-react'
 
 export const DEFAULT_ICON_SIZE = 20
@@ -45,6 +46,15 @@ export const routePages: RoutePage[] = [
     section: Sections.Overview,
     icon: <Bot size={DEFAULT_ICON_SIZE} />,
     allowedRoles: [Roles.Admin] 
+  },
+  {
+    id: PageIds.NutritionManagement,
+    label: 'Nutrition',
+    path: Routes.NutritionManagement,
+    component: <></>,
+    section: Sections.Overview,
+    icon: <Utensils size={DEFAULT_ICON_SIZE} />,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
   },
 ]
 

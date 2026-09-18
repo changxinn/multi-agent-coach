@@ -11,6 +11,7 @@ export const PageIds = {
   TableListing: 'table-listing',
   Timeline: 'timeline',
   Chat: 'chat',
+  NutritionManagement: 'nutrition-management',
 } as const
 
 export type PageId = typeof PageIds[keyof typeof PageIds]
