@@ -9,6 +9,7 @@ export const PageIds = {
   Landing: 'landing',
   Forms: 'forms',
   TableListing: 'table-listing',
+  CoachData: 'coach-data',
   RecoveryTable: 'recovery-table',
   Timeline: 'timeline',
   Chat: 'chat',

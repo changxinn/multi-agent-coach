@@ -4,6 +4,7 @@ import { QuickLoginPage } from '@/pages/QuickLoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { RoleDashboard } from '@/pages/RoleDashboard'
 import { TableListingPage } from '@/pages/TableListingPage'
+import { CoachDataPage } from '@/pages/CoachDataPage'
 import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
 import { ChatPage } from '@/pages/ChatPage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
@@ -76,6 +77,16 @@ function App() {
             <ProtectedRoute allowedRoles={[Roles.Admin]}>
               <MainLayout>
                 <TableListingPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.CoachData}
+          element={
+            <ProtectedRoute allowedRoles={[Roles.Admin]}>
+              <MainLayout>
+                <CoachDataPage />
               </MainLayout>
             </ProtectedRoute>
           }

@@ -1,6 +1,7 @@
 import { Card, Typography, Table, Tag, Statistic, Row, Col } from 'antd'
 import { useAuthStore } from '@/lib/authStore'
 import { DashboardOutlined, UserOutlined } from '@ant-design/icons'
+import { DailySummaryCard } from './DailySummaryCard'
 
 const { Title, Text } = Typography
 
@@ -62,6 +63,8 @@ export function DashboardPage() {
         </Title>
         <Text type="secondary">Welcome back, {user?.name}!</Text>
       </div>
+
+      <DailySummaryCard />
 
       <Row gutter={[16, 16]}>
         <Col xs={24} sm={8}>

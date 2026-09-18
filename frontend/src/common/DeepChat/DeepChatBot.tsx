@@ -27,6 +27,7 @@ import {
   deepChatAuxiliaryStyle,
 } from '../../lib/deep-chat-config'
 import { ChatbotConfig } from '../../lib/chatbot-config'
+import { loadChatHistory, saveChatHistory, toStoredMessages } from '../../lib/chat-history'
 import './DeepChatWrapper.css'
 
 interface DeepChatBotProps {
@@ -363,6 +364,12 @@ export function DeepChatBot({
         typingTimeoutRef.current = null
       }
       
+      if (deepChatRef.current) {
+        saveChatHistory(
+          userEmail,
+          toStoredMessages(deepChatRef.current.getMessages() || [])
+        )
+      }
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay])
@@ -370,6 +377,12 @@ export function DeepChatBot({
   // Cleanup typewriter timeout and abort streaming on component unmount
   useEffect(() => {
     return () => {
+      if (deepChatRef.current) {
+        saveChatHistory(
+          userEmail,
+          toStoredMessages(deepChatRef.current.getMessages() || [])
+        )
+      }
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
         typingTimeoutRef.current = null
@@ -397,54 +410,61 @@ export function DeepChatBot({
   }, [])
 
   useEffect(() => {
-    if (isOpen && deepChatRef.current && !isInitialized.current) {
-      const deepChatEl = deepChatRef.current
-      
-      deepChatEl.requestBodyLimits = deepChatRequestBodyLimits
-      deepChatEl.textInput = deepChatTextInputConfig
-      deepChatEl.auxiliaryStyle = deepChatAuxiliaryStyle
-      deepChatEl.style = { 
-        width: '100%', 
-        height: '100%', 
-        border: 'none'
-      }
-      
-      // Disable deep-chat's built-in handlers
-      deepChatEl.connect = null
-      deepChatEl.interceptors = null
-      deepChatEl.onTextInput = null
-      deepChatEl.submitMessageOnEnter = false
-      deepChatEl.autoSave = false
-      
-      // Enable HTML rendering
-      deepChatEl.renderHTML = true
-      deepChatEl.allowHTML = true
-      deepChatEl.disableHTML = false
-      deepChatEl.renderHtml = true
-      deepChatEl.allowHtml = true
-      deepChatEl.parseHTML = true
-      deepChatEl.innerHTML = true
-      
-      // Disable deep-chat's built-in connection and handlers - we use manual handleSend
-      deepChatEl.connect = null
-      deepChatEl.interceptors = null
-      deepChatEl.onTextInput = null
-      deepChatEl.submitMessageOnEnter = false
-      deepChatEl.autoSave = false
-      
-      if (initialMessage && !hasInitialMessage.current) {
-        setTimeout(() => {
-          deepChatEl.addMessage({
-            role: 'assistant',
-            html: marked.parse(initialMessage)
-          })
-          hasInitialMessage.current = true
-        }, 200)
-      }
-      
-      isInitialized.current = true
+    if (!isOpen || !deepChatRef.current || isInitialized.current) {
+      return
     }
-  }, [isOpen, initialMessage, messageApi, token])
+
+    const deepChatEl = deepChatRef.current
+
+    deepChatEl.requestBodyLimits = deepChatRequestBodyLimits
+    deepChatEl.textInput = deepChatTextInputConfig
+    deepChatEl.auxiliaryStyle = deepChatAuxiliaryStyle
+    deepChatEl.style = {
+      width: '100%',
+      height: '100%',
+      border: 'none',
+    }
+
+    deepChatEl.connect = null
+    deepChatEl.interceptors = null
+    deepChatEl.onTextInput = null
+    deepChatEl.submitMessageOnEnter = false
+    deepChatEl.autoSave = false
+    deepChatEl.renderHTML = true
+    deepChatEl.allowHTML = true
+    deepChatEl.disableHTML = false
+    deepChatEl.renderHtml = true
+    deepChatEl.allowHtml = true
+    deepChatEl.parseHTML = true
+    deepChatEl.innerHTML = true
+
+    const saved = loadChatHistory(userEmail)
+    const restoreTimer = window.setTimeout(() => {
+      const existing = toStoredMessages(deepChatEl.getMessages?.() || [])
+      if (existing.length > 0) {
+        return
+      }
+      if (saved.length > 0) {
+        saved.forEach((item) => {
+          if (item.html) {
+            deepChatEl.addMessage({ role: item.role, html: item.html })
+          } else if (item.text) {
+            deepChatEl.addMessage({ role: item.role, text: item.text })
+          }
+        })
+        deepChatEl.scrollToBottom?.()
+      } else if (initialMessage) {
+        deepChatEl.addMessage({
+          role: 'assistant',
+          html: marked.parse(initialMessage),
+        })
+        hasInitialMessage.current = true
+      }
+    }, 200)
+
+    isInitialized.current = true
+    return () => window.clearTimeout(restoreTimer)
+  }, [isOpen, initialMessage, messageApi, token, userEmail])
 
   return (
     <>

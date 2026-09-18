@@ -131,7 +131,7 @@ def _training_context_hints(agent_id: str, messages: list) -> str:
         days = ", ".join(day_tokens)
         hints.append(
             f"Athlete confirmed training days ({days}). "
-            "Output the full weekly plan now — one bullet per day with focus and key exercises."
+            "Output the full weekly plan now in short sentences, one day at a time with focus and key exercises."
         )
 
     if re.search(r"\bplan\b.*\b(program|week|schedule)\b|\b\d+\s*-?\s*day\b", lowered):
@@ -219,14 +219,13 @@ After enough information, output:
 Message: [Your coaching response]
 
 STRICT RESPONSE RULES (very important):
-- Maximum 60 words total
-- Use 2-3 short bullet points starting with "- " (dash and space) for proper markdown formatting
-- Each bullet point must be on its own line
+- Write like a professional text message: warm, direct, complete sentences
+- Maximum 80 words
+- 2-3 short sentences in one or two paragraphs — never bullet points, numbered lists, or markdown headings
 - Give ONE clear next step or ONE question at the end
 - Do NOT repeat advice already given by another coach in the conversation
 - Stay strictly in YOUR specialty — defer other topics briefly
-- No long paragraphs, no essay-style answers
-- For program plans: give weekly structure only (days + focus), not every set/rep detail unless asked
+- For program plans: give weekly structure in sentences (days and focus), not every set/rep unless asked
 
 IMPORTANT:
 - If the user asks to log something, you MUST call the matching log tool FIRST

@@ -2,19 +2,20 @@
 SQLAlchemy ORM models for database tables.
 """
 from datetime import datetime
-from typing import Optional
 
 from sqlalchemy import (
-    Column,
-    String,
-    Integer,
-    Numeric,
     Boolean,
+    Column,
     DateTime,
     ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
     text,
 )
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
@@ -84,3 +85,54 @@ class UserFitnessProfile(Base):
 
     def __repr__(self):
         return f"<UserFitnessProfile(user_id={self.user_id}, goal={self.fitness_goal})>"
+
+
+class HeadCoachRoutingEvent(Base):
+    """Persisted Head Coach routing decision for admin review."""
+
+    __tablename__ = "head_coach_routing_events"
+    __table_args__ = {"schema": "systemdb"}
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("systemdb.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id = Column(String(64), nullable=True)
+    next_agent = Column(String(64), nullable=False)
+    routing_reason = Column(Text, nullable=True)
+    needs_clarification = Column(Boolean, nullable=False, default=False)
+    safety_flags = Column(JSONB, nullable=False, default=list)
+    user_message = Column(Text, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )
+
+
+class CoachSummary(Base):
+    """Persisted summarizer output (session wrap-up or daily briefing)."""
+
+    __tablename__ = "coach_summaries"
+    __table_args__ = {"schema": "systemdb"}
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("systemdb.users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    session_id = Column(String(64), nullable=True)
+    summary_type = Column(String(32), nullable=False)
+    summary_text = Column(Text, nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
+    )

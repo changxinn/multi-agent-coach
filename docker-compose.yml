@@ -7,6 +7,7 @@ version: '3.8'
 # - api: FastAPI backend
 # - db: PostgreSQL database
 # - redis: Redis cache (optional, for session testing)
+# - recovery-agent, head-coach, summarizer: one image per agent
 #
 # Usage:
 #   docker-compose up -d           # Start all services
@@ -37,17 +38,39 @@ services:
       - LLM_MODEL=gpt-5-nano
       - USE_RECOVERY_AGENT_SERVICE=true
       - RECOVERY_AGENT_URL=http://recovery-agent:8001
+      - USE_HEAD_COACH_SERVICE=true
+      - HEAD_COACH_URL=http://head-coach:8002
+      - USE_SUMMARIZER_SERVICE=true
+      - SUMMARIZER_URL=http://summarizer:8003
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - DEBUG=true
       - SEED_ADMIN_EMAIL=admin@example.com
       - SEED_ADMIN_PASSWORD=ChangeMe123!
       - SEED_ADMIN_NAME=System Admin
+    volumes:
+      - ./app:/app/app
+      - ./agents:/app/agents
+      - ./tools:/app/tools
+      - ./state.py:/app/state.py
+      - ./nodes.py:/app/nodes.py
+      - ./display.py:/app/display.py
+      - ./utils.py:/app/utils.py
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    user: "0:0"
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./app:/app/app  # Mount for hot reload
+      head-coach:
+        condition: service_started
+      summarizer:
+        condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
     networks:
       - app-network
 
@@ -108,10 +131,84 @@ services:
     networks:
       - app-network
 
+  # ===========================================
+  # Head Coach Agent Microservice
+  # ===========================================
+  head-coach:
+    build:
+      context: .
+      dockerfile: services/head_coach/Dockerfile
+    ports:
+      - "127.0.0.1:8002:8002"
+    environment:
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-5-nano
+      - HEAD_COACH_SERVICE_MODE=true
+    volumes:
+      - ./agents:/service/agents
+      - ./display.py:/service/display.py
+      - ./utils.py:/service/utils.py
+      - ./services/head_coach/app:/service/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002", "--reload"]
+    user: "0:0"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # Summarizer Agent Microservice
+  # ===========================================
+  summarizer:
+    build:
+      context: .
+      dockerfile: services/summarizer/Dockerfile
+    ports:
+      - "127.0.0.1:8003:8003"
+    environment:
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=gpt-5-nano
+      - SUMMARIZER_SERVICE_MODE=true
+    volumes:
+      - ./agents:/service/agents
+      - ./utils.py:/service/utils.py
+      - ./display.py:/service/display.py
+      - ./services/summarizer/app:/service/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]
+    user: "0:0"
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # Frontend (Vite hot reload)
+  # ===========================================
+  frontend:
+    image: node:20-alpine
+    working_dir: /frontend
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5174"
+    ports:
+      - "5174:5174"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:8000/api
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ./frontend:/frontend
+      - frontend_node_modules:/frontend/node_modules
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - app-network
+
 volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  frontend_node_modules:
     driver: local
 
 networks:

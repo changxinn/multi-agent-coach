@@ -41,6 +41,13 @@ DATABASE_SCHEMA=systemdb
 JWT_SECRET_KEY=your-super-secret-key-min-32-chars-long
 OPENAI_API_KEY=sk-...
 FRONTEND_URL=http://localhost:5174
+
+# Leave USE_* false for local uvicorn (agents run in-process).
+# docker compose sets these to true.
+USE_HEAD_COACH_SERVICE=false
+HEAD_COACH_URL=http://localhost:8002
+USE_SUMMARIZER_SERVICE=false
+SUMMARIZER_URL=http://localhost:8003
 ```
 
 ### 4. Start Database
@@ -171,13 +178,18 @@ docker-compose up -d
 
 This starts:
 - ✅ Backend API (port 8000)
-- ✅ Recovery Agent (port 8001, private microservice)
+- ✅ Recovery Agent (port 8001, private)
+- ✅ Head Coach (port 8002, private)
+- ✅ Summarizer (port 8003, private)
+- ✅ Frontend (port 5174)
 - ✅ PostgreSQL database (port 5432)
 - ✅ Redis (port 6379, optional for session testing)
 
+Daily summary appears on the dashboard. Coach Data (admin) lists Head Coach routing events and saved summaries.
+
 **View logs:**
 ```bash
-docker-compose logs -f api
+docker-compose logs -f api head-coach summarizer frontend
 ```
 
 **Stop all services:**
@@ -299,7 +311,8 @@ multi-agent-coach/
 │   ├── utils/                 # Utilities
 │   ├── config.py              # Configuration
 │   └── main.py                # Application entry
-├── agents/                     # LangGraph agents
+├── agents/                     # LangGraph agents (shared routing / clients)
+├── services/                   # Agent microservices (head_coach, summarizer, recovery)
 ├── tools/                      # Agent tools
 ├── frontend/                   # React frontend
 ├── docker-compose.yml          # Local dev services
@@ -353,6 +366,11 @@ Run API contract tests with `python -m pytest tests/test_recovery_crud.py -q`.
 - `GET /api/chat/stream` - Stream response (SSE)
 - `POST /api/chat/summary` - Get summary
 - `DELETE /api/chat/history/{id}` - Clear history
+
+### Coach
+- `POST /api/summaries/daily` - Today's daily summary
+- `GET /api/admin/head-coach-routes` - Head Coach routing events (admin)
+- `GET /api/admin/summaries` - Saved summaries (admin)
 
 ### Session
 - `POST /api/session` - Create session
