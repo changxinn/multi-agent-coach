@@ -134,6 +134,7 @@ def route_locally(state: dict) -> dict:
         print_backend("Safety gate", safety.action, "head_coach")
         return {
             "next_agent": "human",
+            "selected_agent": "human",
             "volley_msg_left": 0,
             "safety_flags": safety.flags,
             "routing_reason": safety.action,
@@ -152,6 +153,7 @@ def route_locally(state: dict) -> dict:
         print_backend("Routing needs clarification", prompt, "head_coach")
         return {
             "next_agent": "human",
+            "selected_agent": "human",
             "volley_msg_left": 0,
             "routing_reason": decision.reason,
             "needs_clarification": True,
@@ -171,6 +173,7 @@ def route_locally(state: dict) -> dict:
     print_backend("Routing to specialist", f"{agent_label} ({selected})", "head_coach")
     return {
         "next_agent": selected,
+        "selected_agent": selected,
         "volley_msg_left": volley_left - 1,
         "routing_reason": decision.reason,
         "needs_clarification": False,

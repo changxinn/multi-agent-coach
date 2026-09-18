@@ -8,6 +8,14 @@ from app.db.repositories.coach_events_repo import CoachEventsRepository
 logger = logging.getLogger(__name__)
 
 
+def resolve_persisted_routing_agent(state: dict) -> str:
+    """Use the specialist Head Coach picked, not the post-turn return to the user."""
+    selected = state.get("selected_agent")
+    if selected:
+        return selected
+    return state.get("next_agent") or "human"
+
+
 async def persist_routing_event(
     *,
     user_id: int,

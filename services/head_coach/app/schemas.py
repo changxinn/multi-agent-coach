@@ -13,6 +13,7 @@ class RouteRequest(BaseModel):
 
 class RouteResponse(BaseModel):
     next_agent: str
+    selected_agent: str | None = None
     volley_msg_left: int
     routing_reason: str | None = None
     needs_clarification: bool = False

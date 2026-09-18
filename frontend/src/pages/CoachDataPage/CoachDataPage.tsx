@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Table, Card, Typography, Tabs, Tag, message } from 'antd'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '@/lib/api'
-import { ApiEndpoints } from '@/lib/constants'
+import { ApiEndpoints, formatTableDateTime } from '@/lib/constants'
 
 const { Title, Text } = Typography
 
@@ -57,7 +57,7 @@ const routingColumns: ColumnsType<RoutingRow> = [
     title: 'Created',
     dataIndex: 'created_at',
     key: 'created_at',
-    render: (value: string) => new Date(value).toLocaleString(),
+    render: (value: string) => formatTableDateTime(value),
   },
 ]
 
@@ -76,7 +76,7 @@ const summaryColumns: ColumnsType<SummaryRow> = [
     title: 'Created',
     dataIndex: 'created_at',
     key: 'created_at',
-    render: (value: string) => new Date(value).toLocaleString(),
+    render: (value: string) => formatTableDateTime(value),
   },
 ]
 

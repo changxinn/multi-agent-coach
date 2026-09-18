@@ -56,3 +56,34 @@ export const formatTime = (date: Date): string => {
 export const formatDateTime = (date: Date): string => {
   return date.toLocaleString('en-US', DateFormats.DateTime)
 }
+
+const SHORT_MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const
+
+function pad2(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+/** Table timestamps: 19-Sep-2026 00:16:08 */
+export const formatTableDateTime = (value: string | Date): string => {
+  const date = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(date.getTime())) {
+    return ''
+  }
+  return (
+    `${pad2(date.getDate())}-${SHORT_MONTHS[date.getMonth()]}-${date.getFullYear()} ` +
+    `${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`
+  )
+}

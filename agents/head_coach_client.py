@@ -42,12 +42,22 @@ class HeadCoachClient:
             timeout=30,
         )
         response.raise_for_status()
-        payload = response.json()
-        return {
-            "next_agent": payload["next_agent"],
-            "volley_msg_left": payload["volley_msg_left"],
-            "routing_reason": payload.get("routing_reason"),
-            "needs_clarification": payload.get("needs_clarification", False),
-            "safety_flags": payload.get("safety_flags", []),
-            "messages": payload.get("messages", []),
-        }
+        return graph_update_from_route_payload(response.json())
+
+
+def graph_update_from_route_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep prior routing fields when the service omits them on return-to-user."""
+    update: dict[str, Any] = {
+        "next_agent": payload["next_agent"],
+        "volley_msg_left": payload["volley_msg_left"],
+        "needs_clarification": payload.get("needs_clarification", False),
+        "safety_flags": payload.get("safety_flags") or [],
+    }
+    if payload.get("routing_reason") is not None:
+        update["routing_reason"] = payload["routing_reason"]
+    if payload.get("selected_agent"):
+        update["selected_agent"] = payload["selected_agent"]
+    messages = payload.get("messages")
+    if messages:
+        update["messages"] = messages
+    return update

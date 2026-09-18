@@ -10,6 +10,7 @@ class State(TypedDict):
     messages: Annotated[list, operator.add]
     volley_msg_left: int
     next_agent: str | None
+    selected_agent: NotRequired[str]
     user_profile: dict
     routing_reason: NotRequired[str]
     needs_clarification: NotRequired[bool]

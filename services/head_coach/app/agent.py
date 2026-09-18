@@ -17,6 +17,7 @@ def route(payload: RouteRequest) -> RouteResponse:
     )
     return RouteResponse(
         next_agent=result.get("next_agent") or "human",
+        selected_agent=result.get("selected_agent"),
         volley_msg_left=result.get("volley_msg_left", 0),
         routing_reason=result.get("routing_reason"),
         needs_clarification=result.get("needs_clarification", False),

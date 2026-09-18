@@ -37,6 +37,7 @@ def test_head_coach_routes_training_request(monkeypatch):
     assert response.status_code == 200
     body = response.json()
     assert body["next_agent"] == "training_planner"
+    assert body["selected_agent"] == "training_planner"
     assert body["volley_msg_left"] == 0
 
 

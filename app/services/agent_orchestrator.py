@@ -124,12 +124,15 @@ class AgentOrchestrator:
                 },
             )
 
-            from app.services.coach_event_store import persist_routing_event
+            from app.services.coach_event_store import (
+                persist_routing_event,
+                resolve_persisted_routing_agent,
+            )
 
             await persist_routing_event(
                 user_id=session.user_id,
                 session_id=session.session_id,
-                next_agent=result.get("next_agent"),
+                next_agent=resolve_persisted_routing_agent(result),
                 routing_reason=result.get("routing_reason"),
                 needs_clarification=bool(result.get("needs_clarification")),
                 safety_flags=result.get("safety_flags") or [],
