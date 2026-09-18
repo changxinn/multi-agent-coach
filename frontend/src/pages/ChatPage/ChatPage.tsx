@@ -1,10 +1,14 @@
 import { DeepChatBot } from '../../common/DeepChat/DeepChatBot'
+import { useAuthStore } from '../../lib/authStore'
 import './ChatPage.css'
 
 export function ChatPage() {
+  const email = useAuthStore((state) => state.user?.email || 'anonymous')
+
   return (
     <div className="chat-page-container">
-      <DeepChatBot 
+      <DeepChatBot
+        key={email}
         enableExpand={false}
         streaming={true}
         enableTypewriter={true}
