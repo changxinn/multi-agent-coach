@@ -3,6 +3,7 @@ FastAPI application entry point.
 
 Configures middleware, routes, and lifecycle events.
 """
+
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -10,11 +11,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, chat, coach, session
+from app.api.routes import auth, chat, coach, recovery, session
 from app.config import get_settings
 from app.db.database import close_db, init_db
 from app.services.session_manager import session_manager
-from app.api.routes import auth, chat, session, recovery
 
 # Configure logging
 logging.basicConfig(

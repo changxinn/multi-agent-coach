@@ -4,12 +4,12 @@ Session manager with in-memory storage and S3 archival.
 Provides session management for chat conversations.
 In-memory for development, Redis-ready for production.
 """
+
 import asyncio
 import logging
-from datetime import datetime, timedelta
-from typing import Dict, Optional, List, Any
 import re
-import json
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from app.config import get_settings
 from app.utils.s3_client import get_s3_client
@@ -38,21 +38,21 @@ def validate_session_id(session_id: str) -> bool:
 class Session:
     """Represents a chat session."""
 
-    def __init__(self, session_id: str, user_id: int, profile: Dict[str, Any]):
+    def __init__(self, session_id: str, user_id: int, profile: dict[str, Any]):
         self.session_id = session_id
         self.user_id = user_id
         self.profile = profile
-        self.messages: List[Dict[str, Any]] = []
-        self.created_at = datetime.utcnow()
-        self.last_activity = datetime.utcnow()
-        self.agent_state: Dict[str, Any] = {}
+        self.messages: list[dict[str, Any]] = []
+        self.created_at = datetime.now(UTC)
+        self.last_activity = datetime.now(UTC)
+        self.agent_state: dict[str, Any] = {}
 
     def is_expired(self) -> bool:
         """Check if session has expired."""
         expiry = self.last_activity + timedelta(hours=settings.SESSION_EXPIRY_HOURS)
-        return datetime.utcnow() > expiry
+        return datetime.now(UTC) > expiry
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert session to dictionary."""
         return {
             "session_id": self.session_id,
@@ -65,7 +65,7 @@ class Session:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Session":
+    def from_dict(cls, data: dict[str, Any]) -> "Session":
         """Create session from dictionary."""
         session = cls(
             session_id=data["session_id"],
@@ -88,12 +88,12 @@ class SessionManager:
     """
 
     def __init__(self):
-        self.sessions: Dict[str, Session] = {}
+        self.sessions: dict[str, Session] = {}
         self.lock = asyncio.Lock()
         self.s3_client = get_s3_client()
 
     async def create_session(
-        self, user_id: int, profile: Dict[str, Any], session_id: Optional[str] = None
+        self, user_id: int, profile: dict[str, Any], session_id: str | None = None
     ) -> Session:
         """
         Create new session for user.
@@ -116,6 +116,7 @@ class SessionManager:
             else:
                 # Auto-generate session ID
                 import uuid
+
                 session_id = f"chat_{uuid.uuid4().hex[:16]}"
 
             session = Session(session_id=session_id, user_id=user_id, profile=profile)
@@ -128,7 +129,7 @@ class SessionManager:
         self,
         session_id: str,
         user_id: int,
-        profile: Dict[str, Any],
+        profile: dict[str, Any],
     ) -> Session:
         """
         Get existing session or create new one.
@@ -153,7 +154,9 @@ class SessionManager:
 
             if not session:
                 # Create new session
-                session = Session(session_id=session_id, user_id=user_id, profile=profile)
+                session = Session(
+                    session_id=session_id, user_id=user_id, profile=profile
+                )
                 self.sessions[session_id] = session
                 logger.info("Created new session: %s for user: %d", session_id, user_id)
             elif session.user_id != user_id:
@@ -161,13 +164,17 @@ class SessionManager:
             elif session.is_expired():
                 # Remove expired session and create new one
                 del self.sessions[session_id]
-                session = Session(session_id=session_id, user_id=user_id, profile=profile)
+                session = Session(
+                    session_id=session_id, user_id=user_id, profile=profile
+                )
                 self.sessions[session_id] = session
-                logger.info("Recreated expired session: %s for user: %d", session_id, user_id)
+                logger.info(
+                    "Recreated expired session: %s for user: %d", session_id, user_id
+                )
 
             return session
 
-    async def get_session(self, session_id: str, user_id: int) -> Optional[Session]:
+    async def get_session(self, session_id: str, user_id: int) -> Session | None:
         """
         Get session by ID with authorization check.
 
@@ -203,8 +210,8 @@ class SessionManager:
         self,
         session_id: str,
         user_id: int,
-        messages: List[Dict[str, Any]],
-        agent_state: Optional[Dict[str, Any]] = None,
+        messages: list[dict[str, Any]],
+        agent_state: dict[str, Any] | None = None,
     ) -> bool:
         """
         Update session with new messages.
@@ -229,7 +236,7 @@ class SessionManager:
 
             # Add messages
             session.messages.extend(messages)
-            session.last_activity = datetime.utcnow()
+            session.last_activity = datetime.now(UTC)
 
             if agent_state:
                 session.agent_state = agent_state
@@ -238,13 +245,11 @@ class SessionManager:
             if self.s3_client and self.s3_client.client:
                 # Archive each message individually
                 for message in messages:
-                    asyncio.create_task(
-                        self._archive_message(session, message)
-                    )
+                    asyncio.create_task(self._archive_message(session, message))
 
             return True
 
-    async def _archive_message(self, session: Session, message: Dict[str, Any]) -> bool:
+    async def _archive_message(self, session: Session, message: dict[str, Any]) -> bool:
         """
         Archive a single message to S3.
 
@@ -263,7 +268,7 @@ class SessionManager:
                 user_id=str(session.user_id),
                 session_id=session.session_id,
                 message=message,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(UTC),
             )
             return True
         except Exception as e:
@@ -293,7 +298,7 @@ class SessionManager:
             # Clear messages
             session.messages = []
             session.agent_state = {}
-            session.last_activity = datetime.utcnow()
+            session.last_activity = datetime.now(UTC)
 
             # Delete from S3
             if self.s3_client and self.s3_client.client:
@@ -340,10 +345,10 @@ class SessionManager:
 
             return False
 
-    async def list_user_messages(self, user_id: int) -> List[Dict[str, Any]]:
+    async def list_user_messages(self, user_id: int) -> list[dict[str, Any]]:
         """Return in-memory messages for this user across active sessions."""
         async with self.lock:
-            messages: List[Dict[str, Any]] = []
+            messages: list[dict[str, Any]] = []
             for session in self.sessions.values():
                 if session.user_id == user_id and not session.is_expired():
                     messages.extend(session.messages)

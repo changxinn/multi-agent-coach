@@ -4,11 +4,13 @@ Database seeding script.
 Creates default admin user with properly hashed password.
 Safe to run multiple times (idempotent).
 """
+
 import asyncio
 import logging
-from sqlalchemy import text, select
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import bcrypt
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
 from app.db.database import AsyncSessionLocal, run_migrations
@@ -36,8 +38,7 @@ async def seed_admin_user(session: AsyncSession) -> None:
 
     # Hash password with bcrypt
     password_hash = bcrypt.hashpw(
-        settings.SEED_ADMIN_PASSWORD.encode("utf-8"),
-        bcrypt.gensalt(rounds=12)
+        settings.SEED_ADMIN_PASSWORD.encode("utf-8"), bcrypt.gensalt(rounds=12)
     ).decode("utf-8")
 
     # Create admin user

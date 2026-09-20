@@ -76,7 +76,9 @@ class CoachEventsRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_routing_events(self, limit: int = 100) -> list[HeadCoachRoutingEvent]:
+    async def list_routing_events(
+        self, limit: int = 100
+    ) -> list[HeadCoachRoutingEvent]:
         result = await self.db.execute(
             select(HeadCoachRoutingEvent)
             .order_by(HeadCoachRoutingEvent.created_at.desc())
@@ -87,7 +89,9 @@ class CoachEventsRepository:
     async def list_summaries(
         self, limit: int = 100, summary_type: str | None = None
     ) -> list[CoachSummary]:
-        query = select(CoachSummary).order_by(CoachSummary.created_at.desc()).limit(limit)
+        query = (
+            select(CoachSummary).order_by(CoachSummary.created_at.desc()).limit(limit)
+        )
         if summary_type:
             query = (
                 select(CoachSummary)

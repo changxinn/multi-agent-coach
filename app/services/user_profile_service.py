@@ -1,11 +1,13 @@
 """
 User profile service for fetching fitness profiles from database.
 """
+
 import logging
-from typing import Dict, Any, Optional
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import User, UserFitnessProfile
+from app.db.models import UserFitnessProfile
 from app.db.repositories.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
@@ -18,7 +20,7 @@ class UserProfileService:
         self.db = db
         self.user_repo = UserRepository(db)
 
-    async def get_user_profile(self, user_id: int) -> Dict[str, Any]:
+    async def get_user_profile(self, user_id: int) -> dict[str, Any]:
         """
         Get user profile for LangGraph state.
 
@@ -38,8 +40,7 @@ class UserProfileService:
 
         # Fetch fitness profile separately (relationship removed)
         from sqlalchemy import select
-        from app.db.models import UserFitnessProfile
-        
+
         result = await self.db.execute(
             select(UserFitnessProfile).where(UserFitnessProfile.user_id == user_id)
         )
@@ -50,20 +51,24 @@ class UserProfileService:
             "name": user.name,
             "fitness_goal": profile.fitness_goal if profile else "general fitness",
             "fitness_level": profile.fitness_level if profile else "beginner",
-            "weight_kg": float(profile.weight_kg) if profile and profile.weight_kg else None,
-            "height_cm": float(profile.height_cm) if profile and profile.height_cm else None,
+            "weight_kg": float(profile.weight_kg)
+            if profile and profile.weight_kg
+            else None,
+            "height_cm": float(profile.height_cm)
+            if profile and profile.height_cm
+            else None,
             "age": profile.age if profile else None,
         }
 
     async def update_fitness_profile(
         self,
         user_id: int,
-        fitness_goal: Optional[str] = None,
-        fitness_level: Optional[str] = None,
-        weight_kg: Optional[float] = None,
-        height_cm: Optional[float] = None,
-        age: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        fitness_goal: str | None = None,
+        fitness_level: str | None = None,
+        weight_kg: float | None = None,
+        height_cm: float | None = None,
+        age: int | None = None,
+    ) -> dict[str, Any]:
         """
         Update user fitness profile.
 
@@ -102,7 +107,7 @@ class UserProfileService:
             "age": profile.age,
         }
 
-    async def get_complete_user_data(self, user_id: int) -> Dict[str, Any]:
+    async def get_complete_user_data(self, user_id: int) -> dict[str, Any]:
         """
         Get complete user data (auth + profile).
 
@@ -131,7 +136,11 @@ class UserProfileService:
             # Profile data
             "fitness_goal": profile.fitness_goal if profile else "general fitness",
             "fitness_level": profile.fitness_level if profile else "beginner",
-            "weight_kg": float(profile.weight_kg) if profile and profile.weight_kg else None,
-            "height_cm": float(profile.height_cm) if profile and profile.height_cm else None,
+            "weight_kg": float(profile.weight_kg)
+            if profile and profile.weight_kg
+            else None,
+            "height_cm": float(profile.height_cm)
+            if profile and profile.height_cm
+            else None,
             "age": profile.age if profile else None,
         }

@@ -52,9 +52,7 @@ RECOVERY_KEYWORDS = (
     "nap",
 )
 
-CLARIFY_PROMPT = (
-    "Happy to help. Is this about training, food, or recovery?"
-)
+CLARIFY_PROMPT = "Happy to help. Is this about training, food, or recovery?"
 CHITCHAT_PROMPT = (
     "Hey, I'm here. Want to talk training, food, sleep, or something else on your mind?"
 )

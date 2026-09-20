@@ -75,6 +75,7 @@ Redis session store for production use.
 Implements the same interface as in-memory SessionManager
 but uses Redis for storage.
 """
+
 import json
 import logging
 from datetime import datetime, timedelta
@@ -136,6 +137,7 @@ class RedisSessionStore:
             raise RuntimeError("Redis not connected")
 
         import uuid
+
         if not session_id:
             session_id = f"chat_{uuid.uuid4().hex[:16]}"
 
@@ -267,41 +269,44 @@ Modify to support both in-memory and Redis:
 from typing import Union
 from app.services.session_store import RedisSessionStore
 
+
 # Modify SessionManager class
 class SessionManager:
     def __init__(self, use_redis: bool = False):
         self.use_redis = use_redis
         self.sessions: Dict[str, Session] = {}  # In-memory
         self.redis_store: Optional[RedisSessionStore] = None  # Redis
-        
+
         if use_redis:
             self.redis_store = RedisSessionStore()
-            
+
     async def initialize(self) -> None:
         """Initialize session manager."""
         if self.use_redis and self.redis_store:
             await self.redis_store.connect()
-    
+
     async def shutdown(self) -> None:
         """Shutdown session manager."""
         if self.use_redis and self.redis_store:
             await self.redis_store.disconnect()
-    
+
     # Update methods to use Redis if configured
-    async def create_session(self, user_id: int, profile: Dict, session_id: Optional[str] = None) -> Session:
+    async def create_session(
+        self, user_id: int, profile: Dict, session_id: Optional[str] = None
+    ) -> Session:
         if self.use_redis and self.redis_store:
             return await self.redis_store.create_session(user_id, profile, session_id)
         else:
             # Existing in-memory implementation
             ...
-    
+
     async def get_session(self, session_id: str, user_id: int) -> Optional[Session]:
         if self.use_redis and self.redis_store:
             return await self.redis_store.get_session(session_id, user_id)
         else:
             # Existing in-memory implementation
             ...
-    
+
     # Update other methods similarly...
 ```
 
@@ -416,10 +421,11 @@ TTL session:chat_abc123def456789
 ```python
 # Python script to test TTL
 import redis
+
 r = redis.Redis()
 
 # Check session TTL
-ttl = r.ttl('session:chat_abc123def456789')
+ttl = r.ttl("session:chat_abc123def456789")
 print(f"Session expires in: {ttl} seconds")
 ```
 

@@ -3,8 +3,9 @@ Agent service for LangGraph integration.
 
 Wraps LangGraph workflow for API usage.
 """
+
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -28,17 +29,18 @@ def build_api_graph():
     try:
         from langgraph.graph import END, START, StateGraph
 
-        # Import existing components
-        from state import State
         from agents import orchestrator as orchestrator_agent
 
         # Import or create API-friendly nodes
         from app.services.agent_service import (
-            human_node_api,
-            specialist_node_api,
             check_exit_condition_api,
+            human_node_api,
             orchestrator_routing_api,
+            specialist_node_api,
         )
+
+        # Import existing components
+        from state import State
 
         # Build graph
         builder = StateGraph(State)
@@ -88,7 +90,7 @@ def build_api_graph():
         raise
 
 
-def human_node_api(state: "State") -> Dict[str, Any]:
+def human_node_api(state: "State") -> dict[str, Any]:
     """
     API version of human node.
 
@@ -108,7 +110,6 @@ def check_exit_condition_api(state: "State"):
 
     Routes to summarizer if exit requested.
     """
-    from typing import Literal
 
     messages = state.get("messages", [])
     if not messages:
@@ -127,7 +128,6 @@ def orchestrator_routing_api(state: "State"):
     """
     API version of orchestrator routing.
     """
-    from typing import Literal
 
     next_agent = state.get("next_agent")
 
@@ -137,7 +137,7 @@ def orchestrator_routing_api(state: "State"):
     return "end"
 
 
-def specialist_node_api(state: "State") -> Dict[str, Any]:
+def specialist_node_api(state: "State") -> dict[str, Any]:
     """
     API version of specialist node.
 
@@ -190,15 +190,19 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
                 ],
                 "volley_msg_left": max(0, volley_left - 1),
             }
-        except Exception as error:
+        except Exception:
             # The existing in-process agent is a deliberate development fallback.
-            logger.exception("Recovery Agent service failed; using local recovery fallback: %s", error)
+            logger.exception(
+                "Recovery Agent service failed; using local recovery fallback"
+            )
 
     result = specialist(next_agent, state)
 
     # Decrement volley counter to prevent infinite loop
     new_volley = max(0, volley_left - 1)
-    logger.info("Specialist responded, volley_msg_left: %d -> %d", volley_left, new_volley)
+    logger.info(
+        "Specialist responded, volley_msg_left: %d -> %d", volley_left, new_volley
+    )
 
     if result and "messages" in result:
         return {
@@ -210,7 +214,7 @@ def specialist_node_api(state: "State") -> Dict[str, Any]:
     return {"volley_msg_left": new_volley}
 
 
-def summarizer_node_api(state: "State") -> Dict[str, Any]:
+def summarizer_node_api(state: "State") -> dict[str, Any]:
     """
     API version of summarizer node.
 

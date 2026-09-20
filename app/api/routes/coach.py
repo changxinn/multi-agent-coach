@@ -1,7 +1,7 @@
 """Daily summary and admin listings for Head Coach / Summarizer."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -38,7 +38,8 @@ async def generate_daily_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """Build today's Daily Summary via the summarizer agent and persist it."""
-    from agents.summarizer import strip_daily_summary_heading, summarizer as summarizer_agent
+    from agents.summarizer import strip_daily_summary_heading
+    from agents.summarizer import summarizer as summarizer_agent
 
     repo = CoachEventsRepository(db)
     if not refresh:
@@ -78,7 +79,7 @@ async def generate_daily_summary(
     )
     return DailySummaryResponse(
         summary=row.summary_text,
-        generated_at=row.created_at or datetime.now(timezone.utc),
+        generated_at=row.created_at or datetime.now(UTC),
         reused=False,
     )
 

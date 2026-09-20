@@ -1,4 +1,5 @@
 """Optional LLM presentation layer for the tool-driven Recovery Agent."""
+
 import logging
 
 from openai import OpenAI
@@ -31,7 +32,9 @@ class RecoveryAgent:
         if not self.settings.RECOVERY_LLM_ENABLED:
             return assessment
         if not self.settings.OPENAI_API_KEY:
-            logger.warning("RECOVERY_LLM_ENABLED is true but OPENAI_API_KEY is unavailable; using deterministic response")
+            logger.warning(
+                "RECOVERY_LLM_ENABLED is true but OPENAI_API_KEY is unavailable; using deterministic response"
+            )
             return assessment
 
         context = {
@@ -54,9 +57,17 @@ class RecoveryAgent:
                 ],
             )
             content = (completion.choices[0].message.content or "").strip()
-            if not content or any(term in content.lower() for term in ("system prompt", "api key", "developer message")):
-                raise ValueError("Model response failed recovery-agent output safety checks")
+            if not content or any(
+                term in content.lower()
+                for term in ("system prompt", "api key", "developer message")
+            ):
+                raise ValueError(
+                    "Model response failed recovery-agent output safety checks"
+                )
             return assessment.model_copy(update={"message": content})
         except Exception as error:
-            logger.warning("Recovery LLM presentation failed; using deterministic response: %s", error)
+            logger.warning(
+                "Recovery LLM presentation failed; using deterministic response: %s",
+                error,
+            )
             return assessment

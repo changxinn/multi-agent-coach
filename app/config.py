@@ -3,6 +3,7 @@ Application configuration using pydantic-settings.
 
 Loads environment variables from .env file and validates them.
 """
+
 from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

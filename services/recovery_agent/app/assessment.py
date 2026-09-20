@@ -1,11 +1,11 @@
 """Deterministic recovery scoring and safety escalation rules."""
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass
 
 from .schemas import RecoveryEvaluateRequest, RecoveryEvaluateResponse
-
 
 MEDICAL_RISK_PATTERN = re.compile(
     r"\b(chest pain|chest discomfort|difficulty breathing|shortness of breath|"
@@ -24,14 +24,26 @@ class RecoveryHistory:
 
 
 def _extract_sleep_hours(message: str) -> float | None:
-    match = re.search(r"\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s+)?sleep\b", message, re.I)
+    match = re.search(
+        r"\b(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\s*(?:of\s+)?sleep\b",
+        message,
+        re.IGNORECASE,
+    )
     if not match:
-        match = re.search(r"\b(?:slept|sleep)\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b", message, re.I)
+        match = re.search(
+            r"\b(?:slept|sleep)\s*(\d+(?:\.\d+)?)\s*(?:hours?|hrs?)\b",
+            message,
+            re.IGNORECASE,
+        )
     return float(match.group(1)) if match else None
 
 
 def _extract_scale(message: str, label: str) -> int | None:
-    match = re.search(rf"\b{label}\s*(?:is|was|:)?\s*(10|[1-9])(?:\s*/\s*10)?\b", message, re.I)
+    match = re.search(
+        rf"\b{label}\s*(?:is|was|:)?\s*(10|[1-9])(?:\s*/\s*10)?\b",
+        message,
+        re.IGNORECASE,
+    )
     return int(match.group(1)) if match else None
 
 
@@ -76,11 +88,31 @@ def assess_recovery(
             created_at=created_at,
         )
 
-    sleep_hours = request.sleep_hours if request.sleep_hours is not None else _extract_sleep_hours(message)
-    sleep_quality = request.sleep_quality if request.sleep_quality is not None else _quality_from_message(message)
-    energy = request.energy if request.energy is not None else _extract_scale(message, "energy")
-    soreness = request.soreness if request.soreness is not None else _extract_scale(message, "soreness")
-    stress = request.stress if request.stress is not None else _extract_scale(message, "stress")
+    sleep_hours = (
+        request.sleep_hours
+        if request.sleep_hours is not None
+        else _extract_sleep_hours(message)
+    )
+    sleep_quality = (
+        request.sleep_quality
+        if request.sleep_quality is not None
+        else _quality_from_message(message)
+    )
+    energy = (
+        request.energy
+        if request.energy is not None
+        else _extract_scale(message, "energy")
+    )
+    soreness = (
+        request.soreness
+        if request.soreness is not None
+        else _extract_scale(message, "soreness")
+    )
+    stress = (
+        request.stress
+        if request.stress is not None
+        else _extract_scale(message, "stress")
+    )
 
     if sleep_hours is None and history.average_sleep_minutes is not None:
         sleep_hours = history.average_sleep_minutes / 60

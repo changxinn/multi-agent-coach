@@ -2,16 +2,17 @@ from app.services.chat_response import new_assistant_messages, strip_speaker_pre
 
 
 def test_strip_speaker_prefix_removes_head_coach_label():
-    assert (
-        strip_speaker_prefix("Head Coach: Hey, I'm here.")
-        == "Hey, I'm here."
-    )
+    assert strip_speaker_prefix("Head Coach: Hey, I'm here.") == "Hey, I'm here."
 
 
 def test_new_assistant_messages_skips_prior_turns_and_duplicates():
     prior = [
         {"role": "user", "content": "hi"},
-        {"role": "assistant", "name": "Head Coach", "content": "Head Coach: Hey, I'm here."},
+        {
+            "role": "assistant",
+            "name": "Head Coach",
+            "content": "Head Coach: Hey, I'm here.",
+        },
     ]
     result = prior + [
         {"role": "user", "content": "i just wanna chat"},
