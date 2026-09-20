@@ -1,9 +1,9 @@
 """Request and response contracts for the Recovery Agent."""
+
 from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
-
 
 RecoveryStatus = Literal["green", "amber", "red", "escalate"]
 

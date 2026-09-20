@@ -653,6 +653,7 @@ db container is not healthy
    ```python
    # In app/main.py
    import gc
+
    gc.collect()
    ```
 

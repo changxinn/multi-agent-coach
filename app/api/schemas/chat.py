@@ -1,10 +1,11 @@
 """
 Chat request/response schemas.
 """
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Literal
-import re
 
+import re
+from typing import Literal
+
+from pydantic import BaseModel, Field
 
 # Session ID validation pattern
 SESSION_ID_PATTERN = re.compile(r"^chat_[a-f0-9]{16}$")
@@ -13,9 +14,7 @@ SESSION_ID_PATTERN = re.compile(r"^chat_[a-f0-9]{16}$")
 def validate_session_id(value: str) -> str:
     """Validate session ID format."""
     if not SESSION_ID_PATTERN.match(value):
-        raise ValueError(
-            "Invalid session ID format. Must be: chat_[a-f0-9]{16}"
-        )
+        raise ValueError("Invalid session ID format. Must be: chat_[a-f0-9]{16}")
     return value
 
 
@@ -29,7 +28,7 @@ class ChatMessage(BaseModel):
 class ChatRequest(BaseModel):
     """Chat request schema."""
 
-    messages: List[ChatMessage]
+    messages: list[ChatMessage]
     session_id: str = Field(..., pattern=SESSION_ID_PATTERN.pattern)
     temperature: float = Field(default=0.7, ge=0, le=2)
     max_tokens: int = Field(default=500, ge=1, le=4000)
@@ -40,8 +39,8 @@ class ChatResponse(BaseModel):
 
     message: str
     session_id: str
-    model: Optional[str] = None
-    agents_involved: Optional[List[str]] = None
+    model: str | None = None
+    agents_involved: list[str] | None = None
 
 
 class StreamChunk(BaseModel):

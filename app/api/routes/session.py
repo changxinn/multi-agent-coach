@@ -1,20 +1,21 @@
 """
 Session management routes.
 """
+
 import logging
-from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
 from app.api.routes.auth import get_current_user
 from app.api.schemas.session import (
-    SessionCreateRequest,
-    SessionResponse,
-    SessionDetailsResponse,
     SessionClearRequest,
+    SessionCreateRequest,
+    SessionDetailsResponse,
+    SessionResponse,
 )
-from app.services.session_manager import session_manager, get_session_manager
+from app.db.database import get_db
+from app.services.session_manager import get_session_manager
 from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ router = APIRouter()
 
 @router.post("/session", response_model=SessionResponse)
 async def create_session(
-    request: Optional[SessionCreateRequest] = None,
+    request: SessionCreateRequest | None = None,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -152,7 +153,9 @@ async def clear_session(
     session_mgr = get_session_manager()
 
     try:
-        success = await session_mgr.clear_session(request.session_id, current_user["id"])
+        success = await session_mgr.clear_session(
+            request.session_id, current_user["id"]
+        )
 
         if not success:
             raise HTTPException(

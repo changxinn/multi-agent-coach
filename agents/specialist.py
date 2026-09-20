@@ -1,5 +1,6 @@
-import re
+import logging
 import os
+import re
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -15,14 +16,19 @@ from tools import (
 from tools.log_intent import intents_for_agent
 from utils import debug
 
+logger = logging.getLogger(__name__)
+
 # Load API key from config if available
 try:
     from app.config import get_settings
+
     _settings = get_settings()
     if _settings.OPENAI_API_KEY and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = _settings.OPENAI_API_KEY
 except Exception:
-    pass
+    logger.debug(
+        "Unable to load OPENAI_API_KEY from application settings", exc_info=True
+    )
 
 AGENTS = {
     "training_planner": {
@@ -267,7 +273,9 @@ IMPORTANT:
                 "Do NOT call log_workout, log_meal, or log_sleep.\n"
             )
         elif any(t.startswith("log_") for t in tools_called):
-            preflight_note += "\n\nAcknowledge what was logged using the exact data above.\n"
+            preflight_note += (
+                "\n\nAcknowledge what was logged using the exact data above.\n"
+            )
         internal_context += preflight_note
 
     max_iterations = 5
@@ -327,7 +335,9 @@ IMPORTANT:
                     tool_name = action_match.group(1).lower()
                     argument = (action_match.group(2) or "").strip()
                     # Strip accidental chained actions pasted into the argument
-                    argument = re.split(r"\n\s*Action:", argument, maxsplit=1)[0].strip()
+                    argument = re.split(r"\n\s*Action:", argument, maxsplit=1)[
+                        0
+                    ].strip()
 
                     if not _agent_allowed_tool(agent_id, tool_name):
                         observation = f"Access denied: {agent['name']} cannot use tool '{tool_name}'."

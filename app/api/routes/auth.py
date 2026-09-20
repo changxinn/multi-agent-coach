@@ -1,21 +1,22 @@
 """
 Authentication routes: login, register, token refresh.
 """
-import logging
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.ext.asyncio import AsyncSession
-import bcrypt
 
-from app.db.database import get_db
-from app.db.repositories.user_repo import UserRepository
-from app.services.jwt_service import create_access_token, refresh_token, validate_token
+import logging
+
+import bcrypt
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.api.schemas.auth import (
     LoginRequest,
     RegisterRequest,
     TokenResponse,
-    UserResponse,
 )
+from app.db.database import get_db
+from app.db.repositories.user_repo import UserRepository
+from app.services.jwt_service import create_access_token, refresh_token, validate_token
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,9 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
         )
 
     # Verify password with bcrypt
-    if not bcrypt.checkpw(request.password.encode("utf-8"), user.password.encode("utf-8")):
+    if not bcrypt.checkpw(
+        request.password.encode("utf-8"), user.password.encode("utf-8")
+    ):
         logger.warning("Invalid password for user: %s", request.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -60,13 +63,15 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
 
     # Create JWT token with role (default to USER if not set)
     user_role = user.role.lower() if user.role else "user"
-    token = create_access_token({
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "role": user_role,  # Include role in token
-        "user_image": None,
-    })
+    token = create_access_token(
+        {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user_role,  # Include role in token
+            "user_image": None,
+        }
+    )
 
     logger.info("User logged in successfully: %s (role: %s)", user.email, user_role)
 
@@ -120,15 +125,19 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
 
     # Create JWT token with role (new users default to USER)
     user_role = "user"  # Default role for new users
-    token = create_access_token({
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "role": user_role,
-        "user_image": None,
-    })
+    token = create_access_token(
+        {
+            "id": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user_role,
+            "user_image": None,
+        }
+    )
 
-    logger.info("New user registered: %s (ID: %d, role: %s)", user.email, user.id, user_role)
+    logger.info(
+        "New user registered: %s (ID: %d, role: %s)", user.email, user.id, user_role
+    )
 
     return TokenResponse(
         access_token=token,
@@ -215,7 +224,9 @@ async def get_current_user(
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "role": user.role.lower() if user.role else "user",  # Ensure role is lowercase
+            "role": user.role.lower()
+            if user.role
+            else "user",  # Ensure role is lowercase
             "sub": payload["sub"],  # Keep for session manager
         }
 

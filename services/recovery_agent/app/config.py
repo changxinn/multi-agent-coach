@@ -1,4 +1,5 @@
 """Configuration for the Recovery Agent service."""
+
 import re
 
 from pydantic_settings import BaseSettings, SettingsConfigDict

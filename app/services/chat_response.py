@@ -26,7 +26,9 @@ def new_assistant_messages(
     result_messages: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Keep only assistant messages added in this graph turn."""
-    prior_count = sum(1 for message in prior_messages if message.get("role") == "assistant")
+    prior_count = sum(
+        1 for message in prior_messages if message.get("role") == "assistant"
+    )
     assistants = [
         message for message in result_messages if message.get("role") == "assistant"
     ]

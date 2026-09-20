@@ -3,12 +3,13 @@ Agent orchestrator service for coordinating multi-agent conversations.
 
 Integrates LangGraph workflow with FastAPI.
 """
+
 import asyncio
 import logging
 from typing import Any
 
-from app.services.session_manager import Session, session_manager
 from app.services.chat_response import new_assistant_messages, strip_speaker_prefix
+from app.services.session_manager import Session, session_manager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class AgentOrchestrator:
             async with self._graph_lock:
                 if self.graph is None:
                     from app.services.agent_service import build_api_graph
+
                     self.graph = build_api_graph()
                     logger.info("LangGraph initialized")
         return self.graph
@@ -101,14 +103,14 @@ class AgentOrchestrator:
             # Aggregate responses
             response_text = self._aggregate_responses(assistant_messages)
             if not response_text.strip():
-                response_text = (
-                    "I'm here. Ask me about training, food, or recovery whenever you're ready."
-                )
+                response_text = "I'm here. Ask me about training, food, or recovery whenever you're ready."
 
             # If summary requested, generate it
             if request_summary:
                 summary = await self._generate_summary(session, user_message)
-                response_text = f"{response_text}\n\n---\n\n**Session Summary:**\n{summary}"
+                response_text = (
+                    f"{response_text}\n\n---\n\n**Session Summary:**\n{summary}"
+                )
 
             # Update session with new messages
             new_messages = [
@@ -146,8 +148,8 @@ class AgentOrchestrator:
 
             return response_text
 
-        except Exception as e:
-            logger.error("Error processing message: %s", e, exc_info=True)
+        except Exception:
+            logger.exception("Error processing message")
             return (
                 "I apologize, but I encountered an error processing your request. "
                 "Please try again."
@@ -177,13 +179,13 @@ class AgentOrchestrator:
                 user_message=user_message,
                 request_summary=request_summary,
             )
-            
+
             # Stream character by character
             for char in response_text:
                 yield char
 
         except Exception as e:
-            logger.error("Error in streaming: %s", e, exc_info=True)
+            logger.exception("Error in streaming")
             # Yield error message
             error_text = f"I apologize, but I encountered an error: {e!s}"
             for char in error_text:
@@ -219,8 +221,7 @@ class AgentOrchestrator:
         for agent_name, contents in by_agent.items():
             # Clean up content (remove "You: " prefix if present)
             cleaned_contents = [
-                strip_speaker_prefix(c.replace("You: ", ""))
-                for c in contents
+                strip_speaker_prefix(c.replace("You: ", "")) for c in contents
             ]
             cleaned_contents = [c for c in cleaned_contents if c]
             section_content = " ".join(dict.fromkeys(cleaned_contents))

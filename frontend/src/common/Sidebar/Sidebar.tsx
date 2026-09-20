@@ -1,7 +1,6 @@
-// import type { RoutePage } from '../routes'
 import type { ReactNode } from 'react'
 import './Sidebar.css'
-import {LayoutDashboard, LogOut} from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutDashboard, LogOut } from 'lucide-react'
 
 interface SidebarPage {
   id: string
@@ -30,11 +29,13 @@ function Sidebar({
   sidebarCollapsed, 
   isMobile,
   mobileMenuOpen,
-  onNavigate, 
+  onNavigate,
+  onToggleSidebar,
   onCloseMobileMenu,
   onLogout
 }: SidebarProps) {
   const showFull = isMobile ? mobileMenuOpen : !sidebarCollapsed
+  const sidebarToggleLabel = sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'
   
   // Group pages by section
   const groupedPages = pages.reduce((acc, page) => {
@@ -63,13 +64,25 @@ function Sidebar({
           )}
         </div>
 
-        {isMobile && (
+        {isMobile ? (
           <button
             type="button"
             className="mobile-close"
             onClick={onCloseMobileMenu}
+            aria-label="Close navigation menu"
           >
             ✕
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="collapse-toggle"
+            onClick={onToggleSidebar}
+            aria-label={sidebarToggleLabel}
+            aria-expanded={!sidebarCollapsed}
+            title={sidebarToggleLabel}
+          >
+            {sidebarCollapsed ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
           </button>
         )}
       </div>
@@ -85,6 +98,8 @@ function Sidebar({
                 key={page.id}
                 type="button"
                 className={`nav-item ${currentPageId === page.id ? 'active' : ''}`}
+                aria-label={page.label}
+                title={showFull ? undefined : page.label}
                 onClick={() => {
                   onNavigate(page.path)
                   if (isMobile) onCloseMobileMenu()
@@ -105,6 +120,7 @@ function Sidebar({
           type="button"
           className="logout-button"
           onClick={onLogout}
+          aria-label="Sign Out"
           title="Sign Out"
         >
           <LogOut />

@@ -113,7 +113,8 @@ def decide_routing(state: dict, *, use_llm: bool = True):
             debug(f"LLM routing failed, using heuristic: {exc}", "HEAD COACH")
 
     debug(
-        f"Heuristic routing: {[agent.value for agent in heuristic.agents]}", "HEAD COACH"
+        f"Heuristic routing: {[agent.value for agent in heuristic.agents]}",
+        "HEAD COACH",
     )
     return heuristic
 
