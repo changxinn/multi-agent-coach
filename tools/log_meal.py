@@ -1,16 +1,13 @@
-from tools.storage import load_data, save_data, today_str
-
-
 def log_meal(description: str) -> str:
+    """Request the structured, user-scoped confirmation required to log a meal.
+
+    The specialist process has no authenticated user identity, so it must never
+    write a shared JSON record or impersonate a user. The Nutrition page/API is
+    the authoritative PostgreSQL-backed logging path.
     """
-    Log a meal or snack.
-    Format: free text, e.g. 'breakfast: oats, banana, coffee'.
-    """
-    data = load_data()
-    entry = {
-        "date": today_str(),
-        "description": description.strip(),
-    }
-    data["meals"].append(entry)
-    save_data(data)
-    return f"Meal logged for {entry['date']}: {description.strip()}"
+    description = description.strip()
+    return (
+        "Meal logging needs confirmation in Nutrition before it is saved. "
+        f"I heard: {description}. Please confirm the meal type and portion "
+        "(preferably grams), then use the Nutrition Meal Log to save it."
+    )

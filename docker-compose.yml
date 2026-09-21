@@ -7,7 +7,7 @@ version: '3.8'
 # - api: FastAPI backend
 # - db: PostgreSQL database
 # - redis: Redis cache (optional, for session testing)
-# - recovery-agent, head-coach, summarizer: one image per agent
+# - recovery-agent, head-coach, summarizer, nutrition-agent: one image per agent
 #
 # Usage:
 #   docker-compose up -d           # Start all services
@@ -42,7 +42,10 @@ services:
       - HEAD_COACH_URL=http://head-coach:8002
       - USE_SUMMARIZER_SERVICE=true
       - SUMMARIZER_URL=http://summarizer:8003
+      - USE_NUTRITION_AGENT_SERVICE=true
+      - NUTRITION_AGENT_URL=http://nutrition-agent:8004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
       - DEBUG=true
       - SEED_ADMIN_EMAIL=admin@example.com
       - SEED_ADMIN_PASSWORD=ChangeMe123!
@@ -63,6 +66,8 @@ services:
       head-coach:
         condition: service_started
       summarizer:
+        condition: service_started
+      nutrition-agent:
         condition: service_started
     restart: unless-stopped
     healthcheck:
@@ -178,6 +183,46 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003", "--reload"]
     user: "0:0"
     restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # Nutrition Agent Microservice
+  # ===========================================
+  nutrition-agent:
+    build:
+      context: .
+      dockerfile: services/nutrition_agent/Dockerfile
+    ports:
+      - "127.0.0.1:8004:8004"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
+      - DATABASE_SCHEMA=systemdb
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  # ===========================================
+  # One-off USDA Food Catalogue Import
+  # Run manually: docker compose run --rm nutrition-catalogue-import
+  # ===========================================
+  nutrition-catalogue-import:
+    build:
+      context: .
+      dockerfile: services/nutrition_agent/Dockerfile
+    profiles:
+      - catalogue-import
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
+      - DATABASE_SCHEMA=systemdb
+      - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "import_usda_catalogue.py", "--all"]
+    restart: "no"
     networks:
       - app-network
 

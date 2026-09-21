@@ -4,6 +4,7 @@ import {
   Bot,
   ClipboardList,
   LayoutDashboard, 
+  Salad,
   Table
 } from 'lucide-react'
 
@@ -30,15 +31,6 @@ export const routePages: RoutePage[] = [
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
   { 
-    id: PageIds.TableListing, 
-    label: 'Table Listing', 
-    path: Routes.TableListing, 
-    component: <></>,
-    section: Sections.Admin,
-    icon: <Table size={DEFAULT_ICON_SIZE} />,
-    allowedRoles: [Roles.Admin] 
-  },
-  { 
     id: PageIds.CoachData, 
     label: 'Coach Data', 
     path: Routes.CoachData, 
@@ -55,6 +47,15 @@ export const routePages: RoutePage[] = [
     section: Sections.Admin,
     icon: <Table size={DEFAULT_ICON_SIZE} />,
     allowedRoles: [Roles.Admin]
+  },
+  { 
+    id: PageIds.Nutrition,
+    label: 'Nutrition',
+    path: Routes.Nutrition,
+    component: <></>,
+    section: Sections.Admin,
+    icon: <Salad size={DEFAULT_ICON_SIZE} />,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
   },
   {
     id: PageIds.Chat, 
@@ -85,6 +86,11 @@ export type RouteConfig = {
 export const routeConfigs: RouteConfig[] = [
   {
     path: Routes.Dashboard,
+    element: <></>,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
+  },
+  {
+    path: Routes.Nutrition,
     element: <></>,
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
   },

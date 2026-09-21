@@ -396,6 +396,114 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ---
 
+## Nutrition
+
+All public Nutrition endpoints require a JWT bearer token, accept **POST only**,
+and use JSON request bodies. They always operate on the authenticated user's
+resources; the API never accepts a user ID in a request body. Former
+GET/PUT/DELETE Nutrition contracts are unsupported and return `405 Method Not
+Allowed`.
+
+### Nutrition Profile
+
+**POST** `/nutrition/profile/get` retrieves the authenticated user's profile.
+Send `{}`.
+
+**POST** `/nutrition/profile/save` creates or updates the energy-equation inputs and
+food-preference metadata.
+
+```json
+{
+  "sex_for_energy_equation": "female",
+  "activity_level": "moderate",
+  "nutrition_goal": "maintenance",
+  "dietary_preferences": ["vegetarian"],
+  "dietary_restrictions": [],
+  "allergies": ["peanuts"]
+}
+```
+
+### Target Preview and Confirmation
+
+**POST** `/nutrition/targets/calculate`
+
+Targets are previewed by default. Send `{"confirm_apply": true}` only after
+the user confirms that the calculated targets should take effect.
+
+```json
+{
+  "confirm_apply": true
+}
+```
+
+Applying recalculates the snapshot atomically. A snapshot created earlier on
+the same day is updated in place; otherwise the prior open snapshot ends the
+previous day and a new one begins today. **POST** `/nutrition/targets/active`
+returns the currently effective snapshot. A missing nutrition profile or the
+required age, weight, or height returns `422 Unprocessable Entity`. Send `{}`.
+
+### Meal Logging and Daily Summary
+
+- **POST** `/nutrition/meals` — create a structured meal with one or more
+  manual nutrient items; returns `201 Created`.
+- **POST** `/nutrition/meals/list` — list meals logged by the authenticated
+  user on a date: `{"date":"YYYY-MM-DD"}`.
+- **POST** `/nutrition/meals/replace` — replace an authenticated user's meal;
+  include `meal_id` together with the normal meal payload.
+- **POST** `/nutrition/meals/delete` — remove an authenticated user's meal:
+  `{"meal_id":99}`. Returns `200 OK` with `{"deleted":true}`.
+- **POST** `/nutrition/daily-summary` — return the day's meal
+  count, nutrient totals, effective target, remaining macros, and calorie/protein
+  adherence. Send `{"date":"YYYY-MM-DD"}`. The summary is persisted per user
+  and date.
+- **POST** `/nutrition/foods/search` — search USDA FoodData Central with
+  `{"query":"oats"}`. An
+  unavailable or unconfigured provider returns `503`; no nutrient estimate is
+  invented.
+- **POST** `/nutrition/foods/detail` — retrieve/cache verified USDA nutrient
+  detail with `{"food_id":"fdc_id"}`.
+  Food allergen metadata is explicitly `unknown` unless a provider can
+  supply it.
+- **POST** `/nutrition/adherence` — return daily summaries for an inclusive
+  range of up to 31 days: `{"from_date":"YYYY-MM-DD","to_date":"YYYY-MM-DD"}`.
+
+### Private Nutrition Agent
+
+The private Nutrition Agent is separately protected by
+`X-Internal-Service-Token`. Its Nutrition status operation is also POST-only:
+
+- **POST** `/v1/nutrition/status` — send `{}` and receive the service readiness
+  response.
+
+The generic service health check remains `GET /health`; it is infrastructure
+health checking rather than a Nutrition API operation.
+
+Example meal payload:
+
+```json
+{
+  "eaten_at": "2026-09-20T12:00:00Z",
+  "meal_type": "lunch",
+  "items": [
+    {
+      "food_name": "Rice",
+      "quantity": 1,
+      "unit": "bowl",
+      "calories": 200
+    }
+  ]
+}
+```
+
+### Phase Boundary
+
+Phase 2 adds USDA lookup/cache, daily adherence, and the authenticated
+`/nutrition` dashboard. The private Nutrition Agent remains protected by an
+internal-service token. Meal planning, substitutions, and shared nutrition
+context remain Phase 3 work.
+
+---
+
 ## Health & Info
 
 ### Health Check
@@ -544,5 +652,5 @@ Version included in:
 
 ---
 
-**Last Updated**: 2026-08-24  
+**Last Updated**: 2026-09-20
 **API Version**: 1.0.0

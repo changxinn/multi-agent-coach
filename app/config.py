@@ -75,7 +75,12 @@ class Settings(BaseSettings):
     HEAD_COACH_URL: str = "http://localhost:8002"
     USE_SUMMARIZER_SERVICE: bool = False
     SUMMARIZER_URL: str = "http://localhost:8003"
+    USE_NUTRITION_AGENT_SERVICE: bool = False
+    NUTRITION_AGENT_URL: str = "http://localhost:8004"
     INTERNAL_SERVICE_TOKEN: str = ""
+
+    # USDA FoodData Central is the initial food-data provider.
+    USDA_FDC_API_KEY: str = ""
 
     # ===========================================
     # AWS Configuration (Optional for Production)
