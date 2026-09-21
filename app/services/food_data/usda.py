@@ -23,9 +23,7 @@ class UsdaFoodDataCentralProvider:
     provider_name = "usda"
     base_url = "https://api.nal.usda.gov/fdc/v1"
 
-    def __init__(
-        self, api_key: str, client: httpx.AsyncClient | None = None
-    ) -> None:
+    def __init__(self, api_key: str, client: httpx.AsyncClient | None = None) -> None:
         self.api_key = api_key
         self.client = client or httpx.AsyncClient(timeout=httpx.Timeout(10.0))
         self._owns_client = client is None
@@ -71,18 +69,23 @@ class UsdaFoodDataCentralProvider:
         request_params = {**params, "api_key": self.api_key}
         for attempt in range(3):
             try:
-                response = await self.client.get(f"{self.base_url}{path}", params=request_params)
-                if response.status_code == 429 or response.status_code >= 500:
-                    if attempt < 2:
-                        await asyncio.sleep(0.25 * (2**attempt))
-                        continue
+                response = await self.client.get(
+                    f"{self.base_url}{path}", params=request_params
+                )
+                if (
+                    response.status_code == 429 or response.status_code >= 500
+                ) and attempt < 2:
+                    await asyncio.sleep(0.25 * (2**attempt))
+                    continue
                 response.raise_for_status()
                 return response.json()
             except (httpx.TimeoutException, httpx.NetworkError) as error:
                 if attempt < 2:
                     await asyncio.sleep(0.25 * (2**attempt))
                     continue
-                raise FoodDataProviderError("USDA food lookup is temporarily unavailable") from error
+                raise FoodDataProviderError(
+                    "USDA food lookup is temporarily unavailable"
+                ) from error
             except httpx.HTTPStatusError as error:
                 if error.response.status_code == 404:
                     raise FoodDataProviderError("USDA food was not found") from error
@@ -93,8 +96,14 @@ class UsdaFoodDataCentralProvider:
     def _nutrients(payload: dict) -> dict[str, Decimal]:
         nutrients: dict[str, Decimal] = {}
         for nutrient in payload.get("foodNutrients", []):
-            name = nutrient.get("nutrient", {}).get("name") or nutrient.get("nutrientName")
-            value = nutrient.get("amount") if "amount" in nutrient else nutrient.get("value")
+            name = nutrient.get("nutrient", {}).get("name") or nutrient.get(
+                "nutrientName"
+            )
+            value = (
+                nutrient.get("amount")
+                if "amount" in nutrient
+                else nutrient.get("value")
+            )
             if name and value is not None:
                 parsed = UsdaFoodDataCentralProvider._decimal(value)
                 if parsed is not None:

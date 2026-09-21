@@ -17,7 +17,7 @@ export function ProtectedRoute({
 
   useEffect(() => {
     checkAuth()
-  }, [])
+  }, [checkAuth])
 
   if (!token) {
     return <Navigate to={Routes.Login} state={{ from: location }} replace />

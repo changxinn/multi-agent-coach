@@ -8,11 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 class NutritionProfileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     sex_for_energy_equation: Literal["female", "male"]
-    activity_level: Literal["sedentary", "light", "moderate", "very_active", "extra_active"]
+    activity_level: Literal[
+        "sedentary", "light", "moderate", "very_active", "extra_active"
+    ]
     nutrition_goal: Literal["maintenance", "fat_loss", "muscle_gain", "performance"]
     dietary_preferences: list[str] = Field(default_factory=list)
     dietary_restrictions: list[str] = Field(default_factory=list)
     allergies: list[str] = Field(default_factory=list)
+
 
 class MealItemInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -21,10 +24,10 @@ class MealItemInput(BaseModel):
     unit: str = Field(min_length=1, max_length=32)
     grams: Decimal | None = Field(default=None, gt=0)
     calories: Decimal = Field(ge=0)
-    protein_g: Decimal = Field(default=Decimal("0"), ge=0)
-    carbohydrate_g: Decimal = Field(default=Decimal("0"), ge=0)
-    fat_g: Decimal = Field(default=Decimal("0"), ge=0)
-    fiber_g: Decimal = Field(default=Decimal("0"), ge=0)
+    protein_g: Decimal = Field(default=Decimal(0), ge=0)
+    carbohydrate_g: Decimal = Field(default=Decimal(0), ge=0)
+    fat_g: Decimal = Field(default=Decimal(0), ge=0)
+    fiber_g: Decimal = Field(default=Decimal(0), ge=0)
     source: Literal["usda", "manual_estimate", "meal_plan"] = "manual_estimate"
     food_cache_id: int | None = Field(default=None, gt=0)
 
@@ -32,10 +35,13 @@ class MealItemInput(BaseModel):
     def manual_estimates_include_macros(self) -> "MealItemInput":
         """Manual entries must contain deliberate nutrition values, including zeroes."""
         required = {"calories", "protein_g", "carbohydrate_g", "fat_g"}
-        if self.source == "manual_estimate" and not required.issubset(self.model_fields_set):
+        if self.source == "manual_estimate" and not required.issubset(
+            self.model_fields_set
+        ):
             missing = ", ".join(sorted(required - self.model_fields_set))
             raise ValueError(f"Manual estimates require explicit values for: {missing}")
         return self
+
 
 class MealInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -86,5 +92,6 @@ class ReplaceMealRequest(MealInput):
 
 class TargetCalculationRequest(BaseModel):
     """Targets are previewed unless the user explicitly confirms application."""
+
     model_config = ConfigDict(extra="forbid")
     confirm_apply: bool = False

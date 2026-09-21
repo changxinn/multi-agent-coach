@@ -2,15 +2,15 @@
 
 import hashlib
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from .repository import NutritionRepository
-from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
 from .calculator import calculate_targets
+from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
+from .repository import NutritionRepository
 
 
 class NutritionNotFoundError(Exception):
@@ -33,18 +33,27 @@ class NutritionService:
         self.food_provider = food_provider
 
     async def idempotent(
-        self, user_id: int, operation: str, key: str | None, request: dict[str, Any], action
+        self,
+        user_id: int,
+        operation: str,
+        key: str | None,
+        request: dict[str, Any],
+        action,
     ) -> dict[str, Any]:
         """Execute a mutation once and replay its stored response for the same request."""
         if not key:
             return await action()
         fingerprint = hashlib.sha256(
-            json.dumps(request, sort_keys=True, default=str, separators=(",", ":")).encode()
+            json.dumps(
+                request, sort_keys=True, default=str, separators=(",", ":")
+            ).encode()
         ).hexdigest()
         existing = await self.repo.get_idempotent_response(user_id, operation, key)
         if existing:
             if existing["request_fingerprint"] != fingerprint:
-                raise ValueError("Idempotency key was already used with a different request")
+                raise ValueError(
+                    "Idempotency key was already used with a different request"
+                )
             return existing["response"]
         response = await action()
         await self.repo.save_idempotent_response(
@@ -100,7 +109,7 @@ class NutritionService:
         preview = {**targets.__dict__, "calculation_inputs": inputs, "applied": False}
         if not confirm_apply:
             return preview
-        today = date.today()
+        today = datetime.now(UTC).date()
         values = {
             "bmr": targets.bmr_kcal,
             "tdee": targets.tdee_kcal,
@@ -166,7 +175,12 @@ class NutritionService:
         target = await self.repo.get_target_for_date(user_id, for_date)
         values = self._summary_values(totals, target)
         summary = await self.repo.upsert_daily_summary(user_id, for_date, values)
-        return {"date": for_date, **summary, "target": target, "remaining": self._remaining(totals, target)}
+        return {
+            "date": for_date,
+            **summary,
+            "target": target,
+            "remaining": self._remaining(totals, target),
+        }
 
     async def search_foods(self, query: str) -> list[dict[str, Any]]:
         provider = self._food_provider()
@@ -202,7 +216,7 @@ class NutritionService:
 
     async def chat(self, user_id: int, message: str) -> dict[str, Any]:
         """Provide factual, user-scoped Nutrition context and a safe structured action."""
-        summary = await self.get_daily_summary(user_id, date.today())
+        summary = await self.get_daily_summary(user_id, datetime.now(UTC).date())
         calories = summary["calories"]
         target = summary.get("target")
         if target:
@@ -225,7 +239,7 @@ class NutritionService:
     def _percentage(actual: Any, target: Any) -> Decimal | None:
         if not target:
             return None
-        return (Decimal(str(actual)) / Decimal(str(target)) * Decimal("100")).quantize(
+        return (Decimal(str(actual)) / Decimal(str(target)) * Decimal(100)).quantize(
             Decimal("0.01")
         )
 
@@ -249,10 +263,19 @@ class NutritionService:
         totals: dict[str, Any], target: dict[str, Any] | None
     ) -> dict[str, Decimal | None]:
         if target is None:
-            return {"calories": None, "protein_g": None, "carbohydrate_g": None, "fat_g": None}
+            return {
+                "calories": None,
+                "protein_g": None,
+                "carbohydrate_g": None,
+                "fat_g": None,
+            }
         return {
-            "calories": Decimal(str(target["calorie_target_kcal"])) - Decimal(str(totals["calories"])),
-            "protein_g": Decimal(str(target["protein_target_g"])) - Decimal(str(totals["protein_g"])),
-            "carbohydrate_g": Decimal(str(target["carbohydrate_target_g"])) - Decimal(str(totals["carbohydrate_g"])),
-            "fat_g": Decimal(str(target["fat_target_g"])) - Decimal(str(totals["fat_g"])),
+            "calories": Decimal(str(target["calorie_target_kcal"]))
+            - Decimal(str(totals["calories"])),
+            "protein_g": Decimal(str(target["protein_target_g"]))
+            - Decimal(str(totals["protein_g"])),
+            "carbohydrate_g": Decimal(str(target["carbohydrate_target_g"]))
+            - Decimal(str(totals["carbohydrate_g"])),
+            "fat_g": Decimal(str(target["fat_target_g"]))
+            - Decimal(str(totals["fat_g"])),
         }

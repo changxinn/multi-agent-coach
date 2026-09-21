@@ -1,6 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from 'react'
-import { Result, Button, Typography } from 'antd'
-import { BugOutlined, ReloadOutlined } from '@ant-design/icons'
+import { Result, Typography } from 'antd'
 import './ErrorBoundary.css'
 
 interface Props {

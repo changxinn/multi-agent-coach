@@ -78,7 +78,9 @@ def test_delete_meal_returns_json_success_contract(nutrition_client):
     service.delete_meal.assert_awaited_once_with(9, 99)
 
 
-def test_food_search_translates_provider_failure_to_service_unavailable(nutrition_client):
+def test_food_search_translates_provider_failure_to_service_unavailable(
+    nutrition_client,
+):
     client, service = nutrition_client
     service.search_foods.side_effect = NutritionFoodDataError("USDA unavailable")
 
@@ -101,7 +103,16 @@ def test_food_catalogue_uses_authenticated_user_and_capped_limit(nutrition_clien
 
 def test_manual_meal_requires_explicit_macros(nutrition_client):
     client, _ = nutrition_client
-    payload = meal_payload(items=[{"food_name": "Homemade soup", "quantity": 1, "unit": "bowl", "calories": 100}])
+    payload = meal_payload(
+        items=[
+            {
+                "food_name": "Homemade soup",
+                "quantity": 1,
+                "unit": "bowl",
+                "calories": 100,
+            }
+        ]
+    )
 
     response = client.post("/api/nutrition/meals", json=payload)
 

@@ -1,4 +1,5 @@
 """FastAPI entry point for the private, authoritative Nutrition Agent."""
+
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -7,13 +8,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .calculator import calculate_targets
 from .config import settings
 from .database import close_db, get_db
-from .schemas import (AdherenceRequest, ChatRequest, DateRequest, EmptyNutritionRequest,
-                      FoodCatalogueRequest, FoodDetailRequest, FoodSearchRequest, MealIdRequest,
-                      MealRequest, ProfileRequest, ReplaceMealRequest,
-                      TargetCalculationRequest, TargetCalculationResponse,
-                      TargetsRequest, UserRequest)
-from .service import (NutritionFoodDataError, NutritionNotFoundError,
-                      NutritionProfileIncompleteError, NutritionService)
+from .schemas import (
+    AdherenceRequest,
+    ChatRequest,
+    DateRequest,
+    EmptyNutritionRequest,
+    FoodCatalogueRequest,
+    FoodDetailRequest,
+    FoodSearchRequest,
+    MealIdRequest,
+    MealRequest,
+    ProfileRequest,
+    ReplaceMealRequest,
+    TargetCalculationRequest,
+    TargetCalculationResponse,
+    TargetsRequest,
+    UserRequest,
+)
+from .service import (
+    NutritionFoodDataError,
+    NutritionNotFoundError,
+    NutritionProfileIncompleteError,
+    NutritionService,
+)
 
 app = FastAPI(title=settings.APP_NAME, version="1.0.0")
 
@@ -25,7 +42,9 @@ async def require_internal_token(
         not settings.INTERNAL_SERVICE_TOKEN
         or x_internal_service_token != settings.INTERNAL_SERVICE_TOKEN
     ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid internal service token")
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED, "Invalid internal service token"
+        )
 
 
 def get_service(db: AsyncSession = Depends(get_db)) -> NutritionService:
@@ -72,8 +91,12 @@ async def calculate_nutrition_targets(
 ) -> TargetCalculationResponse:
     """Provide the Phase 1 deterministic calculation to trusted callers only."""
     return calculate_targets(
-        sex=payload.sex, age=payload.age, weight_kg=payload.weight_kg,
-        height_cm=payload.height_cm, activity_level=payload.activity_level, goal=payload.goal,
+        sex=payload.sex,
+        age=payload.age,
+        weight_kg=payload.weight_kg,
+        height_cm=payload.height_cm,
+        activity_level=payload.activity_level,
+        goal=payload.goal,
     )
 
 
@@ -87,30 +110,43 @@ async def profile_get(payload: UserRequest, service: Service):
 
 @app.post("/v1/nutrition/profile/save", dependencies=[Depends(require_internal_token)])
 async def profile_save(
-    payload: ProfileRequest, service: Service,
+    payload: ProfileRequest,
+    service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
     return await service.idempotent(
-        payload.user_id, "profile.save", idempotency_key, payload.model_dump(mode="json"),
+        payload.user_id,
+        "profile.save",
+        idempotency_key,
+        payload.model_dump(mode="json"),
         lambda: service.update_profile(payload.user_id, payload.values),
     )
 
 
-@app.post("/v1/nutrition/targets/calculate-for-user", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/nutrition/targets/calculate-for-user",
+    dependencies=[Depends(require_internal_token)],
+)
 async def targets_calculate(
-    payload: TargetsRequest, service: Service,
+    payload: TargetsRequest,
+    service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
     try:
         return await service.idempotent(
-            payload.user_id, "targets.calculate", idempotency_key, payload.model_dump(mode="json"),
+            payload.user_id,
+            "targets.calculate",
+            idempotency_key,
+            payload.model_dump(mode="json"),
             lambda: service.calculate_targets(payload.user_id, payload.confirm_apply),
         )
     except Exception as error:
         raise translate(error) from error
 
 
-@app.post("/v1/nutrition/targets/active", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/nutrition/targets/active", dependencies=[Depends(require_internal_token)]
+)
 async def targets_active(payload: UserRequest, service: Service):
     try:
         return await service.get_active_target(payload.user_id)
@@ -126,7 +162,9 @@ async def foods_search(payload: FoodSearchRequest, service: Service):
         raise translate(error) from error
 
 
-@app.post("/v1/nutrition/foods/catalogue", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/nutrition/foods/catalogue", dependencies=[Depends(require_internal_token)]
+)
 async def foods_catalogue(payload: FoodCatalogueRequest, service: Service):
     return {"items": await service.get_food_catalogue(payload.limit)}
 
@@ -141,11 +179,15 @@ async def foods_detail(payload: FoodDetailRequest, service: Service):
 
 @app.post("/v1/nutrition/meals/create", dependencies=[Depends(require_internal_token)])
 async def meals_create(
-    payload: MealRequest, service: Service,
+    payload: MealRequest,
+    service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
     return await service.idempotent(
-        payload.user_id, "meals.create", idempotency_key, payload.model_dump(mode="json"),
+        payload.user_id,
+        "meals.create",
+        idempotency_key,
+        payload.model_dump(mode="json"),
         lambda: service.create_meal(payload.user_id, payload),
     )
 
@@ -157,12 +199,16 @@ async def meals_list(payload: DateRequest, service: Service):
 
 @app.post("/v1/nutrition/meals/replace", dependencies=[Depends(require_internal_token)])
 async def meals_replace(
-    payload: ReplaceMealRequest, service: Service,
+    payload: ReplaceMealRequest,
+    service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
     try:
         return await service.idempotent(
-            payload.user_id, "meals.replace", idempotency_key, payload.model_dump(mode="json"),
+            payload.user_id,
+            "meals.replace",
+            idempotency_key,
+            payload.model_dump(mode="json"),
             lambda: service.replace_meal(payload.user_id, payload.meal_id, payload),
         )
     except Exception as error:
@@ -171,12 +217,16 @@ async def meals_replace(
 
 @app.post("/v1/nutrition/meals/delete", dependencies=[Depends(require_internal_token)])
 async def meals_delete(
-    payload: MealIdRequest, service: Service,
+    payload: MealIdRequest,
+    service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
     try:
         return await service.idempotent(
-            payload.user_id, "meals.delete", idempotency_key, payload.model_dump(mode="json"),
+            payload.user_id,
+            "meals.delete",
+            idempotency_key,
+            payload.model_dump(mode="json"),
             lambda: _delete_meal(service, payload),
         )
     except Exception as error:
@@ -190,10 +240,16 @@ async def daily_summary(payload: DateRequest, service: Service):
 
 @app.post("/v1/nutrition/adherence", dependencies=[Depends(require_internal_token)])
 async def adherence(payload: AdherenceRequest, service: Service):
-    return {"items": await service.get_adherence(payload.user_id, payload.from_date, payload.to_date)}
+    return {
+        "items": await service.get_adherence(
+            payload.user_id, payload.from_date, payload.to_date
+        )
+    }
 
 
-async def _delete_meal(service: NutritionService, payload: MealIdRequest) -> dict[str, bool]:
+async def _delete_meal(
+    service: NutritionService, payload: MealIdRequest
+) -> dict[str, bool]:
     await service.delete_meal(payload.user_id, payload.meal_id)
     return {"deleted": True}
 

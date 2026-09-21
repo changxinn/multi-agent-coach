@@ -1,6 +1,6 @@
 import { Card, Typography, Tag, Statistic, Row, Col, Table, Badge } from 'antd'
 import { useAuthStore } from '@/lib/authStore'
-import { UserOutlined, TeamOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
+import { TeamOutlined, CheckCircleOutlined, ClockCircleOutlined } from '@ant-design/icons'
 import { Roles, Status, type Role } from '@/lib/constants'
 
 const { Title, Text } = Typography

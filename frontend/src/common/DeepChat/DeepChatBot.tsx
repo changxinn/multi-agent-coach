@@ -54,7 +54,7 @@ export function DeepChatBot({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const { token, user, logout } = useAuthStore()
+  const { token, user } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
@@ -117,7 +117,7 @@ export function DeepChatBot({
   /**
    * Type next character from buffer with typewriter effect
    */
-  const typeNextCharacter = useCallback(() => {
+  const typeNextCharacter = useCallback(function typeNextCharacter() {
     if (!isTypingRef.current || !deepChatRef.current) {
       console.log('📝 Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
       isTypingRef.current = false
@@ -372,16 +372,15 @@ export function DeepChatBot({
       }
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay])
+  }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, userEmail])
 
-  // Cleanup typewriter timeout and abort streaming on component unmount
+  // Cleanup typewriter timeout and abort streaming when the user changes or the component unmounts.
   useEffect(() => {
+    const deepChat = deepChatRef.current
+
     return () => {
-      if (deepChatRef.current) {
-        saveChatHistory(
-          userEmail,
-          toStoredMessages(deepChatRef.current.getMessages() || [])
-        )
+      if (deepChat) {
+        saveChatHistory(userEmail, toStoredMessages(deepChat.getMessages() || []))
       }
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)
@@ -396,7 +395,7 @@ export function DeepChatBot({
       isTypingRef.current = false
       displayIndexRef.current = 0
     }
-  }, [])
+  }, [userEmail])
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

@@ -180,8 +180,8 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
                 ],
                 "volley_msg_left": max(0, volley_left - 1),
             }
-        except Exception as error:
-            logger.exception("Nutrition Agent service failed: %s", error)
+        except Exception:
+            logger.exception("Nutrition Agent service failed")
             return {
                 "messages": [
                     {

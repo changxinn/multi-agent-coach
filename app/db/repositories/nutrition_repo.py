@@ -1,7 +1,7 @@
 """Database access for the user-owned nutrition domain."""
 
 import json
-from datetime import date, datetime, time, timezone
+from datetime import UTC, date, datetime, time
 from typing import Any
 
 from sqlalchemy import text
@@ -249,8 +249,8 @@ class NutritionRepository:
         return record
 
     async def list_meals(self, user_id: int, for_date: date) -> list[dict[str, Any]]:
-        start = datetime.combine(for_date, time.min, tzinfo=timezone.utc)
-        end = datetime.combine(for_date, time.max, tzinfo=timezone.utc)
+        start = datetime.combine(for_date, time.min, tzinfo=UTC)
+        end = datetime.combine(for_date, time.max, tzinfo=UTC)
         result = await self.db.execute(
             text("""
             SELECT m.*, COALESCE(json_agg(json_build_object(
@@ -306,8 +306,8 @@ class NutritionRepository:
         return result.scalar_one_or_none() is not None
 
     async def get_daily_totals(self, user_id: int, for_date: date) -> dict[str, Any]:
-        start = datetime.combine(for_date, time.min, tzinfo=timezone.utc)
-        end = datetime.combine(for_date, time.max, tzinfo=timezone.utc)
+        start = datetime.combine(for_date, time.min, tzinfo=UTC)
+        end = datetime.combine(for_date, time.max, tzinfo=UTC)
         result = await self.db.execute(
             text("""
             SELECT COUNT(DISTINCT m.id) AS meal_count,

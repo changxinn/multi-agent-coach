@@ -1,7 +1,7 @@
 """Application services for nutrition profiles, targets, and meals."""
 
 import json
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
@@ -79,7 +79,7 @@ class NutritionService:
         preview = {**targets.__dict__, "calculation_inputs": inputs, "applied": False}
         if not confirm_apply:
             return preview
-        today = date.today()
+        today = datetime.now(UTC).date()
         values = {
             "bmr": targets.bmr_kcal,
             "tdee": targets.tdee_kcal,
@@ -145,7 +145,12 @@ class NutritionService:
         target = await self.repo.get_target_for_date(user_id, for_date)
         values = self._summary_values(totals, target)
         summary = await self.repo.upsert_daily_summary(user_id, for_date, values)
-        return {"date": for_date, **summary, "target": target, "remaining": self._remaining(totals, target)}
+        return {
+            "date": for_date,
+            **summary,
+            "target": target,
+            "remaining": self._remaining(totals, target),
+        }
 
     async def search_foods(self, query: str) -> list[dict[str, Any]]:
         provider = self._food_provider()
@@ -180,14 +185,16 @@ class NutritionService:
         if self.food_provider is None:
             from app.config import get_settings
 
-            self.food_provider = UsdaFoodDataCentralProvider(get_settings().USDA_FDC_API_KEY)
+            self.food_provider = UsdaFoodDataCentralProvider(
+                get_settings().USDA_FDC_API_KEY
+            )
         return self.food_provider
 
     @staticmethod
     def _percentage(actual: Any, target: Any) -> Decimal | None:
         if not target:
             return None
-        return (Decimal(str(actual)) / Decimal(str(target)) * Decimal("100")).quantize(
+        return (Decimal(str(actual)) / Decimal(str(target)) * Decimal(100)).quantize(
             Decimal("0.01")
         )
 
@@ -211,10 +218,19 @@ class NutritionService:
         totals: dict[str, Any], target: dict[str, Any] | None
     ) -> dict[str, Decimal | None]:
         if target is None:
-            return {"calories": None, "protein_g": None, "carbohydrate_g": None, "fat_g": None}
+            return {
+                "calories": None,
+                "protein_g": None,
+                "carbohydrate_g": None,
+                "fat_g": None,
+            }
         return {
-            "calories": Decimal(str(target["calorie_target_kcal"])) - Decimal(str(totals["calories"])),
-            "protein_g": Decimal(str(target["protein_target_g"])) - Decimal(str(totals["protein_g"])),
-            "carbohydrate_g": Decimal(str(target["carbohydrate_target_g"])) - Decimal(str(totals["carbohydrate_g"])),
-            "fat_g": Decimal(str(target["fat_target_g"])) - Decimal(str(totals["fat_g"])),
+            "calories": Decimal(str(target["calorie_target_kcal"]))
+            - Decimal(str(totals["calories"])),
+            "protein_g": Decimal(str(target["protein_target_g"]))
+            - Decimal(str(totals["protein_g"])),
+            "carbohydrate_g": Decimal(str(target["carbohydrate_target_g"]))
+            - Decimal(str(totals["carbohydrate_g"])),
+            "fat_g": Decimal(str(target["fat_target_g"]))
+            - Decimal(str(totals["fat_g"])),
         }

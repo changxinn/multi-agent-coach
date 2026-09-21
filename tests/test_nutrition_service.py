@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 
@@ -15,18 +15,28 @@ async def test_apply_targets_updates_same_day_snapshot_in_place():
         "activity_level": "moderate",
         "nutrition_goal": "maintenance",
         "age": 30,
-        "weight_kg": Decimal("80"),
-        "height_cm": Decimal("180"),
+        "weight_kg": Decimal(80),
+        "height_cm": Decimal(180),
     }
-    repo.lock_open_target.return_value = {"id": 42, "effective_from": date.today()}
-    repo.update_target.return_value = {"id": 42, "effective_from": date.today()}
+    repo.lock_open_target.return_value = {
+        "id": 42,
+        "effective_from": datetime.now(UTC).date(),
+    }
+    repo.update_target.return_value = {
+        "id": 42,
+        "effective_from": datetime.now(UTC).date(),
+    }
 
     with patch("app.services.nutrition_service.NutritionRepository", return_value=repo):
         result = await NutritionService(AsyncMock()).calculate_targets(
             7, confirm_apply=True
         )
 
-    assert result == {"id": 42, "effective_from": date.today(), "applied": True}
+    assert result == {
+        "id": 42,
+        "effective_from": datetime.now(UTC).date(),
+        "applied": True,
+    }
     repo.update_target.assert_awaited_once()
     repo.close_target.assert_not_awaited()
     repo.create_target.assert_not_awaited()
@@ -40,11 +50,14 @@ async def test_apply_targets_closes_previous_snapshot_before_creating_next():
         "activity_level": "light",
         "nutrition_goal": "fat_loss",
         "age": 30,
-        "weight_kg": Decimal("60"),
-        "height_cm": Decimal("165"),
+        "weight_kg": Decimal(60),
+        "height_cm": Decimal(165),
     }
     repo.lock_open_target.return_value = {"id": 11, "effective_from": date(2026, 1, 1)}
-    repo.create_target.return_value = {"id": 12, "effective_from": date.today()}
+    repo.create_target.return_value = {
+        "id": 12,
+        "effective_from": datetime.now(UTC).date(),
+    }
 
     with patch("app.services.nutrition_service.NutritionRepository", return_value=repo):
         result = await NutritionService(AsyncMock()).calculate_targets(
@@ -52,7 +65,9 @@ async def test_apply_targets_closes_previous_snapshot_before_creating_next():
         )
 
     assert result["applied"] is True
-    repo.close_target.assert_awaited_once_with(11, date.today() - timedelta(days=1))
+    repo.close_target.assert_awaited_once_with(
+        11, datetime.now(UTC).date() - timedelta(days=1)
+    )
     repo.create_target.assert_awaited_once()
 
 
@@ -60,15 +75,24 @@ async def test_apply_targets_closes_previous_snapshot_before_creating_next():
 async def test_daily_summary_calculates_adherence_and_remaining_macros():
     repo = AsyncMock()
     repo.get_daily_totals.return_value = {
-        "meal_count": 2, "calories": Decimal("1800"), "protein_g": Decimal("100"),
-        "carbohydrate_g": Decimal("200"), "fat_g": Decimal("50"), "fiber_g": Decimal("20"),
+        "meal_count": 2,
+        "calories": Decimal(1800),
+        "protein_g": Decimal(100),
+        "carbohydrate_g": Decimal(200),
+        "fat_g": Decimal(50),
+        "fiber_g": Decimal(20),
     }
     repo.get_target_for_date.return_value = {
-        "id": 3, "calorie_target_kcal": 2000, "protein_target_g": Decimal("125"),
-        "carbohydrate_target_g": Decimal("225"), "fat_target_g": Decimal("60"),
+        "id": 3,
+        "calorie_target_kcal": 2000,
+        "protein_target_g": Decimal(125),
+        "carbohydrate_target_g": Decimal(225),
+        "fat_target_g": Decimal(60),
     }
     repo.upsert_daily_summary.side_effect = lambda _, __, values: values
     with patch("app.services.nutrition_service.NutritionRepository", return_value=repo):
-        result = await NutritionService(AsyncMock()).get_daily_summary(7, date.today())
+        result = await NutritionService(AsyncMock()).get_daily_summary(
+            7, datetime.now(UTC).date()
+        )
     assert result["calorie_adherence_pct"] == Decimal("90.00")
-    assert result["remaining"]["protein_g"] == Decimal("25")
+    assert result["remaining"]["protein_g"] == Decimal(25)

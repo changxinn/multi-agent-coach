@@ -1,3 +1,4 @@
+// oxlint-disable react/only-export-components -- This module exports route metadata, not React components.
 import type { ReactElement, ReactNode } from 'react'
 import { Roles, PageIds, Routes, Sections, type Role, PageId, RoutePath, type Section } from '@/lib/constants'
 import { 

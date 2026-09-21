@@ -11,7 +11,7 @@ ACTIVITY_MULTIPLIERS = {
     "extra_active": Decimal("1.9"),
 }
 GOAL_CALORIE_MULTIPLIERS = {
-    "maintenance": Decimal("1"),
+    "maintenance": Decimal(1),
     "fat_loss": Decimal("0.85"),
     "muscle_gain": Decimal("1.10"),
     "performance": Decimal("1.05"),
@@ -56,19 +56,19 @@ def calculate_targets(
         raise ValueError("Age, weight_kg, and height_cm must be positive")
 
     bmr = (
-        Decimal("10") * weight_kg
+        Decimal(10) * weight_kg
         + Decimal("6.25") * height_cm
-        - Decimal("5") * age
-        + (Decimal("5") if sex == "male" else Decimal("-161"))
+        - Decimal(5) * age
+        + (Decimal(5) if sex == "male" else Decimal(-161))
     )
     tdee = bmr * ACTIVITY_MULTIPLIERS[activity_level]
     calories = tdee * GOAL_CALORIE_MULTIPLIERS[goal]
     protein = weight_kg * GOAL_PROTEIN_PER_KG[goal]
     fat = weight_kg * Decimal("0.8")
-    carbohydrates = max(Decimal("0"), (calories - protein * 4 - fat * 9) / 4)
+    carbohydrates = max(Decimal(0), (calories - protein * 4 - fat * 9) / 4)
 
     def whole(value: Decimal) -> int:
-        return int(value.quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        return int(value.quantize(Decimal(1), rounding=ROUND_HALF_UP))
 
     def grams(value: Decimal) -> Decimal:
         return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
@@ -80,5 +80,5 @@ def calculate_targets(
         protein_target_g=grams(protein),
         carbohydrate_target_g=grams(carbohydrates),
         fat_target_g=grams(fat),
-        fiber_target_g=grams(Decimal("14") * calories / Decimal("1000")),
+        fiber_target_g=grams(Decimal(14) * calories / Decimal(1000)),
     )

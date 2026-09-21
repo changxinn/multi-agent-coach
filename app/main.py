@@ -4,7 +4,6 @@ FastAPI application entry point.
 Configures middleware, routes, and lifecycle events.
 """
 
-
 import asyncio
 import logging
 from contextlib import asynccontextmanager

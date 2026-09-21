@@ -19,12 +19,15 @@ from app.api.schemas.nutrition import (
     ReplaceMealRequest,
     TargetCalculationRequest,
 )
+from app.services.nutrition_agent_client import (
+    NutritionAgentClient,
+    NutritionAgentUnavailableError,
+)
 from app.services.nutrition_service import (
     NutritionFoodDataError,
     NutritionNotFoundError,
     NutritionProfileIncompleteError,
 )
-from app.services.nutrition_agent_client import NutritionAgentClient, NutritionAgentUnavailableError
 
 router = APIRouter(prefix="/nutrition")
 
@@ -34,7 +37,9 @@ def get_nutrition_service() -> NutritionAgentClient:
     return NutritionAgentClient()
 
 
-NutritionServiceDependency = Annotated[NutritionAgentClient, Depends(get_nutrition_service)]
+NutritionServiceDependency = Annotated[
+    NutritionAgentClient, Depends(get_nutrition_service)
+]
 
 
 def not_found(error: NutritionNotFoundError) -> HTTPException:
@@ -69,7 +74,8 @@ async def reject_retired_nutrition_operation() -> None:
 @router.post("/profile/get")
 async def get_profile(
     payload: EmptyNutritionRequest,
-    user: dict = Depends(get_current_user), service: NutritionServiceDependency = None
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
 ):
     del payload
     try:
@@ -106,7 +112,9 @@ async def calculate_targets_preview_or_apply(
 ):
     try:
         if idempotency_key:
-            return await service.calculate_targets(user["id"], payload.confirm_apply, idempotency_key)
+            return await service.calculate_targets(
+                user["id"], payload.confirm_apply, idempotency_key
+            )
         return await service.calculate_targets(user["id"], payload.confirm_apply)
     except NutritionProfileIncompleteError as error:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
@@ -117,7 +125,8 @@ async def calculate_targets_preview_or_apply(
 @router.post("/targets/active")
 async def get_active_targets(
     payload: EmptyNutritionRequest,
-    user: dict = Depends(get_current_user), service: NutritionServiceDependency = None
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
 ):
     del payload
     try:
@@ -204,7 +213,9 @@ async def replace_meal(
 ):
     try:
         if idempotency_key:
-            return await service.replace_meal(user["id"], payload.meal_id, payload, idempotency_key)
+            return await service.replace_meal(
+                user["id"], payload.meal_id, payload, idempotency_key
+            )
         return await service.replace_meal(user["id"], payload.meal_id, payload)
     except NutritionNotFoundError as error:
         raise not_found(error) from error
@@ -258,6 +269,10 @@ async def adherence(
             "Date range must be between 0 and 31 days",
         )
     try:
-        return {"items": await service.get_adherence(user["id"], payload.from_date, payload.to_date)}
+        return {
+            "items": await service.get_adherence(
+                user["id"], payload.from_date, payload.to_date
+            )
+        }
     except NutritionAgentUnavailableError as error:
         raise nutrition_unavailable(error) from error

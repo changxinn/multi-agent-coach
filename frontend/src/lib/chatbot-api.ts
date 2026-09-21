@@ -292,7 +292,7 @@ export async function streamChatbotAPI(
       let buffer = ''
       let tokenCount = 0
       
-      while (true && reader) {
+      while (reader) {
         const { done, value } = await reader.read()
         if (done) {
           console.log('📡 Stream completed, total tokens:', tokenCount)

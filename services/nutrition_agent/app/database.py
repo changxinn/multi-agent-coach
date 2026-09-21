@@ -1,7 +1,13 @@
 """Database ownership and session lifecycle for the Nutrition Agent."""
+
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from .config import settings
 
@@ -13,10 +19,16 @@ def _session_factory() -> async_sessionmaker[AsyncSession]:
     global engine, SessionLocal
     if SessionLocal is None:
         if not settings.DATABASE_URL:
-            raise RuntimeError("DATABASE_URL is required for the Nutrition Agent service")
-        database_url = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+            raise RuntimeError(
+                "DATABASE_URL is required for the Nutrition Agent service"
+            )
+        database_url = settings.DATABASE_URL.replace(
+            "postgresql://", "postgresql+asyncpg://", 1
+        )
         engine = create_async_engine(database_url, pool_pre_ping=True)
-        SessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+        SessionLocal = async_sessionmaker(
+            engine, class_=AsyncSession, expire_on_commit=False
+        )
     return SessionLocal
 
 

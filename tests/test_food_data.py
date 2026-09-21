@@ -3,7 +3,10 @@ from decimal import Decimal
 import httpx
 import pytest
 
-from app.services.food_data.usda import FoodDataProviderError, UsdaFoodDataCentralProvider
+from app.services.food_data.usda import (
+    FoodDataProviderError,
+    UsdaFoodDataCentralProvider,
+)
 
 
 @pytest.mark.asyncio
@@ -17,13 +20,15 @@ async def test_usda_maps_food_details_nutrients_per_100g():
             {"nutrient": {"name": "Protein"}, "amount": 10},
         ],
     }
-    client = httpx.AsyncClient(transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload)))
+    client = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    )
     provider = UsdaFoodDataCentralProvider("key", client)
 
     food = await provider.get_food_details("123")
 
-    assert food.calories_per_100g == Decimal("200")
-    assert food.protein_g_per_100g == Decimal("10")
+    assert food.calories_per_100g == Decimal(200)
+    assert food.protein_g_per_100g == Decimal(10)
     assert food.allergen_status == "unknown"
     await client.aclose()
 
