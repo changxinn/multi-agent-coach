@@ -1,6 +1,7 @@
+from pydantic import ValidationError
+
 from services.recovery_agent.app.assessment import RecoveryHistory, assess_recovery
 from services.recovery_agent.app.schemas import RecoveryEvaluateRequest
-from pydantic import ValidationError
 
 
 def test_low_recovery_signals_return_red_status():
@@ -24,7 +25,9 @@ def test_low_recovery_signals_return_red_status():
 
 def test_medical_risk_is_escalated_without_training_advice():
     result = assess_recovery(
-        RecoveryEvaluateRequest(user_id=1, message="I have chest pain and severe dizziness after training"),
+        RecoveryEvaluateRequest(
+            user_id=1, message="I have chest pain and severe dizziness after training"
+        ),
         RecoveryHistory(),
     )
 
@@ -66,7 +69,9 @@ def test_prompt_injection_does_not_override_recovery_assessment():
 
 def test_user_id_rejects_sql_injection_payload():
     try:
-        RecoveryEvaluateRequest(user_id="1; DROP TABLE sleep_logs", message="I slept 8 hours")
+        RecoveryEvaluateRequest(
+            user_id="1; DROP TABLE sleep_logs", message="I slept 8 hours"
+        )
     except ValidationError:
         return
     raise AssertionError("user_id accepted an SQL injection payload")

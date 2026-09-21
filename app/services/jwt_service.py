@@ -3,16 +3,18 @@ JWT service for token creation and validation.
 
 Uses PyJWT library for token encoding/decoding.
 """
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import jwt
-from datetime import datetime, timedelta, timezone
-from typing import Dict, Any
 
 from app.config import get_settings
 
 settings = get_settings()
 
 
-def create_access_token(user_data: Dict[str, Any]) -> str:
+def create_access_token(user_data: dict[str, Any]) -> str:
     """
     Create JWT access token.
 
@@ -36,7 +38,7 @@ def create_access_token(user_data: Dict[str, Any]) -> str:
             "user_image": "https://..."
         })
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expiry = now + timedelta(hours=settings.JWT_EXPIRY_HOURS)
 
     payload = {
@@ -58,7 +60,7 @@ def create_access_token(user_data: Dict[str, Any]) -> str:
     return token
 
 
-def validate_token(token: str) -> Dict[str, Any]:
+def validate_token(token: str) -> dict[str, Any]:
     """
     Validate JWT token and return decoded payload.
 

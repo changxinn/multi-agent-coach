@@ -293,10 +293,10 @@ CREATE TABLE systemdb.user_fitness_profiles (
     "user_id": 123,
     "messages": [
         {"role": "user", "content": "..."},
-        {"role": "assistant", "content": "..."}
+        {"role": "assistant", "content": "..."},
     ],
     "created_at": "2026-08-24T12:00:00Z",
-    "last_activity": "2026-08-24T12:05:00Z"
+    "last_activity": "2026-08-24T12:05:00Z",
 }
 ```
 

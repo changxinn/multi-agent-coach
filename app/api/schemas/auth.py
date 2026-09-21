@@ -1,8 +1,8 @@
 """
 Authentication request/response schemas.
 """
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
-from typing import Optional, List
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class LoginRequest(BaseModel):
@@ -38,7 +38,7 @@ class UserResponse(BaseModel):
     name: str
     role: str
     enabled: bool
-    user_image: Optional[str] = None
+    user_image: str | None = None
 
 
 class UserWithProfileResponse(BaseModel):
@@ -51,7 +51,7 @@ class UserWithProfileResponse(BaseModel):
     name: str
     role: str
     enabled: bool
-    fitness_profile: Optional[dict] = None
+    fitness_profile: dict | None = None
 
 
 class RoleUpdateRequest(BaseModel):
@@ -63,8 +63,10 @@ class RoleUpdateRequest(BaseModel):
 class FitnessProfileUpdateRequest(BaseModel):
     """User request to update fitness profile."""
 
-    fitness_goal: Optional[str] = Field(None, max_length=255)
-    fitness_level: Optional[str] = Field(None, pattern="^(beginner|intermediate|advanced)$")
-    weight_kg: Optional[float] = Field(None, gt=0, lt=500)
-    height_cm: Optional[float] = Field(None, gt=0, lt=300)
-    age: Optional[int] = Field(None, gt=0, lt=150)
+    fitness_goal: str | None = Field(None, max_length=255)
+    fitness_level: str | None = Field(
+        None, pattern="^(beginner|intermediate|advanced)$"
+    )
+    weight_kg: float | None = Field(None, gt=0, lt=500)
+    height_cm: float | None = Field(None, gt=0, lt=300)
+    age: int | None = Field(None, gt=0, lt=150)

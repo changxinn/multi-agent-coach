@@ -1,14 +1,14 @@
 """
 Chat routes for multi-agent conversations.
 """
-import logging
+
 import json
-from typing import Optional
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.database import get_db
 from app.api.routes.auth import get_current_user
 from app.api.schemas.chat import (
     ChatRequest,
@@ -16,9 +16,10 @@ from app.api.schemas.chat import (
     SummaryRequest,
     SummaryResponse,
 )
-from app.services.session_manager import session_manager, get_session_manager
-from app.services.user_profile_service import UserProfileService
+from app.db.database import get_db
 from app.services.agent_orchestrator import get_orchestrator
+from app.services.session_manager import get_session_manager
+from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +136,10 @@ async def chat_stream(
     async def generate():
         try:
             logger.info("Processing message through multi-agent system: %s", message)
-            
+
             # Get orchestrator
             orchestrator = get_orchestrator()
-            
+
             # Process message through multi-agent system with streaming
             async for token in orchestrator.process_message_stream(
                 session=session,
@@ -152,11 +153,9 @@ async def chat_stream(
             logger.info("Multi-agent streaming completed")
 
         except Exception as e:
-            logger.error("Streaming error: %s", e, exc_info=True)
+            logger.exception("Streaming error")
             yield f"data: {json.dumps({'error': str(e), 'session_id': session_id})}\n\n"
 
-    from fastapi.responses import Response
-    
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",

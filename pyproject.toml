@@ -47,7 +47,10 @@ dev = [
 ]
 
 [tool.ruff.lint]
-ignore = ["BLE001"]
+ignore = [
+    "B008", # FastAPI dependency injection uses Depends(...) in endpoint defaults.
+    "BLE001",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

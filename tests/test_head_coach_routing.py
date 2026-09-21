@@ -1,7 +1,12 @@
 import pytest
 
 from agents.contracts import SpecialistId
-from agents.routing import CHITCHAT_PROMPT, IDENTITY_PROMPT, heuristic_route, parse_llm_agents
+from agents.routing import (
+    CHITCHAT_PROMPT,
+    IDENTITY_PROMPT,
+    heuristic_route,
+    parse_llm_agents,
+)
 from agents.safety import check_input_safety, strip_injection_text
 
 

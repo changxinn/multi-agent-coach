@@ -16,6 +16,10 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    env:
+      JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
+      OPENAI_API_KEY: ci-test-openai-key
 
     steps:
       - name: Check out source

@@ -4,10 +4,11 @@ AWS S3 client for chat history archival.
 Provides methods to upload and retrieve chat history from S3.
 Only used when AWS credentials are configured.
 """
+
 import json
 import logging
-from datetime import datetime
-from typing import Optional, Dict, Any
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,10 @@ class S3Client:
 
     def __init__(
         self,
-        region: Optional[str] = None,
-        access_key: Optional[str] = None,
-        secret_key: Optional[str] = None,
-        bucket: Optional[str] = None,
+        region: str | None = None,
+        access_key: str | None = None,
+        secret_key: str | None = None,
+        bucket: str | None = None,
         prefix: str = "chat-history",
     ):
         """
@@ -82,8 +83,8 @@ class S3Client:
         self,
         user_id: str,
         session_id: str,
-        message: Dict[str, Any],
-        timestamp: Optional[datetime] = None,
+        message: dict[str, Any],
+        timestamp: datetime | None = None,
     ) -> bool:
         """
         Save a single chat message to S3.
@@ -103,7 +104,7 @@ class S3Client:
 
         try:
             if timestamp is None:
-                timestamp = datetime.utcnow()
+                timestamp = datetime.now(UTC)
 
             key = self._get_key(user_id, session_id, timestamp)
 
@@ -138,7 +139,7 @@ class S3Client:
         user_id: str,
         session_id: str,
         messages: list,
-        timestamp: Optional[datetime] = None,
+        timestamp: datetime | None = None,
     ) -> bool:
         """
         Save entire session history to S3.
@@ -158,7 +159,7 @@ class S3Client:
 
         try:
             if timestamp is None:
-                timestamp = datetime.utcnow()
+                timestamp = datetime.now(UTC)
 
             date_str = timestamp.strftime("%Y/%m/%d")
             key = f"{self.prefix}/{user_id}/{session_id}/{date_str}/session.json"
@@ -192,7 +193,7 @@ class S3Client:
 
     async def get_session_history(
         self, user_id: str, session_id: str
-    ) -> Optional[Dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         """
         Retrieve session history from S3.
 
@@ -228,7 +229,7 @@ class S3Client:
             if not session_keys:
                 return None
 
-            latest_key = sorted(session_keys)[-1]
+            latest_key = max(session_keys)
 
             # Download the file
             obj = self.client.get_object(Bucket=self.bucket, Key=latest_key)
@@ -261,9 +262,7 @@ class S3Client:
             prefix = f"{self.prefix}/{user_id}/{session_id}/"
 
             # List all objects with this prefix
-            response = self.client.list_objects_v2(
-                Bucket=self.bucket, Prefix=prefix
-            )
+            response = self.client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
 
             if "Contents" not in response:
                 return True  # Nothing to delete
@@ -288,10 +287,10 @@ class S3Client:
 
 
 # Create singleton instance (will be initialized with app settings)
-_s3_client: Optional[S3Client] = None
+_s3_client: S3Client | None = None
 
 
-def get_s3_client() -> Optional[S3Client]:
+def get_s3_client() -> S3Client | None:
     """
     Get or create S3 client singleton.
 

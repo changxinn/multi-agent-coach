@@ -1,7 +1,9 @@
 """
 SQLAlchemy ORM models for database tables.
 """
+
 from datetime import datetime
+from typing import ClassVar
 
 from sqlalchemy import (
     Boolean,
@@ -29,7 +31,7 @@ class User(Base):
     """
 
     __tablename__ = "users"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__: ClassVar = {"schema": "systemdb"}
 
     id = Column(Integer, primary_key=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
@@ -43,7 +45,10 @@ class User(Base):
     )
     enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(
-        DateTime, nullable=False, default=datetime.utcnow, server_default=text("CURRENT_TIMESTAMP")
+        DateTime,
+        nullable=False,
+        default=datetime.utcnow,
+        server_default=text("CURRENT_TIMESTAMP"),
     )
 
     def __repr__(self):
@@ -59,7 +64,7 @@ class UserFitnessProfile(Base):
     """
 
     __tablename__ = "user_fitness_profiles"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__: ClassVar = {"schema": "systemdb"}
 
     user_id = Column(
         Integer,
@@ -67,10 +72,16 @@ class UserFitnessProfile(Base):
         primary_key=True,
     )
     fitness_goal = Column(
-        String(255), nullable=False, default="general fitness", server_default=text("'general fitness'")
+        String(255),
+        nullable=False,
+        default="general fitness",
+        server_default=text("'general fitness'"),
     )
     fitness_level = Column(
-        String(50), nullable=False, default="beginner", server_default=text("'beginner'")
+        String(50),
+        nullable=False,
+        default="beginner",
+        server_default=text("'beginner'"),
     )
     weight_kg = Column(Numeric(5, 2), nullable=True)
     height_cm = Column(Numeric(5, 2), nullable=True)
@@ -91,7 +102,7 @@ class HeadCoachRoutingEvent(Base):
     """Persisted Head Coach routing decision for admin review."""
 
     __tablename__ = "head_coach_routing_events"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__: ClassVar = {"schema": "systemdb"}
 
     id = Column(Integer, primary_key=True)
     user_id = Column(
@@ -118,7 +129,7 @@ class CoachSummary(Base):
     """Persisted summarizer output (session wrap-up or daily briefing)."""
 
     __tablename__ = "coach_summaries"
-    __table_args__ = {"schema": "systemdb"}
+    __table_args__: ClassVar = {"schema": "systemdb"}
 
     id = Column(Integer, primary_key=True)
     user_id = Column(

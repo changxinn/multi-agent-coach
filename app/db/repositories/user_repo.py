@@ -3,10 +3,9 @@ User repository for database operations.
 
 Provides methods for user CRUD operations.
 """
-from typing import Optional
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import User, UserFitnessProfile
 
@@ -17,7 +16,7 @@ class UserRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get_by_email(self, email: str) -> Optional[User]:
+    async def get_by_email(self, email: str) -> User | None:
         """
         Get user by email address.
 
@@ -27,13 +26,10 @@ class UserRepository:
         Returns:
             User or None if not found
         """
-        result = await self.db.execute(
-            select(User)
-            .where(User.email == email)
-        )
+        result = await self.db.execute(select(User).where(User.email == email))
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, user_id: int) -> Optional[User]:
+    async def get_by_id(self, user_id: int) -> User | None:
         """
         Get user by ID.
 
@@ -43,10 +39,7 @@ class UserRepository:
         Returns:
             User or None if not found
         """
-        result = await self.db.execute(
-            select(User)
-            .where(User.id == user_id)
-        )
+        result = await self.db.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     async def create_user(
@@ -87,7 +80,7 @@ class UserRepository:
 
         return user
 
-    async def update_role(self, user_id: int, role: str) -> Optional[User]:
+    async def update_role(self, user_id: int, role: str) -> User | None:
         """
         Update user role.
 
@@ -111,12 +104,12 @@ class UserRepository:
     async def update_fitness_profile(
         self,
         user_id: int,
-        fitness_goal: Optional[str] = None,
-        fitness_level: Optional[str] = None,
-        weight_kg: Optional[float] = None,
-        height_cm: Optional[float] = None,
-        age: Optional[int] = None,
-    ) -> Optional[UserFitnessProfile]:
+        fitness_goal: str | None = None,
+        fitness_level: str | None = None,
+        weight_kg: float | None = None,
+        height_cm: float | None = None,
+        age: int | None = None,
+    ) -> UserFitnessProfile | None:
         """
         Update user fitness profile.
 

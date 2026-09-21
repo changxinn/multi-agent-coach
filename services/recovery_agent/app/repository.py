@@ -1,8 +1,8 @@
 """PostgreSQL repository owned by the Recovery Agent service."""
+
 from __future__ import annotations
 
 import json
-from datetime import datetime
 
 import asyncpg
 
@@ -17,7 +17,9 @@ class RecoveryRepository:
         self.pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
-        database_url = self.settings.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+        database_url = self.settings.DATABASE_URL.replace(
+            "postgresql+asyncpg://", "postgresql://"
+        )
         self.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
         await self.ensure_schema()
 
@@ -67,8 +69,12 @@ class RecoveryRepository:
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 )'''
             )
-            await conn.execute(f'CREATE INDEX IF NOT EXISTS idx_sleep_logs_user_created ON "{schema}".sleep_logs(user_id, created_at DESC)')
-            await conn.execute(f'CREATE INDEX IF NOT EXISTS idx_recovery_checkins_user_created ON "{schema}".recovery_checkins(user_id, created_at DESC)')
+            await conn.execute(
+                f'CREATE INDEX IF NOT EXISTS idx_sleep_logs_user_created ON "{schema}".sleep_logs(user_id, created_at DESC)'
+            )
+            await conn.execute(
+                f'CREATE INDEX IF NOT EXISTS idx_recovery_checkins_user_created ON "{schema}".recovery_checkins(user_id, created_at DESC)'
+            )
 
     async def create_sleep_log(self, payload: SleepLogCreate) -> asyncpg.Record:
         schema = self.settings.validated_schema()
@@ -76,7 +82,10 @@ class RecoveryRepository:
             f'''INSERT INTO "{schema}".sleep_logs (user_id, duration_minutes, quality, notes)
                 VALUES ($1, $2, $3, $4)
                 RETURNING id, user_id, duration_minutes, quality, notes, created_at''',
-            payload.user_id, payload.duration_minutes, payload.quality, payload.notes,
+            payload.user_id,
+            payload.duration_minutes,
+            payload.quality,
+            payload.notes,
         )
 
     async def create_checkin(self, payload: RecoveryCheckInCreate) -> None:
@@ -84,7 +93,11 @@ class RecoveryRepository:
         await self._pool.execute(
             f'''INSERT INTO "{schema}".recovery_checkins (user_id, energy, soreness, stress, notes)
                 VALUES ($1, $2, $3, $4, $5)''',
-            payload.user_id, payload.energy, payload.soreness, payload.stress, payload.notes,
+            payload.user_id,
+            payload.energy,
+            payload.soreness,
+            payload.stress,
+            payload.notes,
         )
 
     async def get_history(self, user_id: int) -> RecoveryHistory:
@@ -99,13 +112,19 @@ class RecoveryRepository:
         )
         return RecoveryHistory(
             sleep_logs_last_7_days=int(row["sleep_logs"]),
-            average_sleep_minutes=float(row["avg_sleep_minutes"]) if row["avg_sleep_minutes"] is not None else None,
-            average_sleep_quality=float(row["avg_sleep_quality"]) if row["avg_sleep_quality"] is not None else None,
+            average_sleep_minutes=float(row["avg_sleep_minutes"])
+            if row["avg_sleep_minutes"] is not None
+            else None,
+            average_sleep_quality=float(row["avg_sleep_quality"])
+            if row["avg_sleep_quality"] is not None
+            else None,
             check_ins_last_7_days=int(row["checkins"]),
             workouts_last_7_days=0,
         )
 
-    async def save_assessment(self, user_id: int, assessment: RecoveryEvaluateResponse) -> None:
+    async def save_assessment(
+        self, user_id: int, assessment: RecoveryEvaluateResponse
+    ) -> None:
         schema = self.settings.validated_schema()
         await self._pool.execute(
             f'''INSERT INTO "{schema}".recovery_assessments (user_id, status, score, response, tool_trace)
