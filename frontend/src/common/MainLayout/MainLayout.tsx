@@ -62,6 +62,7 @@ export function MainLayout({ children }: MainLayoutProps) {
       sidebarCollapsed={sidebarCollapsed}
       mobileMenuOpen={mobileMenuOpen}
       isMobile={isMobile}
+      userName={user?.name ?? 'User'}
       onNavigate={handleNavigate}
       onToggleMenu={() => setMenuOpen(!menuOpen)}
       onCloseMenu={() => setMenuOpen(false)}
