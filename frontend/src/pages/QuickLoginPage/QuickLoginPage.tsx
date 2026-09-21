@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Typography, Button, Select, Alert, Divider, Tag, message, Input } from 'antd'
-import { UserOutlined, LoginOutlined, CheckCircleOutlined } from '@ant-design/icons'
+import { Card, Typography, Button, Select, Tag, message, Input } from 'antd'
+import { UserOutlined, LoginOutlined } from '@ant-design/icons'
 import { useAuthStore } from '@/lib/authStore'
-import { envConfig } from '@/lib/envConfig'
 import { Routes } from '@/lib/constants'
 import { login } from '@/lib/auth'
 
