@@ -15,4 +15,5 @@ class State(TypedDict):
     routing_reason: NotRequired[str]
     needs_clarification: NotRequired[bool]
     safety_flags: NotRequired[list]
+    respectful_language_reminder: NotRequired[bool]
     prompt_versions: NotRequired[dict]
