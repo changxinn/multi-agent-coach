@@ -1,7 +1,6 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../lib/authStore'
 import { type Role, Routes } from '@/lib/constants'
-import { useEffect } from 'react'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
@@ -12,12 +11,12 @@ export function ProtectedRoute({
   children, 
   allowedRoles 
 }: ProtectedRouteProps) {
-  const { token, checkAuth, getUserRoles } = useAuthStore()
+  const { token, isAuthInitialized, getUserRoles } = useAuthStore()
   const location = useLocation()
 
-  useEffect(() => {
-    checkAuth()
-  }, [])
+  if (!isAuthInitialized) {
+    return null
+  }
 
   if (!token) {
     return <Navigate to={Routes.Login} state={{ from: location }} replace />
