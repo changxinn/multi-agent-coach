@@ -138,6 +138,7 @@ def route_locally(state: dict) -> dict:
             "selected_agent": "human",
             "volley_msg_left": 0,
             "safety_flags": safety.flags,
+            "respectful_language_reminder": "profanity_detected" in safety.flags,
             "routing_reason": safety.action,
             "messages": [
                 {
@@ -159,12 +160,17 @@ def route_locally(state: dict) -> dict:
             "routing_reason": decision.reason,
             "needs_clarification": True,
             "safety_flags": safety.flags,
+            "respectful_language_reminder": False,
             "prompt_versions": {"head_coach": PROMPT_VERSION},
             "messages": [
                 {
                     "role": "assistant",
                     "name": "Head Coach",
-                    "content": prompt,
+                    "content": (
+                        "Please keep your messages respectful. " + prompt
+                        if "profanity_detected" in safety.flags
+                        else prompt
+                    ),
                 }
             ],
         }
@@ -179,6 +185,7 @@ def route_locally(state: dict) -> dict:
         "routing_reason": decision.reason,
         "needs_clarification": False,
         "safety_flags": safety.flags,
+        "respectful_language_reminder": "profanity_detected" in safety.flags,
         "prompt_versions": {"head_coach": PROMPT_VERSION},
     }
 

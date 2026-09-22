@@ -1,6 +1,7 @@
 from typing import Literal
 
 from agents import specialist, summarizer
+from agents.safety import guard_output_messages
 from display import (
     print_agent_response,
     print_backend,
@@ -95,14 +96,21 @@ def specialist_node(state: State) -> dict:
     result = specialist(next_agent, state)
 
     if result and "messages" in result:
-        display_text = result.get("display_text", "")
+        guarded_messages = guard_output_messages(
+            result["messages"],
+            include_respectful_reminder=bool(state.get("respectful_language_reminder")),
+        )
+        display_text = guarded_messages[-1].get("content", "")
+        speaker_prefix = f"{result['messages'][-1].get('name', '')}: "
+        if speaker_prefix != ": " and display_text.startswith(speaker_prefix):
+            display_text = display_text[len(speaker_prefix) :]
         if display_text:
             print_agent_response(next_agent, display_text)
         else:
             print_backend(
                 "No response text", "check DEBUG=true for details", next_agent
             )
-        return {"messages": result["messages"]}
+        return {"messages": guarded_messages}
 
     print_backend("Specialist returned no result", agent_key=next_agent)
     return {}
