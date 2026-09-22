@@ -54,9 +54,10 @@ export function DeepChatBot({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const { token, user, logout } = useAuthStore()
+  const { token, user } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
+  const [deepChatElement, setDeepChatElement] = useState<any>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
   const accumulatedMessageRef = useRef<string>('')
@@ -185,6 +186,13 @@ export function DeepChatBot({
           role: 'assistant',
           html: '<div class="typing-dots"><span class="dot"></span><span class="dot dot-2"></span><span class="dot dot-3"></span></div>'
         })
+
+        // Persist the user turn before awaiting the response so route changes or
+        // an interrupted stream cannot lose the message.
+        saveChatHistory(
+          userEmail,
+          toStoredMessages(deepChatRef.current.getMessages() || [])
+        )
       }
       
       const messages: ChatMessage[] = [
@@ -372,7 +380,7 @@ export function DeepChatBot({
       }
       setTimeout(() => inputRef.current?.focus(), 100)
     }
-  }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay])
+  }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, userEmail])
 
   // Cleanup typewriter timeout and abort streaming on component unmount
   useEffect(() => {
@@ -396,7 +404,7 @@ export function DeepChatBot({
       isTypingRef.current = false
       displayIndexRef.current = 0
     }
-  }, [])
+  }, [userEmail])
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -409,12 +417,17 @@ export function DeepChatBot({
     setIsExpanded(true)
   }, [])
 
+  const setDeepChatRef = useCallback((element: any | null) => {
+    deepChatRef.current = element
+    setDeepChatElement(element)
+  }, [])
+
   useEffect(() => {
-    if (!isOpen || !deepChatRef.current || isInitialized.current) {
+    if (!isOpen || !deepChatElement || isInitialized.current) {
       return
     }
 
-    const deepChatEl = deepChatRef.current
+    const deepChatEl = deepChatElement
 
     deepChatEl.requestBodyLimits = deepChatRequestBodyLimits
     deepChatEl.textInput = deepChatTextInputConfig
@@ -439,32 +452,38 @@ export function DeepChatBot({
     deepChatEl.innerHTML = true
 
     const saved = loadChatHistory(userEmail)
-    const restoreTimer = window.setTimeout(() => {
-      const existing = toStoredMessages(deepChatEl.getMessages?.() || [])
-      if (existing.length > 0) {
-        return
-      }
-      if (saved.length > 0) {
-        saved.forEach((item) => {
-          if (item.html) {
-            deepChatEl.addMessage({ role: item.role, html: item.html })
-          } else if (item.text) {
-            deepChatEl.addMessage({ role: item.role, text: item.text })
-          }
-        })
-        deepChatEl.scrollToBottom?.()
-      } else if (initialMessage) {
-        deepChatEl.addMessage({
-          role: 'assistant',
-          html: marked.parse(initialMessage),
-        })
-        hasInitialMessage.current = true
-      }
-    }, 200)
+    console.debug('[DeepChat] Restoring history', {
+      userEmail,
+      messageCount: saved.length,
+    })
+    const history = saved.length > 0
+      ? saved
+      : initialMessage && !hasInitialMessage.current
+        ? [{ role: 'assistant', text: initialMessage }]
+        : []
+
+    // `history` is DeepChat's reactive initialization API. Assigning it lets
+    // the custom element build the transcript during its own render lifecycle,
+    // instead of imperatively adding messages that its async renderer can erase.
+    if (history.length > 0) {
+      deepChatEl.history = history
+      hasInitialMessage.current ||= saved.length === 0
+    }
+
+    const diagnosticTimer = window.setTimeout(() => {
+      console.debug('[DeepChat] History restoration result', {
+        expectedMessageCount: history.length,
+        renderedMessageCount: deepChatEl.getMessages?.().length ?? 0,
+      })
+      deepChatEl.scrollToBottom?.()
+    }, 0)
 
     isInitialized.current = true
-    return () => window.clearTimeout(restoreTimer)
-  }, [isOpen, initialMessage, messageApi, token, userEmail])
+
+    return () => {
+      window.clearTimeout(diagnosticTimer)
+    }
+  }, [isOpen, deepChatElement, initialMessage, messageApi, token, userEmail])
 
   return (
     <>
@@ -525,7 +544,7 @@ export function DeepChatBot({
             </header>
             
             <div className="chat-content">
-              <deep-chat displayLoadingBubble="true" ref={deepChatRef} demo={true} />
+              <deep-chat displayLoadingBubble="true" ref={setDeepChatRef} demo={true} />
             </div>
             
             <div className="input-area">
