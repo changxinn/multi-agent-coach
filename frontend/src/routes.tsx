@@ -30,15 +30,6 @@ export const routePages: RoutePage[] = [
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
   { 
-    id: PageIds.TableListing, 
-    label: 'Table Listing', 
-    path: Routes.TableListing, 
-    component: <></>,
-    section: Sections.Admin,
-    icon: <Table size={DEFAULT_ICON_SIZE} />,
-    allowedRoles: [Roles.Admin] 
-  },
-  { 
     id: PageIds.CoachData, 
     label: 'Coach Data', 
     path: Routes.CoachData, 
@@ -89,22 +80,7 @@ export const routeConfigs: RouteConfig[] = [
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
   },
   {
-    path: Routes.Forms,
-    element: <></>,
-    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
-  },
-  {
-    path: Routes.TableListing,
-    element: <></>,
-    allowedRoles: [Roles.Admin],
-  },
-  {
     path: Routes.CoachData,
-    element: <></>,
-    allowedRoles: [Roles.Admin],
-  },
-  {
-    path: Routes.Timeline,
     element: <></>,
     allowedRoles: [Roles.Admin],
   },
