@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { ComponentType } from 'react'
 import './Sidebar.css'
 import { ChevronLeft, ChevronRight, LayoutDashboard, LogOut } from 'lucide-react'
 
@@ -7,7 +7,7 @@ interface SidebarPage {
   path: string
   label: string
   section?: string
-  icon?: ReactNode
+  icon?: ComponentType<{ size?: number }>
 }
 
 type SidebarProps = {
@@ -48,7 +48,8 @@ function Sidebar({
   }, {} as Record<string, SidebarPage[]>)
 
   const renderNavIcon = (page: SidebarPage) => {
-    return page.icon || <LayoutDashboard size={20} />
+    const Icon = page.icon ?? LayoutDashboard
+    return <Icon size={20} />
   }
 
   return (

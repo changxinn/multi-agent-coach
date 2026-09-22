@@ -54,7 +54,7 @@ export function DeepChatBot({
   const [isExpanded, setIsExpanded] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
-  const { token, user, logout } = useAuthStore()
+  const { token, user } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
   const [deepChatElement, setDeepChatElement] = useState<any>(null)
@@ -404,7 +404,7 @@ export function DeepChatBot({
       isTypingRef.current = false
       displayIndexRef.current = 0
     }
-  }, [])
+  }, [userEmail])
 
   const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {

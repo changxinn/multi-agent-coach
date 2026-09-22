@@ -70,7 +70,7 @@ export async function mockLogin(data: LoginInput): Promise<LoginResponse> {
   }
 }
 
-export async function mockRefreshToken(token: string): Promise<{ token: string }> {
+export async function mockRefreshToken(): Promise<{ token: string }> {
   await new Promise((resolve) => setTimeout(resolve, 500))
   const newToken = createMockJWT('user@example.com', 'user')
   return { token: newToken }
