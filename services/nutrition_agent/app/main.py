@@ -17,6 +17,9 @@ from .schemas import (
     FoodDetailRequest,
     FoodSearchRequest,
     MealIdRequest,
+    MealPlanCreateRequest,
+    MealPlanGenerateRequest,
+    MealPlanIdRequest,
     MealRequest,
     ProfileRequest,
     ReplaceMealRequest,
@@ -27,6 +30,8 @@ from .schemas import (
 )
 from .service import (
     NutritionFoodDataError,
+    NutritionMealPlanSafetyError,
+    NutritionMealPlanTransitionError,
     NutritionNotFoundError,
     NutritionProfileIncompleteError,
     NutritionService,
@@ -58,6 +63,10 @@ def translate(error: Exception) -> HTTPException:
     if isinstance(error, NutritionNotFoundError):
         return HTTPException(status.HTTP_404_NOT_FOUND, str(error))
     if isinstance(error, NutritionProfileIncompleteError):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error))
+    if isinstance(error, NutritionMealPlanSafetyError):
+        return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error))
+    if isinstance(error, NutritionMealPlanTransitionError):
         return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error))
     if isinstance(error, NutritionFoodDataError):
         return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error))
@@ -166,7 +175,7 @@ async def foods_search(payload: FoodSearchRequest, service: Service):
     "/v1/nutrition/foods/catalogue", dependencies=[Depends(require_internal_token)]
 )
 async def foods_catalogue(payload: FoodCatalogueRequest, service: Service):
-    return {"items": await service.get_food_catalogue(payload.limit)}
+    return {"items": await service.get_food_catalogue()}
 
 
 @app.post("/v1/nutrition/foods/detail", dependencies=[Depends(require_internal_token)])
@@ -231,6 +240,117 @@ async def meals_delete(
         )
     except Exception as error:
         raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/create", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_create(
+    payload: MealPlanCreateRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.create",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.create_meal_plan(payload.user_id, payload),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/generate", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_generate(
+    payload: MealPlanGenerateRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.generate",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.generate_meal_plan(payload.user_id, payload),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/active", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_active(payload: DateRequest, service: Service):
+    return {
+        "meal_plan": await service.get_active_meal_plan(payload.user_id, payload.date)
+    }
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/get", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_get(payload: MealPlanIdRequest, service: Service):
+    try:
+        return await service.get_meal_plan(payload.user_id, payload.meal_plan_id)
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/list", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_list(payload: UserRequest, service: Service):
+    return {"items": await service.list_meal_plans(payload.user_id)}
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/confirm", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_confirm(
+    payload: MealPlanIdRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.confirm",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.confirm_meal_plan(payload.user_id, payload.meal_plan_id),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/archive", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_archive(
+    payload: MealPlanIdRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.archive",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.archive_meal_plan(payload.user_id, payload.meal_plan_id),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post("/v1/nutrition/context", dependencies=[Depends(require_internal_token)])
+async def nutrition_context(payload: DateRequest, service: Service):
+    return await service.get_nutrition_context(payload.user_id, payload.date)
 
 
 @app.post("/v1/nutrition/daily-summary", dependencies=[Depends(require_internal_token)])

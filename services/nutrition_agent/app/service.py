@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .calculator import calculate_targets
 from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
+from .meal_plan_safety import assess_meal_plan_safety
 from .repository import NutritionRepository
+from .schemas import MealPlanCreateRequest, MealPlanGenerateRequest
 
 
 class NutritionNotFoundError(Exception):
@@ -23,6 +25,92 @@ class NutritionProfileIncompleteError(Exception):
 
 class NutritionFoodDataError(Exception):
     """Raised when food information cannot be safely obtained."""
+
+
+class NutritionMealPlanSafetyError(Exception):
+    """Raised when confirmed meal-plan content conflicts with a known allergy."""
+
+
+class NutritionMealPlanTransitionError(Exception):
+    """Raised when a meal plan cannot make the requested lifecycle transition."""
+
+
+def _normalised_values(values: Any) -> set[str]:
+    return {
+        " ".join(str(value).casefold().replace("_", " ").split())
+        for value in values or []
+        if str(value).strip()
+    }
+
+
+def _allergen_values(value: Any) -> set[str]:
+    if isinstance(value, str):
+        return _normalised_values([value])
+    if isinstance(value, dict):
+        return set().union(*(_allergen_values(nested) for nested in value.values()))
+    if isinstance(value, list):
+        return set().union(*(_allergen_values(nested) for nested in value))
+    return set()
+
+
+def _food_is_safe_for_generation(
+    food: dict[str, Any], metadata: dict[str, Any] | None, allergies: set[str]
+) -> bool:
+    if not metadata or Decimal(food["calories_per_100g"]) <= 0:
+        return False
+    allergen_status = metadata.get("allergen_status")
+    if allergen_status == "unknown":
+        return not allergies
+    return bool(
+        allergen_status == "known"
+        and not (allergies & _allergen_values(metadata.get("allergen_data")))
+    )
+
+
+def _meal_targets(target: dict[str, Any], meal_count: int) -> dict[str, Decimal]:
+    return {
+        field: (Decimal(target[field]) / meal_count).quantize(Decimal("0.01"))
+        for field in (
+            "calorie_target_kcal",
+            "protein_target_g",
+            "carbohydrate_target_g",
+            "fat_target_g",
+            "fiber_target_g",
+        )
+    }
+
+
+def _grams_for_calories(food: dict[str, Any], calories: Decimal) -> Decimal:
+    return (calories * Decimal(100) / Decimal(food["calories_per_100g"])).quantize(
+        Decimal("0.01")
+    )
+
+
+def _planned_food_item(food: dict[str, Any], grams: Decimal) -> dict[str, Any]:
+    multiplier = grams / Decimal(100)
+    return {
+        "food_name": food["description"],
+        "quantity": grams,
+        "unit": "g",
+        "grams": grams,
+        "calories": (Decimal(food["calories_per_100g"]) * multiplier).quantize(
+            Decimal("0.01")
+        ),
+        "protein_g": (Decimal(food["protein_g_per_100g"]) * multiplier).quantize(
+            Decimal("0.01")
+        ),
+        "carbohydrate_g": (
+            Decimal(food["carbohydrate_g_per_100g"]) * multiplier
+        ).quantize(Decimal("0.01")),
+        "fat_g": (Decimal(food["fat_g_per_100g"]) * multiplier).quantize(
+            Decimal("0.01")
+        ),
+        "fiber_g": (
+            Decimal(food.get("fiber_g_per_100g") or 0) * multiplier
+        ).quantize(Decimal("0.01")),
+        "source": "meal_plan",
+        "food_cache_id": food["id"],
+    }
 
 
 class NutritionService:
@@ -66,6 +154,182 @@ class NutritionService:
         if profile is None:
             raise NutritionNotFoundError("Nutrition profile not found")
         return profile
+
+    async def create_meal_plan(
+        self, user_id: int, payload: MealPlanCreateRequest
+    ) -> dict[str, Any]:
+        """Persist a safety-evaluated plan as a draft owned by the user."""
+        target = await self.repo.get_target_snapshot(
+            user_id, payload.target_snapshot_id
+        )
+        if target is None:
+            raise NutritionNotFoundError("Nutrition target snapshot not found")
+        planned_meals = [meal.model_dump() for meal in payload.planned_meals]
+        food_cache_ids = {
+            item["food_cache_id"]
+            for meal in planned_meals
+            for item in meal["items"]
+            if item.get("food_cache_id") is not None
+        }
+        planned_meals, safety_warnings = assess_meal_plan_safety(
+            planned_meals,
+            await self.repo.get_profile(user_id),
+            await self.repo.get_food_safety_metadata(food_cache_ids),
+        )
+        if any(meal["safety_status"] == "blocked" for meal in planned_meals):
+            raise NutritionMealPlanSafetyError(
+                "Meal plan contains foods that conflict with confirmed allergies"
+            )
+        return await self.repo.create_meal_plan(
+            user_id=user_id,
+            target_snapshot_id=payload.target_snapshot_id,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            generated_plan=payload.generated_plan,
+            safety_warnings=safety_warnings,
+            planned_meals=planned_meals,
+        )
+
+    async def generate_meal_plan(
+        self, user_id: int, payload: MealPlanGenerateRequest
+    ) -> dict[str, Any]:
+        """Create a deterministic draft from active targets and safe cached USDA foods."""
+        target = await self.repo.get_active_target(user_id)
+        if target is None:
+            raise NutritionProfileIncompleteError(
+                "Active nutrition targets are required before generating a meal plan"
+            )
+        profile = await self.repo.get_profile(user_id)
+        if profile is None:
+            raise NutritionProfileIncompleteError(
+                "A saved nutrition profile is required before generating a meal plan"
+            )
+        foods = await self.repo.list_food_catalogue(500)
+        safety_metadata = await self.repo.get_food_safety_metadata(
+            {food["id"] for food in foods}
+        )
+        allergies = _normalised_values(profile.get("allergies"))
+        safe_foods = [
+            food
+            for food in foods
+            if _food_is_safe_for_generation(food, safety_metadata.get(food["id"]), allergies)
+        ]
+        if not safe_foods:
+            raise NutritionProfileIncompleteError(
+                "The local food catalogue has no safe foods with complete nutrition and compatible allergen data"
+            )
+
+        meal_count = len(payload.meal_types)
+        planned_meals: list[dict[str, Any]] = []
+        day_count = (payload.end_date - payload.start_date).days + 1
+        for day_offset in range(day_count):
+            planned_date = payload.start_date + timedelta(days=day_offset)
+            for meal_index, meal_type in enumerate(payload.meal_types):
+                food = safe_foods[(day_offset * meal_count + meal_index) % len(safe_foods)]
+                targets = _meal_targets(target, meal_count)
+                grams = _grams_for_calories(food, targets["calorie_target_kcal"])
+                planned_meals.append(
+                    {
+                        "planned_date": planned_date,
+                        "meal_type": meal_type,
+                        **targets,
+                        "items": [_planned_food_item(food, grams)],
+                    }
+                )
+
+        create_payload = MealPlanCreateRequest(
+            user_id=user_id,
+            target_snapshot_id=target["id"],
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            generated_plan={
+                "generator": "deterministic_catalogue_v1",
+                "target_snapshot_id": target["id"],
+                "meal_types": payload.meal_types,
+                "catalogue_food_ids": [food["id"] for food in safe_foods],
+            },
+            planned_meals=planned_meals,
+        )
+        return await self.create_meal_plan(user_id, create_payload)
+
+    async def get_meal_plan(self, user_id: int, meal_plan_id: int) -> dict[str, Any]:
+        plan = await self.repo.get_meal_plan(user_id, meal_plan_id)
+        if plan is None:
+            raise NutritionNotFoundError("Meal plan not found")
+        return plan
+
+    async def list_meal_plans(self, user_id: int) -> list[dict[str, Any]]:
+        return await self.repo.list_meal_plans(user_id)
+
+    async def confirm_meal_plan(
+        self, user_id: int, meal_plan_id: int
+    ) -> dict[str, Any]:
+        await self.repo.lock_user_meal_plans(user_id)
+        plan = await self.get_meal_plan(user_id, meal_plan_id)
+        if plan["status"] != "draft":
+            raise NutritionMealPlanTransitionError(
+                "Only draft meal plans can be confirmed"
+            )
+        planned_meals = plan["planned_meals"]
+        food_cache_ids = {
+            item["food_cache_id"]
+            for meal in planned_meals
+            for item in meal["items"]
+            if item.get("food_cache_id") is not None
+        }
+        assessed_meals, safety_warnings = assess_meal_plan_safety(
+            planned_meals,
+            await self.repo.get_profile(user_id),
+            await self.repo.get_food_safety_metadata(food_cache_ids),
+        )
+        if any(meal["safety_status"] == "blocked" for meal in assessed_meals):
+            raise NutritionMealPlanSafetyError(
+                "Meal plan contains foods that conflict with confirmed allergies"
+            )
+        confirmed = await self.repo.activate_draft_meal_plan(
+            user_id,
+            meal_plan_id,
+            plan["start_date"],
+            plan["end_date"],
+            assessed_meals,
+            safety_warnings,
+        )
+        if confirmed is None:
+            raise NutritionMealPlanTransitionError(
+                "Only draft meal plans can be confirmed"
+            )
+        return confirmed
+
+    async def archive_meal_plan(
+        self, user_id: int, meal_plan_id: int
+    ) -> dict[str, Any]:
+        await self.repo.lock_user_meal_plans(user_id)
+        plan = await self.get_meal_plan(user_id, meal_plan_id)
+        if plan["status"] not in {"draft", "active"}:
+            raise NutritionMealPlanTransitionError(
+                "Only draft or active meal plans can be archived"
+            )
+        archived = await self.repo.archive_meal_plan(user_id, meal_plan_id)
+        if archived is None:
+            raise NutritionMealPlanTransitionError(
+                "Only draft or active meal plans can be archived"
+            )
+        return archived
+
+    async def get_active_meal_plan(
+        self, user_id: int, for_date: date
+    ) -> dict[str, Any] | None:
+        return await self.repo.get_active_meal_plan(user_id, for_date)
+
+    async def get_nutrition_context(
+        self, user_id: int, for_date: date
+    ) -> dict[str, Any]:
+        """Return only authoritative user-scoped target and plan context for a date."""
+        return {
+            "date": for_date,
+            "target_snapshot": await self.repo.get_target_for_date(user_id, for_date),
+            "meal_plan": await self.repo.get_active_meal_plan(user_id, for_date),
+        }
 
     async def update_profile(
         self, user_id: int, values: dict[str, Any]
@@ -190,8 +454,8 @@ class NutritionService:
             raise NutritionFoodDataError(str(error)) from error
         return [food.__dict__ for food in foods]
 
-    async def get_food_catalogue(self, limit: int) -> list[dict[str, Any]]:
-        return await self.repo.list_food_catalogue(limit)
+    async def get_food_catalogue(self) -> list[dict[str, Any]]:
+        return await self.repo.list_all_food_catalogue()
 
     async def get_food(self, provider_food_id: str) -> dict[str, Any]:
         cached = await self.repo.get_cached_food("usda", provider_food_id)

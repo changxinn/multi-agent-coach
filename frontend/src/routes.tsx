@@ -5,6 +5,7 @@ import {
   Bot,
   ClipboardList,
   LayoutDashboard, 
+  UserRound,
   Salad,
   Table
 } from 'lucide-react'
@@ -32,6 +33,15 @@ export const routePages: RoutePage[] = [
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
   { 
+    id: PageIds.MyProfile,
+    label: 'My Profile',
+    path: Routes.MyProfile,
+    component: <></>,
+    section: Sections.Overview,
+    icon: <UserRound size={DEFAULT_ICON_SIZE} />,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
+  },
+  {
     id: PageIds.CoachData, 
     label: 'Coach Data', 
     path: Routes.CoachData, 
@@ -87,6 +97,11 @@ export type RouteConfig = {
 export const routeConfigs: RouteConfig[] = [
   {
     path: Routes.Dashboard,
+    element: <></>,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
+  },
+  {
+    path: Routes.MyProfile,
     element: <></>,
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin],
   },

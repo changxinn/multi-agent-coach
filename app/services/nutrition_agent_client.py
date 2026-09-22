@@ -18,6 +18,10 @@ class NutritionAgentUnavailableError(Exception):
     """The authoritative Nutrition Agent could not be reached."""
 
 
+class NutritionMealPlanValidationError(Exception):
+    """The Nutrition Agent rejected a meal-plan safety or lifecycle operation."""
+
+
 class NutritionAgentClient:
     """Forwards authenticated gateway operations; mutation calls are never retried."""
 
@@ -53,9 +57,10 @@ class NutritionAgentClient:
                 response.json().get("detail", "Nutrition resource not found")
             )
         if response.status_code == 422:
-            raise NutritionProfileIncompleteError(
-                response.json().get("detail", "Invalid nutrition request")
-            )
+            detail = response.json().get("detail", "Invalid nutrition request")
+            if path in {"meal-plans/confirm", "meal-plans/archive", "meal-plans/generate"}:
+                raise NutritionMealPlanValidationError(detail)
+            raise NutritionProfileIncompleteError(detail)
         if response.status_code == 503:
             raise NutritionFoodDataError(
                 response.json().get("detail", "Nutrition service unavailable")
@@ -97,12 +102,8 @@ class NutritionAgentClient:
             "items"
         ]
 
-    async def get_food_catalogue(
-        self, user_id: int, limit: int = 200
-    ) -> list[dict[str, Any]]:
-        return (
-            await self._post("foods/catalogue", {"user_id": user_id, "limit": limit})
-        )["items"]
+    async def get_food_catalogue(self, user_id: int) -> list[dict[str, Any]]:
+        return (await self._post("foods/catalogue", {"user_id": user_id}))["items"]
 
     async def get_food(self, user_id: int, food_id: str) -> dict[str, Any]:
         return await self._post(
@@ -166,6 +167,66 @@ class NutritionAgentClient:
                 },
             )
         )["items"]
+
+    async def create_meal_plan(
+        self, user_id: int, payload: Any, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        return await self._post(
+            "meal-plans/create",
+            {"user_id": user_id, **payload.model_dump(mode="json")},
+            idempotency_key=idempotency_key,
+        )
+
+    async def generate_meal_plan(
+        self, user_id: int, payload: Any, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        return await self._post(
+            "meal-plans/generate",
+            {"user_id": user_id, **payload.model_dump(mode="json")},
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_active_meal_plan(
+        self, user_id: int, for_date: date
+    ) -> dict[str, Any] | None:
+        return (
+            await self._post(
+                "meal-plans/active", {"user_id": user_id, "date": for_date.isoformat()}
+            )
+        )["meal_plan"]
+
+    async def get_meal_plan(self, user_id: int, meal_plan_id: int) -> dict[str, Any]:
+        return await self._post(
+            "meal-plans/get", {"user_id": user_id, "meal_plan_id": meal_plan_id}
+        )
+
+    async def list_meal_plans(self, user_id: int) -> list[dict[str, Any]]:
+        return (await self._post("meal-plans/list", {"user_id": user_id}))["items"]
+
+    async def confirm_meal_plan(
+        self, user_id: int, meal_plan_id: int, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        return await self._post(
+            "meal-plans/confirm",
+            {"user_id": user_id, "meal_plan_id": meal_plan_id},
+            idempotency_key=idempotency_key,
+        )
+
+    async def archive_meal_plan(
+        self, user_id: int, meal_plan_id: int, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
+        return await self._post(
+            "meal-plans/archive",
+            {"user_id": user_id, "meal_plan_id": meal_plan_id},
+            idempotency_key=idempotency_key,
+        )
+
+    async def get_nutrition_context(
+        self, user_id: int, for_date: date
+    ) -> dict[str, Any]:
+        return await self._post(
+            "context", {"user_id": user_id, "date": for_date.isoformat()}
+        )
 
     async def chat(self, user_id: int, message: str) -> dict[str, Any]:
         return await self._post("chat", {"user_id": user_id, "message": message})

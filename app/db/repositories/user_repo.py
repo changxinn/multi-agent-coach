@@ -128,11 +128,15 @@ class UserRepository:
         if not user:
             return None
 
-        if not user.fitness_profile:
-            # Create profile if doesn't exist
-            user.fitness_profile = UserFitnessProfile(user_id=user_id)
+        result = await self.db.execute(
+            select(UserFitnessProfile).where(UserFitnessProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
 
-        profile = user.fitness_profile
+        if not profile:
+            # Create a profile for users created before fitness profiles were initialized.
+            profile = UserFitnessProfile(user_id=user_id)
+            self.db.add(profile)
 
         if fitness_goal is not None:
             profile.fitness_goal = fitness_goal

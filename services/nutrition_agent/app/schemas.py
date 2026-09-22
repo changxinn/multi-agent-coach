@@ -1,6 +1,6 @@
 """Authenticated private Nutrition Agent contracts."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal
 
@@ -58,7 +58,7 @@ class FoodDetailRequest(UserRequest):
 
 
 class FoodCatalogueRequest(UserRequest):
-    limit: int = Field(default=200, ge=1, le=500)
+    pass
 
 
 class MealItem(StrictModel):
@@ -108,6 +108,65 @@ class DateRequest(UserRequest):
 class AdherenceRequest(UserRequest):
     from_date: date
     to_date: date
+
+
+class PlannedMealInput(StrictModel):
+    planned_date: date
+    meal_type: Literal["breakfast", "lunch", "dinner", "snack"]
+    calorie_target_kcal: Decimal = Field(ge=0)
+    protein_target_g: Decimal = Field(ge=0)
+    carbohydrate_target_g: Decimal = Field(ge=0)
+    fat_target_g: Decimal = Field(ge=0)
+    fiber_target_g: Decimal = Field(ge=0)
+    items: list[MealItem] = Field(min_length=1)
+
+
+class MealPlanCreateRequest(UserRequest):
+    """Validated persistence contract for a generated, user-confirmed meal plan."""
+
+    target_snapshot_id: int = Field(gt=0)
+    start_date: date
+    end_date: date
+    generated_plan: dict[str, Any] = Field(default_factory=dict)
+    safety_warnings: list[str] = Field(default_factory=list)
+    planned_meals: list[PlannedMealInput] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def dates_and_meals_are_within_the_plan(self) -> "MealPlanCreateRequest":
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        if self.end_date - self.start_date > timedelta(days=30):
+            raise ValueError("Meal plans cannot span more than 31 days")
+        if any(
+            meal.planned_date < self.start_date or meal.planned_date > self.end_date
+            for meal in self.planned_meals
+        ):
+            raise ValueError("Every planned meal must fall within the plan date range")
+        return self
+
+
+class MealPlanGenerateRequest(UserRequest):
+    """User-selected scope for a deterministic, server-generated draft."""
+
+    start_date: date
+    end_date: date
+    meal_types: list[Literal["breakfast", "lunch", "dinner", "snack"]] = Field(
+        min_length=1
+    )
+
+    @model_validator(mode="after")
+    def dates_and_meal_types_are_valid(self) -> "MealPlanGenerateRequest":
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be on or after start_date")
+        if self.end_date - self.start_date > timedelta(days=30):
+            raise ValueError("Meal plans cannot span more than 31 days")
+        if len(set(self.meal_types)) != len(self.meal_types):
+            raise ValueError("Meal types must be unique")
+        return self
+
+
+class MealPlanIdRequest(UserRequest):
+    meal_plan_id: int = Field(gt=0)
 
 
 class ChatRequest(UserRequest):

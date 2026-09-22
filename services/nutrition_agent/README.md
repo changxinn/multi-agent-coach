@@ -26,14 +26,12 @@ with `X-Internal-Service-Token` and an empty JSON body (`{}`).
 ## USDA meal-log catalogue
 
 The meal log reads USDA choices from the Nutrition-owned `nutrition_food_cache` table;
-opening the modal never calls USDA. Import the approved Foundation, SR Legacy, and
-Survey/FNDDS datasets after applying migrations:
+opening the modal never calls USDA. The root application automatically applies
+`app/db/migrations/010_seed_nutrition_foundation_food_cache.sql` at startup. That
+idempotent migration seeds 95 USDA Foundation foods with complete per-100 g macros;
+it requires neither a bundled JSON export nor a USDA API key.
 
-```bash
-cd multi-agent-coach
-PYTHONPATH=multi-agent-coach/services/nutrition_agent \
-  .venv/bin/python services/nutrition_agent/import_usda_catalogue.py --all
-```
-
-`--all` is deliberately explicit: the USDA catalogue is paged and imports are subject
-to the provider's rate limits. Omit it to import one 200-item page for local testing.
+The table itself remains owned by migration
+`app/db/migrations/006_add_nutrition_food_data_and_adherence.sql`. The seed uses
+`ON CONFLICT (provider, provider_food_id) DO NOTHING`, so it never overwrites a
+locally curated or subsequently refreshed food record.

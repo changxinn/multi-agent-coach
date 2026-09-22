@@ -8,7 +8,6 @@ COPY services/nutrition_agent/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/nutrition_agent/app /service/app
-COPY services/nutrition_agent/import_usda_catalogue.py /service/import_usda_catalogue.py
 
 USER appuser
 

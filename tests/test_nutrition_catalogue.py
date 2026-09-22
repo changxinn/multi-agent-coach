@@ -1,24 +1,36 @@
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import AsyncMock
 
 import pytest
 
-from services.nutrition_agent.app.food_data.usda import UsdaFoodDataCentralProvider
 from services.nutrition_agent.app.service import NutritionService
 
 
 @pytest.mark.asyncio
-async def test_food_catalogue_delegates_to_local_repository():
+async def test_food_catalogue_delegates_to_unbounded_local_repository():
     db = AsyncMock()
     service = NutritionService(db)
-    service.repo.list_food_catalogue = AsyncMock(
+    service.repo.list_all_food_catalogue = AsyncMock(
         return_value=[{"id": 1, "description": "Oats"}]
     )
 
-    result = await service.get_food_catalogue(200)
+    result = await service.get_food_catalogue()
 
     assert result == [{"id": 1, "description": "Oats"}]
-    service.repo.list_food_catalogue.assert_awaited_once_with(200)
+    service.repo.list_all_food_catalogue.assert_awaited_once_with()
+
+
+def test_foundation_catalogue_seed_is_complete_and_idempotent():
+    migration = (
+        Path(__file__).parents[1]
+        / "app/db/migrations/010_seed_nutrition_foundation_food_cache.sql"
+    ).read_text(encoding="utf-8")
+
+    assert migration.count("USDA FoodData Central Foundation bulk export") == 95
+    assert migration.count("'usda', '") == 95
+    assert "ON CONFLICT (provider, provider_food_id) DO NOTHING;" in migration
+    assert "CREATE TABLE" not in migration
 
 
 def test_private_manual_meal_item_requires_explicit_macros():
@@ -39,22 +51,3 @@ def test_private_manual_meal_item_requires_explicit_macros():
         fat_g=Decimal(0),
     )
     assert item.calories == Decimal(0)
-
-
-def test_usda_list_response_maps_top_level_nutrient_names():
-    """The importer consumes /foods/list, whose nutrient names are not nested."""
-    nutrients = UsdaFoodDataCentralProvider._nutrients(
-        {
-            "foodNutrients": [
-                {"name": "Energy", "amount": 200},
-                {"name": "Protein", "amount": 10},
-                {"name": "Carbohydrate, by difference", "amount": 20},
-                {"name": "Total lipid (fat)", "amount": 5},
-            ],
-        }
-    )
-
-    assert nutrients["Energy"] == Decimal(200)
-    assert nutrients["Protein"] == Decimal(10)
-    assert nutrients["Carbohydrate, by difference"] == Decimal(20)
-    assert nutrients["Total lipid (fat)"] == Decimal(5)

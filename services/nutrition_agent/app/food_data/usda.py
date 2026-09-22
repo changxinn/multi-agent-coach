@@ -49,29 +49,15 @@ class UsdaFoodDataCentralProvider:
         payload = await self._request(f"/food/{provider_food_id}", {})
         return self._food_details(payload, provider_food_id)
 
-    async def list_foods(
-        self, page_number: int, page_size: int, data_types: list[str]
-    ) -> list[FoodDetails]:
-        """Return one paged USDA abridged-food listing for offline catalogue import."""
-        payload = await self._request(
-            "/foods/list",
-            {"pageNumber": page_number, "pageSize": page_size, "dataType": data_types},
-        )
-        return [
-            self._food_details(food, str(food["fdcId"]))
-            for food in payload
-            if food.get("fdcId") is not None
-        ]
-
     def _food_details(self, payload: dict, provider_food_id: str) -> FoodDetails:
         nutrients = self._nutrients(payload)
-        serving_size = payload.get("servingSize")
+        serving_size, serving_description = self._serving_details(payload)
         return FoodDetails(
             provider=self.provider_name,
             provider_food_id=str(payload.get("fdcId", provider_food_id)),
             description=payload.get("description", "Unknown food"),
-            serving_size_g=self._decimal(serving_size),
-            serving_description=payload.get("householdServingFullText"),
+            serving_size_g=serving_size,
+            serving_description=serving_description,
             calories_per_100g=nutrients.get("Energy"),
             protein_g_per_100g=nutrients.get("Protein"),
             carbohydrate_g_per_100g=nutrients.get("Carbohydrate, by difference"),
@@ -129,6 +115,34 @@ class UsdaFoodDataCentralProvider:
                 if parsed is not None:
                     nutrients[name] = parsed
         return nutrients
+
+    @classmethod
+    def _serving_details(cls, payload: dict) -> tuple[Decimal | None, str | None]:
+        serving_size = cls._decimal(payload.get("servingSize"))
+        serving_description = payload.get("householdServingFullText")
+        if serving_size is not None or serving_description:
+            return serving_size, serving_description
+
+        portions = payload.get("foodPortions", [])
+        if not isinstance(portions, list):
+            return None, None
+        for portion in portions:
+            if not isinstance(portion, dict):
+                continue
+            gram_weight = cls._decimal(portion.get("gramWeight"))
+            if gram_weight is None:
+                continue
+            measure = portion.get("measureUnit") or {}
+            measure_name = measure.get("name") if isinstance(measure, dict) else None
+            amount = cls._decimal(portion.get("amount", portion.get("value")))
+            modifier = portion.get("modifier")
+            description = " ".join(
+                str(value)
+                for value in (amount, measure_name, modifier)
+                if value not in (None, "")
+            ) or None
+            return gram_weight, description
+        return None, None
 
     @staticmethod
     def _decimal(value: object) -> Decimal | None:

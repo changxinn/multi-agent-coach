@@ -1,7 +1,9 @@
+from unittest.mock import AsyncMock
+
 from fastapi.testclient import TestClient
 
 from services.nutrition_agent.app.config import settings
-from services.nutrition_agent.app.main import app
+from services.nutrition_agent.app.main import app, get_service
 
 
 def test_health_is_public_and_private_operations_require_token(monkeypatch):
@@ -44,3 +46,73 @@ def test_private_agent_calculation_matches_phase_one_contract(monkeypatch):
 
     assert response.status_code == 200
     assert response.json()["calculation_method"] == "mifflin_st_jeor_v1"
+
+
+def test_private_meal_plan_routes_use_authenticated_payload_and_service(monkeypatch):
+    monkeypatch.setattr(settings, "INTERNAL_SERVICE_TOKEN", "test-token")
+    service = AsyncMock()
+    service.idempotent.return_value = {"id": 41, "version": 1}
+    service.get_active_meal_plan.return_value = {"id": 41, "planned_meals": []}
+    service.get_nutrition_context.return_value = {
+        "date": "2026-09-22",
+        "target_snapshot": {"id": 3},
+        "meal_plan": {"id": 41},
+    }
+    app.dependency_overrides[get_service] = lambda: service
+    payload = {
+        "user_id": 7,
+        "target_snapshot_id": 3,
+        "start_date": "2026-09-22",
+        "end_date": "2026-09-22",
+        "planned_meals": [
+            {
+                "planned_date": "2026-09-22",
+                "meal_type": "breakfast",
+                "calorie_target_kcal": 500,
+                "protein_target_g": 30,
+                "carbohydrate_target_g": 50,
+                "fat_target_g": 15,
+                "fiber_target_g": 8,
+                "items": [
+                    {
+                        "food_name": "Oats",
+                        "quantity": 50,
+                        "unit": "g",
+                        "calories": 190,
+                        "protein_g": 6,
+                        "carbohydrate_g": 32,
+                        "fat_g": 4,
+                        "source": "meal_plan",
+                    }
+                ],
+            }
+        ],
+    }
+    headers = {"X-Internal-Service-Token": "test-token", "Idempotency-Key": "plan-1"}
+
+    try:
+        with TestClient(app) as client:
+            created = client.post(
+                "/v1/nutrition/meal-plans/create", json=payload, headers=headers
+            )
+            active = client.post(
+                "/v1/nutrition/meal-plans/active",
+                json={"user_id": 7, "date": "2026-09-22"},
+                headers=headers,
+            )
+            context = client.post(
+                "/v1/nutrition/context",
+                json={"user_id": 7, "date": "2026-09-22"},
+                headers=headers,
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert created.status_code == 200
+    assert created.json() == {"id": 41, "version": 1}
+    service.idempotent.assert_awaited_once()
+    assert service.idempotent.await_args.args[:3] == (7, "meal-plans.create", "plan-1")
+    assert active.json() == {"meal_plan": {"id": 41, "planned_meals": []}}
+    service.get_active_meal_plan.assert_awaited_once()
+    assert context.json()["target_snapshot"] == {"id": 3}
+    service.get_nutrition_context.assert_awaited_once()

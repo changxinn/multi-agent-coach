@@ -14,6 +14,9 @@ from app.api.schemas.nutrition import (
     FoodSearchRequest,
     MealIdRequest,
     MealInput,
+    MealPlanCreateInput,
+    MealPlanGenerateInput,
+    MealPlanIdRequest,
     NutritionDateRequest,
     NutritionProfileInput,
     ReplaceMealRequest,
@@ -22,6 +25,7 @@ from app.api.schemas.nutrition import (
 from app.services.nutrition_agent_client import (
     NutritionAgentClient,
     NutritionAgentUnavailableError,
+    NutritionMealPlanValidationError,
 )
 from app.services.nutrition_service import (
     NutritionFoodDataError,
@@ -158,7 +162,7 @@ async def food_catalogue(
     service: NutritionServiceDependency = None,
 ):
     try:
-        return {"items": await service.get_food_catalogue(user["id"], payload.limit)}
+        return {"items": await service.get_food_catalogue(user["id"])}
     except NutritionAgentUnavailableError as error:
         raise nutrition_unavailable(error) from error
 
@@ -274,5 +278,134 @@ async def adherence(
                 user["id"], payload.from_date, payload.to_date
             )
         }
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/create")
+async def create_meal_plan(
+    payload: MealPlanCreateInput,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+    idempotency_key: str | None = Header(default=None),
+):
+    try:
+        if idempotency_key:
+            return await service.create_meal_plan(user["id"], payload, idempotency_key)
+        return await service.create_meal_plan(user["id"], payload)
+    except NutritionProfileIncompleteError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/generate")
+async def generate_meal_plan(
+    payload: MealPlanGenerateInput,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+    idempotency_key: str | None = Header(default=None),
+):
+    try:
+        return await service.generate_meal_plan(user["id"], payload, idempotency_key)
+    except NutritionMealPlanValidationError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionProfileIncompleteError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/active")
+async def get_active_meal_plan(
+    payload: NutritionDateRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+):
+    try:
+        return {
+            "meal_plan": await service.get_active_meal_plan(user["id"], payload.date)
+        }
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/get")
+async def get_meal_plan(
+    payload: MealPlanIdRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+):
+    try:
+        return await service.get_meal_plan(user["id"], payload.meal_plan_id)
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/list")
+async def list_meal_plans(
+    payload: EmptyNutritionRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+):
+    del payload
+    try:
+        return {"items": await service.list_meal_plans(user["id"])}
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/confirm")
+async def confirm_meal_plan(
+    payload: MealPlanIdRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+    idempotency_key: str | None = Header(default=None),
+):
+    try:
+        return await service.confirm_meal_plan(
+            user["id"], payload.meal_plan_id, idempotency_key
+        )
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionMealPlanValidationError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionProfileIncompleteError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/meal-plans/archive")
+async def archive_meal_plan(
+    payload: MealPlanIdRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+    idempotency_key: str | None = Header(default=None),
+):
+    try:
+        return await service.archive_meal_plan(
+            user["id"], payload.meal_plan_id, idempotency_key
+        )
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionMealPlanValidationError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionProfileIncompleteError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/context")
+async def get_nutrition_context(
+    payload: NutritionDateRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+):
+    try:
+        return await service.get_nutrition_context(user["id"], payload.date)
     except NutritionAgentUnavailableError as error:
         raise nutrition_unavailable(error) from error

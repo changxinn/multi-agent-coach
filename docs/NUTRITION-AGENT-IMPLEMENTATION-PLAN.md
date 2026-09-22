@@ -36,17 +36,20 @@ or invoke its interpreter explicitly (preferred for one-off commands):
 | Phase | Status | Delivered scope |
 | --- | --- | --- |
 | Phase 1: Persistent foundation | Implemented | PostgreSQL nutrition tables, user-scoped profiles and target snapshots, deterministic calculator, structured meal CRUD, idempotency support, private Nutrition Agent, and authenticated gateway proxy routes. |
-| Phase 2: Food data and user dashboard | Implemented; live catalogue load pending verification | USDA search/detail provider, persistent food cache, local catalogue route, daily summaries and adherence, four-tab Nutrition page, explicit-macro manual entries, USDA importer, and importer/parser coverage. Run a live bounded import with a configured USDA key before treating the catalogue as operational. |
-| Phase 3: Planning and shared context | Not implemented | Shared nutrition context for Training/Recovery, verified meal-plan generation, substitutions, and target-review workflow extensions remain future work. |
-| Phase 4: Quality and operations | Partially implemented | Focused calculator, route, provider, schema, and catalogue tests plus a one-off Compose importer job are present. Provider/cache metrics, audit history, scheduled refreshes, and end-to-end/safety coverage remain future work. |
+| Phase 2: Food data and user dashboard | Implemented | USDA search/detail provider, persistent food cache, local catalogue route, daily summaries and adherence, four-tab Nutrition page, explicit-macro manual entries, and a version-controlled USDA Foundation baseline catalogue. Migration `010` seeds 95 macro-complete foods without bundled JSON, a USDA API key, or a one-off import job. |
+| Phase 3: Planning and shared context | Partially implemented | Versioned, user-scoped draft meal-plan persistence; private-agent and authenticated gateway create/get/list/confirm/archive/active-plan/context APIs; date-scoped target/plan context; confirmation-time allergen safety validation; idempotency; and atomic overlapping-plan supersession are implemented. Generation, frontend workflows, and consumption by Training, Recovery, and Summarizer remain pending. |
+| Phase 4: Quality and operations | Partially implemented | Focused calculator, route, provider, schema, catalogue, and seed-migration contract tests are present. The static catalogue seed is idempotent and runs through the root application migration process. Provider/cache metrics, audit history, catalogue refresh policy, scheduled refreshes, and end-to-end/safety coverage remain future work. |
 
 ### Delivered validation
 
-- The nutrition-focused suite passed with **29 tests** after the USDA list-response parser correction.
-- Python compilation passed for the USDA provider, importer, and catalogue tests; scoped `git diff --check` also passed.
-- The frontend production build passed during the Meal Log implementation.
-- `docker compose config --quiet` passed for both the normal stack and the `catalogue-import` profile.
-- Docker image build/run validation was not performed here because the Docker daemon was unavailable. A live USDA import is likewise pending an environment that provides `USDA_FDC_API_KEY`.
+- The focused food-data, catalogue, gateway-route, and Nutrition Agent client suite passed with **47 tests**.
+- Ruff passed for the Nutrition catalogue/provider changes, and `git diff --check` passed.
+- Migration-runner compatibility was verified: migration `010` contains one semicolon-safe idempotent `INSERT` with **95** Foundation seed rows.
+- Frontend lint and the production build passed during the Meal Log implementation.
+- Meal-plan persistence, private-agent endpoint, gateway route, and gateway-client tests passed (**44 selected tests**). They cover date and duplicate-meal validation, target-snapshot ownership, user/date scoping, draft confirmation/archive transitions, confirmation-time allergen safety, idempotency forwarding, lifecycle `422` detail propagation, `503` failure translation, advisory-lock/version-allocation SQL, and overlapping-plan supersession SQL.
+- `py_compile` passed for the modified nutrition gateway and private-agent modules; `git diff --check` passed.
+- Docker image build/run validation and a live PostgreSQL migration application were not performed here because the Docker daemon was unavailable and `psql` is not installed in this environment.
+- Migrations `008_add_nutrition_meal_plans.sql` and `009_make_nutrition_meal_plans_draft_by_default.sql` have been reported as applied, but this was not independently verified because `psql` is unavailable in this environment. Migration `009` changes the deployed database default from `active` to `draft`. PostgreSQL integration tests have not yet exercised lifecycle constraints or concurrent transactions.
 
 ## Current State and Gap
 
@@ -79,9 +82,11 @@ Add an idempotent migration such as `app/db/migrations/005_create_nutrition_tabl
 
 Implemented migrations are:
 
-- `005_create_nutrition_tables.sql`: nutrition profiles, target snapshots, meals/items, plans, and planned meals.
+- `005_create_nutrition_tables.sql`: nutrition profiles, target snapshots, and meals/items.
 - `006_add_nutrition_food_data_and_adherence.sql`: cached USDA foods, cached-food links on meal items, daily summaries, and catalogue indexes.
 - `007_add_nutrition_idempotency.sql`: idempotency records for mutation operations.
+- `008_add_nutrition_meal_plans.sql`: versioned meal plans, structured planned meals, and optional meal-to-plan linkage.
+- `010_seed_nutrition_foundation_food_cache.sql`: static, idempotent USDA Foundation baseline catalogue with 95 foods that have complete per-100 g energy, protein, carbohydrate, and fat data.
 
 Do not modify migration `006` after it has been applied in a shared environment. Add a new numbered migration for any later catalogue indexes or schema changes.
 
@@ -184,13 +189,22 @@ Implement services for:
 
 ## Shared `get_nutrition_context`
 
-Create one reusable read model:
+The base reusable read model is implemented in the private Nutrition Agent and exposed through the authenticated gateway:
 
 ```python
 async def get_nutrition_context(user_id: int, for_date: date) -> NutritionContext:
 ```
 
-It returns:
+The implemented contract returns the requested `date`, the user-owned target snapshot effective on that date (or `null`), and the user-owned active meal plan covering that date (or `null`). It is available at:
+
+```text
+POST /v1/nutrition/context       # private; X-Internal-Service-Token required
+POST /api/nutrition/context      # authenticated gateway; body: {"date": "YYYY-MM-DD"}
+```
+
+The gateway derives `user_id` solely from the authenticated user; clients cannot select another user's context. The context is not yet consumed by Training, Recovery, or Summarizer.
+
+Expand the read model before cross-agent use to include:
 
 - Confirmed allergies, dietary restrictions, and preferences.
 - Active target snapshot and remaining daily calories/macros.
@@ -199,7 +213,7 @@ It returns:
 - Active planned meals for the requested date.
 - `missing_data` and `data_quality_warnings`.
 
-Sam uses it for recommendations. Training uses it for training-day fueling guidance, Recovery uses it to avoid aggressive deficit advice during poor recovery, and Summarizer uses it for target/adherence status. Other agents must use this function rather than directly querying nutrition tables.
+Sam should use it for recommendations. Training should use it for training-day fueling guidance, Recovery should use it to avoid aggressive deficit advice during poor recovery, and Summarizer should use it for target/adherence status. Other agents must use this function rather than directly querying nutrition tables.
 
 ## Nutrition Agent Tool Contract
 
@@ -237,21 +251,26 @@ Required agent rules:
 Add authenticated, user-scoped routes under `app/api/routes/nutrition.py`:
 
 ```text
-GET/PUT    /api/nutrition/profile
+POST       /api/nutrition/profile/get
+POST       /api/nutrition/profile/save
 POST       /api/nutrition/targets/calculate
-GET        /api/nutrition/targets/active
-GET        /api/nutrition/foods/search?q=
-GET        /api/nutrition/foods/{food_id}
-POST       /api/nutrition/meals
-GET        /api/nutrition/meals?date=
-PUT/DELETE /api/nutrition/meals/{meal_id}
-GET        /api/nutrition/daily-summary?date=
-GET        /api/nutrition/adherence?from=&to=
-POST       /api/nutrition/meal-plans
-GET        /api/nutrition/meal-plans/active
+POST       /api/nutrition/targets/active
+POST       /api/nutrition/foods/search
+POST       /api/nutrition/foods/detail
+POST       /api/nutrition/meals/create
+POST       /api/nutrition/meals/list
+POST       /api/nutrition/meals/replace
+POST       /api/nutrition/meals/delete
+POST       /api/nutrition/daily-summary
+POST       /api/nutrition/adherence
+POST       /api/nutrition/meal-plans/create
+POST       /api/nutrition/meal-plans/active
+POST       /api/nutrition/context
 ```
 
 Normal users may only access their own nutrition data. Do not make their meal records administrator-managed by default.
+
+Meal-plan creation accepts user-confirmed plan content linked to an existing target snapshot, not a generated recommendation. The public schema rejects caller-supplied `safety_status`, validates a zero-to-31-day inclusive date range, requires every planned meal to fall within the range, and rejects duplicate `(planned_date, meal_type)` entries. The gateway forwards `Idempotency-Key` for creation and translates Nutrition Agent transport or unexpected failures to `503 Service Unavailable`.
 
 ## Nutrition Page
 
@@ -327,28 +346,25 @@ Register `nutrition-agent` in `docker-compose.yml` at `127.0.0.1:8004:8004`; the
 
 The current Compose file deliberately overrides root `.env` database values with its bundled `db` container. For a deployment using the existing external PostgreSQL instance, provide that external URL to both `api` and `nutrition-agent` through deployment secrets/environment settings rather than use the local Compose database default.
 
-### USDA catalogue import operations
+### USDA catalogue seed operations
 
-`services/nutrition_agent/import_usda_catalogue.py` is an explicit, one-off importer for the approved Foundation, SR Legacy, and Survey/FNDDS datasets. It pages USDA `/foods/list`, accepts the list endpoint's top-level nutrient-name shape as well as food-detail shapes, and caches only foods with energy, protein, carbohydrate, and fat values per 100 g. Cache writes upsert on `(provider, provider_food_id)`, so rerunning the import refreshes records without duplicates.
+`app/db/migrations/010_seed_nutrition_foundation_food_cache.sql` is the static,
+version-controlled baseline catalogue. Migration `006` creates
+`systemdb.nutrition_food_cache`; migration `010` inserts 95 USDA Foundation foods
+that have energy, protein, carbohydrate, and fat values per 100 g. The root API
+applies migrations automatically on startup, so the Nutrition Agent has no JSON
+parsing, USDA pagination, or API-key requirement to serve this baseline catalogue.
 
-Run a bounded smoke import before the full import:
+The seed is deliberately idempotent:
 
-```bash
-PYTHONPATH=services/nutrition_agent .venv/bin/python \
-  services/nutrition_agent/import_usda_catalogue.py --max-pages 1
-
-PYTHONPATH=services/nutrition_agent .venv/bin/python \
-  services/nutrition_agent/import_usda_catalogue.py --all
+```sql
+ON CONFLICT (provider, provider_food_id) DO NOTHING
 ```
 
-The Nutrition Agent Docker image includes the importer. Compose defines a profile-gated, non-restarting `nutrition-catalogue-import` job, so normal `docker compose up` never starts a full import. Use the same image, database settings, and `USDA_FDC_API_KEY` as the API service:
-
-```bash
-docker compose run --rm nutrition-catalogue-import \
-  python import_usda_catalogue.py --max-pages 1
-
-docker compose run --rm nutrition-catalogue-import
-```
+This preserves later curated or provider-refreshed records. Any future static
+catalogue update should be a new ordered migration rather than editing migration
+`010`, and should retain this conflict policy unless replacing existing records is
+an intentional, reviewed decision.
 
 ## Delivery Status and Remaining Roadmap
 
@@ -362,26 +378,28 @@ docker compose run --rm nutrition-catalogue-import
 
 ### Phase 2: Food data and user dashboard
 
-1. [~] USDA provider, persistent cache, food-query routes, and offline catalogue importer. The list-response parser is covered; execute a live bounded import with `USDA_FDC_API_KEY` to verify rows are inserted in the deployment environment.
+1. [x] USDA provider, persistent cache, food-query routes, and migration-seeded Foundation catalogue. The Meal Log reads the local cache only. Root migration `010` seeds 95 macro-complete Foundation foods with `ON CONFLICT (provider, provider_food_id) DO NOTHING`; it does not need a bundled export, USDA pagination, or an API key. Future larger catalogue snapshots must be added as new ordered migrations, never by editing `010`.
 2. [x] Daily totals and adherence calculations.
 3. [x] Today, Meal Log, Profile and Targets, and Progress tabs. Meal Log uses one selector for locally cached USDA choices or a manual food name; manual entries require explicit calories, protein, carbohydrate, and fat values.
 4. [ ] Sam's structured nutrition tool integration.
 
 ### Phase 3: Planning and shared context
 
-1. [ ] Implement `get_nutrition_context`.
-2. [ ] Integrate training and recovery read contexts.
-3. [ ] Add verified daily meal plans, then multi-day plans.
-4. [ ] Add substitutions and confirmed target reviews.
+1. [x] Implement the date-scoped `get_nutrition_context` base contract containing the effective target snapshot and active meal plan, with private-agent and authenticated gateway endpoints.
+2. [ ] Integrate the context contract into Sam, Training, Recovery, and Summarizer. Expand it with profile restrictions/preferences, daily totals/remaining macros, data-quality warnings, and adherence trends before relying on it for coaching.
+3. [~] Versioned, user-scoped draft meal-plan persistence and authenticated gateway create/get/list/confirm/archive/active-plan routes are implemented. Creation explicitly persists `draft` status, including on deployments upgraded by migration `009_make_nutrition_meal_plans_draft_by_default.sql`. Confirmation re-evaluates safety, rejects allergen-blocked plans, acquires a per-user advisory lock, activates the draft, and atomically supersedes every overlapping `active` plan for that user; non-overlapping plans remain active. Confirm and archive use distinct idempotency-operation namespaces. Remaining work: deterministic generation; a Nutrition-page draft/list/inspect/confirm/archive workflow; planned-vs-logged adherence; and date-range plan browsing.
+4. [x] Integrate confirmation-time food/allergen validation with dietary restrictions and allergies. It assigns `safe`, `review_required`, or `blocked`; a blocked plan cannot be confirmed. The gateway preserves private-agent lifecycle and safety `422` details rather than misclassifying them as incomplete profiles.
+5. [x] Expose archive lifecycle operations and document status-transition/versioning rules. Only `draft` plans may be confirmed; only `draft` or `active` plans may be archived; `archived` and `superseded` plans reject further lifecycle transitions. Replacing an overlapping active plan transitions it to `superseded`.
+6. [ ] Add substitutions and confirmed target reviews.
 
 ### Phase 4: Quality and operations
 
 1. [~] Provider failure translation and focused provider/cache tests are implemented; provider/cache metrics remain outstanding.
 2. [ ] Audit history for target changes, estimates, and plan revisions.
-3. [~] Focused unit and route coverage is implemented; safety, end-to-end, and evaluation coverage remain outstanding.
+3. [~] Focused unit and route coverage is implemented, including meal-plan schema/service/repository/gateway/client contracts, safety/lifecycle rejections, and gateway `422` detail propagation. Add PostgreSQL integration tests for migrations `008`/`009`, status defaults, active-plan selection, supersession, version allocation, persisted idempotency, and advisory-lock concurrency; frontend, cross-agent, end-to-end, and evaluation coverage also remain outstanding.
 
 ## Test Plan and Acceptance Criteria
 
-Implemented coverage includes BMR/TDEE and macro policy, input validation, USDA detail and list-response nutrient mapping, local catalogue delegation, manual-entry macro requirements, gateway route contracts/ownership handling, and Nutrition Agent service operations. Continue with restrictions/allergies, complete adherence scenarios, internal-token authentication, agent tool selection, Nutrition-page loading/error/empty/mutation states, safety, and end-to-end coverage.
+Implemented coverage includes BMR/TDEE and macro policy, input validation, USDA detail nutrient mapping, local catalogue delegation, static seed-migration completeness/idempotency, manual-entry macro requirements, gateway route contracts/ownership handling, Nutrition Agent service operations, and meal-plan/context client contracts. Meal-plan tests cover bounded date ranges, duplicate planned meals, user-owned target snapshots, draft/status transitions, confirmation-time allergen safety, active-plan user/date scoping, idempotency forwarding, lifecycle `422` detail propagation, failure translation, and repository SQL for advisory locking, version allocation, and supersession. Continue with live PostgreSQL migration/constraint/concurrency coverage, complete adherence scenarios, internal-token authentication, agent tool selection, Nutrition-page loading/error/empty/mutation states, cross-agent, and end-to-end coverage.
 
 The feature is complete when a user can save the required profile, receive versioned TDEE/macro targets, search USDA foods, log structured PostgreSQL meals, inspect daily totals and adherence, generate restriction-safe meal plans, and receive shared nutrition-aware coaching through Sam and the other agents.

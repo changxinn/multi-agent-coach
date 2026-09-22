@@ -199,30 +199,7 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
       - DATABASE_SCHEMA=systemdb
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
-      - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
     restart: unless-stopped
-    networks:
-      - app-network
-
-  # ===========================================
-  # One-off USDA Food Catalogue Import
-  # Run manually: docker compose run --rm nutrition-catalogue-import
-  # ===========================================
-  nutrition-catalogue-import:
-    build:
-      context: .
-      dockerfile: services/nutrition_agent/Dockerfile
-    profiles:
-      - catalogue-import
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
-      - DATABASE_SCHEMA=systemdb
-      - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: ["python", "import_usda_catalogue.py", "--all"]
-    restart: "no"
     networks:
       - app-network
 
