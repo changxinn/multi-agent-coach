@@ -64,6 +64,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def _execute_migration_statement(conn, statement: str) -> None:
+    """Execute static migration SQL without SQLAlchemy bind-parameter parsing."""
+    await conn.exec_driver_sql(statement)
+
+
 async def run_migrations() -> None:
     """
     Run all migration scripts in order.
@@ -107,7 +112,7 @@ async def run_migrations() -> None:
             for stmt in individual_statements:
                 if stmt and not stmt.startswith("--"):
                     try:
-                        await conn.execute(text(stmt))
+                        await _execute_migration_statement(conn, stmt)
                     except Exception as e:
                         # Ignore errors for IF NOT EXISTS statements
                         if "already exists" not in str(e).lower():
