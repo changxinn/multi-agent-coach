@@ -47,6 +47,7 @@ class ProfileRequest(UserRequest):
 
 class TargetsRequest(UserRequest):
     confirm_apply: bool = False
+    profile: TargetCalculationRequest
 
 
 class FoodSearchRequest(UserRequest):
@@ -125,6 +126,7 @@ class MealPlanCreateRequest(UserRequest):
     """Validated persistence contract for a generated, user-confirmed meal plan."""
 
     target_snapshot_id: int = Field(gt=0)
+    profile: dict[str, Any]
     start_date: date
     end_date: date
     generated_plan: dict[str, Any] = Field(default_factory=dict)
@@ -149,6 +151,7 @@ class MealPlanGenerateRequest(UserRequest):
     """User-selected scope for a deterministic, server-generated draft."""
 
     start_date: date
+    profile: dict[str, Any]
     end_date: date
     meal_types: list[Literal["breakfast", "lunch", "dinner", "snack"]] = Field(
         min_length=1

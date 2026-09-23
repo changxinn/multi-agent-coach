@@ -78,17 +78,20 @@ The public Gateway routes authenticate the user and pass the authenticated user 
 
 ## Persistent PostgreSQL Data Model
 
-Add an idempotent migration such as `app/db/migrations/005_create_nutrition_tables.sql`. All tables must be under `systemdb`, reference `systemdb.users(id)`, and use `ON DELETE CASCADE`.
+The project now has two database ownership boundaries. The main application
+keeps canonical shared state—including user profiles/preferences and meal
+history—in `app/db/migrations/005_create_shared_state_tables.sql`. The Nutrition
+Agent keeps its private food catalogue, target snapshots, meal plans, and
+idempotency records in:
 
-Implemented migrations are:
+- `services/nutrition_agent/app/db/migrations/001_create_nutrition_schema.sql`
+- `services/nutrition_agent/app/db/migrations/002_seed_nutrition_foundation_food_cache.sql`
 
-- `005_create_nutrition_tables.sql`: nutrition profiles, target snapshots, and meals/items.
-- `006_add_nutrition_food_data_and_adherence.sql`: cached USDA foods, cached-food links on meal items, daily summaries, and catalogue indexes.
-- `007_add_nutrition_idempotency.sql`: idempotency records for mutation operations.
-- `008_add_nutrition_meal_plans.sql`: versioned meal plans, structured planned meals, and optional meal-to-plan linkage.
-- `010_seed_nutrition_foundation_food_cache.sql`: static, idempotent USDA Foundation baseline catalogue with 95 foods that have complete per-100 g energy, protein, carbohydrate, and fat data.
-
-Do not modify migration `006` after it has been applied in a shared environment. Add a new numbered migration for any later catalogue indexes or schema changes.
+Nutrition-private tables use `user_id` as an externally owned identifier; they
+must not use a cross-database foreign key to the main application's users
+table. The seed is static and idempotent, with 95 USDA Foundation foods that
+have complete per-100 g energy, protein, carbohydrate, and fat data. See
+`docs/DATA-OWNERSHIP.md` for the authoritative ownership rules.
 
 ### `nutrition_profiles`
 
@@ -348,12 +351,13 @@ The current Compose file deliberately overrides root `.env` database values with
 
 ### USDA catalogue seed operations
 
-`app/db/migrations/010_seed_nutrition_foundation_food_cache.sql` is the static,
-version-controlled baseline catalogue. Migration `006` creates
-`systemdb.nutrition_food_cache`; migration `010` inserts 95 USDA Foundation foods
-that have energy, protein, carbohydrate, and fat values per 100 g. The root API
-applies migrations automatically on startup, so the Nutrition Agent has no JSON
-parsing, USDA pagination, or API-key requirement to serve this baseline catalogue.
+`services/nutrition_agent/app/db/migrations/002_seed_nutrition_foundation_food_cache.sql`
+is the static, version-controlled baseline catalogue. The preceding Nutrition
+Agent migration creates `nutrition_food_cache`; the seed inserts 95 USDA
+Foundation foods that have energy, protein, carbohydrate, and fat values per
+100 g. The Nutrition Agent applies these migrations when `RUN_MIGRATIONS=true`,
+so it has no JSON parsing, USDA pagination, or API-key requirement to serve this
+baseline catalogue.
 
 The seed is deliberately idempotent:
 

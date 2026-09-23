@@ -1,9 +1,44 @@
+from pathlib import Path
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
-from services.nutrition_agent.app.config import settings
-from services.nutrition_agent.app.main import app, get_service
+from services.nutrition_agent.app.config import SERVICE_DIR, Settings, settings
+from services.nutrition_agent.app.main import app, get_service, startup
+
+
+@pytest.fixture(autouse=True)
+def disable_migrations_for_http_tests(monkeypatch):
+    """Keep TestClient startup independent of a live Nutrition database."""
+    monkeypatch.setattr(settings, "RUN_MIGRATIONS", False)
+
+
+def test_settings_load_service_local_env_file_regardless_of_working_directory():
+    assert SERVICE_DIR == Path(__file__).parents[1] / "services/nutrition_agent"
+    assert Settings.model_config["env_file"] == SERVICE_DIR / ".env"
+
+
+@pytest.mark.asyncio
+async def test_startup_runs_migrations_when_enabled(monkeypatch, caplog):
+    init = AsyncMock()
+    monkeypatch.setattr(settings, "RUN_MIGRATIONS", True)
+    monkeypatch.setattr("services.nutrition_agent.app.main.init_db", init)
+
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        await startup()
+
+    init.assert_awaited_once_with()
+    assert "Nutrition migrations enabled" in caplog.text
+    assert "Nutrition database migrations completed" in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_startup_logs_when_migrations_are_disabled(caplog):
+    with caplog.at_level("INFO", logger="uvicorn.error"):
+        await startup()
+
+    assert "Nutrition migrations skipped" in caplog.text
 
 
 def test_health_is_public_and_private_operations_require_token(monkeypatch):
@@ -62,6 +97,12 @@ def test_private_meal_plan_routes_use_authenticated_payload_and_service(monkeypa
     payload = {
         "user_id": 7,
         "target_snapshot_id": 3,
+        "profile": {
+            "sex_for_energy_equation": "female",
+            "activity_level": "moderate",
+            "nutrition_goal": "maintenance",
+            "allergies": [],
+        },
         "start_date": "2026-09-22",
         "end_date": "2026-09-22",
         "planned_meals": [

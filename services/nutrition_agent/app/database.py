@@ -42,6 +42,16 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
 
 
+async def init_db() -> None:
+    """Initialize only the Nutrition Agent's own database schema."""
+    _session_factory()
+    from .migrations import run_migrations
+
+    if engine is None:
+        raise RuntimeError("Nutrition Agent database engine was not initialized")
+    await run_migrations(engine)
+
+
 async def close_db() -> None:
     if engine is not None:
         await engine.dispose()

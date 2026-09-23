@@ -5,7 +5,8 @@ version: '3.8'
 # ===========================================
 # Services:
 # - api: FastAPI backend
-# - db: PostgreSQL database
+# - main-db: shared PostgreSQL database
+# - nutrition-db: Nutrition Agent-private PostgreSQL database
 # - redis: Redis cache (optional, for session testing)
 # - recovery-agent, head-coach, summarizer, nutrition-agent: one image per agent
 #
@@ -26,7 +27,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/systemdb
+      - DATABASE_URL=postgresql+asyncpg://main_app:main_app@main-db:5432/systemdb
       - DATABASE_SCHEMA=systemdb
       - JWT_SECRET_KEY=dev-secret-key-change-in-production
       - JWT_ALGORITHM=HS256
@@ -61,7 +62,7 @@ services:
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     user: "0:0"
     depends_on:
-      db:
+      main-db:
         condition: service_healthy
       head-coach:
         condition: service_started
@@ -80,20 +81,20 @@ services:
       - app-network
 
   # ===========================================
-  # PostgreSQL Database
+  # Main application PostgreSQL database (shared cross-agent state)
   # ===========================================
-  db:
+  main-db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_PASSWORD=main_app
       - POSTGRES_DB=systemdb
-      - POSTGRES_USER=postgres
+      - POSTGRES_USER=main_app
     ports:
       - "5432:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - main_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U main_app"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -124,11 +125,11 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
+      - DATABASE_URL=postgresql://main_app:main_app@main-db:5432/systemdb
       - DATABASE_SCHEMA=systemdb
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
     depends_on:
-      db:
+      main-db:
         condition: service_healthy
       api:
         condition: service_healthy
@@ -196,9 +197,29 @@ services:
     ports:
       - "127.0.0.1:8004:8004"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/systemdb
-      - DATABASE_SCHEMA=systemdb
+      - DATABASE_URL=postgresql://nutrition_agent:nutrition_agent@nutrition-db:5432/nutritiondb
+      - RUN_MIGRATIONS=true
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+    restart: unless-stopped
+    depends_on:
+      nutrition-db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  nutrition-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=nutrition_agent
+      - POSTGRES_DB=nutritiondb
+      - POSTGRES_USER=nutrition_agent
+    volumes:
+      - nutrition_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nutrition_agent -d nutritiondb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     restart: unless-stopped
     networks:
       - app-network
@@ -226,7 +247,9 @@ services:
       - app-network
 
 volumes:
-  postgres_data:
+  main_postgres_data:
+    driver: local
+  nutrition_postgres_data:
     driver: local
   redis_data:
     driver: local

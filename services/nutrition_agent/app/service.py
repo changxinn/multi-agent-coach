@@ -12,7 +12,7 @@ from .calculator import calculate_targets
 from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
 from .meal_plan_safety import assess_meal_plan_safety
 from .repository import NutritionRepository
-from .schemas import MealPlanCreateRequest, MealPlanGenerateRequest
+from .schemas import MealPlanCreateRequest, MealPlanGenerateRequest, TargetCalculationRequest
 
 
 class NutritionNotFoundError(Exception):
@@ -149,12 +149,6 @@ class NutritionService:
         )
         return response
 
-    async def get_profile(self, user_id: int) -> dict[str, Any]:
-        profile = await self.repo.get_profile(user_id)
-        if profile is None:
-            raise NutritionNotFoundError("Nutrition profile not found")
-        return profile
-
     async def create_meal_plan(
         self, user_id: int, payload: MealPlanCreateRequest
     ) -> dict[str, Any]:
@@ -173,7 +167,7 @@ class NutritionService:
         }
         planned_meals, safety_warnings = assess_meal_plan_safety(
             planned_meals,
-            await self.repo.get_profile(user_id),
+            payload.profile,
             await self.repo.get_food_safety_metadata(food_cache_ids),
         )
         if any(meal["safety_status"] == "blocked" for meal in planned_meals):
@@ -199,11 +193,7 @@ class NutritionService:
             raise NutritionProfileIncompleteError(
                 "Active nutrition targets are required before generating a meal plan"
             )
-        profile = await self.repo.get_profile(user_id)
-        if profile is None:
-            raise NutritionProfileIncompleteError(
-                "A saved nutrition profile is required before generating a meal plan"
-            )
+        profile = payload.profile
         foods = await self.repo.list_food_catalogue(500)
         safety_metadata = await self.repo.get_food_safety_metadata(
             {food["id"] for food in foods}
@@ -279,7 +269,7 @@ class NutritionService:
         }
         assessed_meals, safety_warnings = assess_meal_plan_safety(
             planned_meals,
-            await self.repo.get_profile(user_id),
+            profile,
             await self.repo.get_food_safety_metadata(food_cache_ids),
         )
         if any(meal["safety_status"] == "blocked" for meal in assessed_meals):
@@ -331,44 +321,24 @@ class NutritionService:
             "meal_plan": await self.repo.get_active_meal_plan(user_id, for_date),
         }
 
-    async def update_profile(
-        self, user_id: int, values: dict[str, Any]
-    ) -> dict[str, Any]:
-        return await self.repo.upsert_profile(user_id, values)
-
     async def calculate_targets(
-        self, user_id: int, confirm_apply: bool
+        self, user_id: int, confirm_apply: bool, profile: TargetCalculationRequest
     ) -> dict[str, Any]:
-        profile = await self.repo.get_profile_with_measurements(user_id)
-        if profile is None:
-            raise NutritionProfileIncompleteError(
-                "Save a nutrition profile before calculating targets"
-            )
-        missing = [
-            key for key in ("age", "weight_kg", "height_cm") if profile[key] is None
-        ]
-        if missing:
-            raise NutritionProfileIncompleteError(
-                f"Missing required fitness profile data: {', '.join(missing)}"
-            )
         targets = calculate_targets(
-            sex=profile["sex_for_energy_equation"],
-            age=profile["age"],
-            weight_kg=Decimal(profile["weight_kg"]),
-            height_cm=Decimal(profile["height_cm"]),
-            activity_level=profile["activity_level"],
-            goal=profile["nutrition_goal"],
+            sex=profile.sex,
+            age=profile.age,
+            weight_kg=profile.weight_kg,
+            height_cm=profile.height_cm,
+            activity_level=profile.activity_level,
+            goal=profile.goal,
         )
         inputs = {
-            key: str(profile[key])
-            for key in (
-                "sex_for_energy_equation",
-                "activity_level",
-                "nutrition_goal",
-                "age",
-                "weight_kg",
-                "height_cm",
-            )
+            "sex_for_energy_equation": profile.sex,
+            "activity_level": profile.activity_level,
+            "nutrition_goal": profile.goal,
+            "age": str(profile.age),
+            "weight_kg": str(profile.weight_kg),
+            "height_cm": str(profile.height_cm),
         }
         preview = {**targets.__dict__, "calculation_inputs": inputs, "applied": False}
         if not confirm_apply:
@@ -401,50 +371,8 @@ class NutritionService:
     async def get_active_target(self, user_id: int) -> dict[str, Any]:
         target = await self.repo.get_active_target(user_id)
         if target is None:
-            raise NutritionNotFoundError("No active nutrition targets")
+            raise NutritionNotFoundError("Active nutrition targets not found")
         return target
-
-    async def create_meal(self, user_id: int, payload: Any) -> dict[str, Any]:
-        meal = payload.model_dump(exclude={"items", "meal_id"})
-        items = [item.model_dump() for item in payload.items]
-        record = await self.repo.create_meal(user_id, meal, items)
-        return {
-            **record,
-            "items": [item.model_dump(mode="json") for item in payload.items],
-        }
-
-    async def list_meals(self, user_id: int, for_date: date) -> list[dict[str, Any]]:
-        return await self.repo.list_meals(user_id, for_date)
-
-    async def replace_meal(
-        self, user_id: int, meal_id: int, payload: Any
-    ) -> dict[str, Any]:
-        meal = payload.model_dump(exclude={"items", "meal_id"})
-        record = await self.repo.replace_meal(
-            user_id, meal_id, meal, [item.model_dump() for item in payload.items]
-        )
-        if record is None:
-            raise NutritionNotFoundError("Meal not found")
-        return {
-            **record,
-            "items": [item.model_dump(mode="json") for item in payload.items],
-        }
-
-    async def delete_meal(self, user_id: int, meal_id: int) -> None:
-        if not await self.repo.delete_meal(user_id, meal_id):
-            raise NutritionNotFoundError("Meal not found")
-
-    async def get_daily_summary(self, user_id: int, for_date: date) -> dict[str, Any]:
-        totals = await self.repo.get_daily_totals(user_id, for_date)
-        target = await self.repo.get_target_for_date(user_id, for_date)
-        values = self._summary_values(totals, target)
-        summary = await self.repo.upsert_daily_summary(user_id, for_date, values)
-        return {
-            "date": for_date,
-            **summary,
-            "target": target,
-            "remaining": self._remaining(totals, target),
-        }
 
     async def search_foods(self, query: str) -> list[dict[str, Any]]:
         provider = self._food_provider()
@@ -467,30 +395,6 @@ class NutritionService:
         except FoodDataProviderError as error:
             raise NutritionFoodDataError(str(error)) from error
         return await self.repo.cache_food(food.__dict__)
-
-    async def get_adherence(
-        self, user_id: int, start_date: date, end_date: date
-    ) -> list[dict[str, Any]]:
-        summaries = []
-        current = start_date
-        while current <= end_date:
-            summaries.append(await self.get_daily_summary(user_id, current))
-            current += timedelta(days=1)
-        return summaries
-
-    async def chat(self, user_id: int, message: str) -> dict[str, Any]:
-        """Provide factual, user-scoped Nutrition context and a safe structured action."""
-        summary = await self.get_daily_summary(user_id, datetime.now(UTC).date())
-        calories = summary["calories"]
-        target = summary.get("target")
-        if target:
-            context = f"Today you have logged {calories} kcal; {summary['remaining']['calories']} kcal remain."
-        else:
-            context = f"Today you have logged {calories} kcal. Set nutrition targets for personalized guidance."
-        return {
-            "message": f"{context} {message.strip()} Use the Nutrition page to review or log a structured meal.",
-            "actions": [{"type": "open_nutrition", "label": "Open Nutrition"}],
-        }
 
     def _food_provider(self) -> UsdaFoodDataCentralProvider:
         if self.food_provider is None:

@@ -24,7 +24,7 @@ async def test_food_catalogue_delegates_to_unbounded_local_repository():
 def test_foundation_catalogue_seed_is_complete_and_idempotent():
     migration = (
         Path(__file__).parents[1]
-        / "app/db/migrations/010_seed_nutrition_foundation_food_cache.sql"
+        / "services/nutrition_agent/app/db/migrations/002_seed_nutrition_foundation_food_cache.sql"
     ).read_text(encoding="utf-8")
 
     assert migration.count("USDA FoodData Central Foundation bulk export") == 95

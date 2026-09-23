@@ -1,5 +1,6 @@
 """FastAPI entry point for the private, authoritative Nutrition Agent."""
 
+import logging
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -7,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .calculator import calculate_targets
 from .config import settings
-from .database import close_db, get_db
+from .database import close_db, get_db, init_db
 from .schemas import (
     AdherenceRequest,
     ChatRequest,
@@ -36,6 +37,8 @@ from .service import (
     NutritionProfileIncompleteError,
     NutritionService,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title=settings.APP_NAME, version="1.0.0")
 
@@ -78,6 +81,16 @@ async def shutdown() -> None:
     await close_db()
 
 
+@app.on_event("startup")
+async def startup() -> None:
+    if settings.RUN_MIGRATIONS:
+        logger.info("Nutrition migrations enabled; initializing Nutrition database")
+        await init_db()
+        logger.info("Nutrition database migrations completed")
+    else:
+        logger.info("Nutrition migrations skipped; RUN_MIGRATIONS is false")
+
+
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "healthy", "service": "nutrition-agent"}
@@ -109,29 +122,6 @@ async def calculate_nutrition_targets(
     )
 
 
-@app.post("/v1/nutrition/profile/get", dependencies=[Depends(require_internal_token)])
-async def profile_get(payload: UserRequest, service: Service):
-    try:
-        return await service.get_profile(payload.user_id)
-    except Exception as error:
-        raise translate(error) from error
-
-
-@app.post("/v1/nutrition/profile/save", dependencies=[Depends(require_internal_token)])
-async def profile_save(
-    payload: ProfileRequest,
-    service: Service,
-    idempotency_key: Annotated[str | None, Header()] = None,
-):
-    return await service.idempotent(
-        payload.user_id,
-        "profile.save",
-        idempotency_key,
-        payload.model_dump(mode="json"),
-        lambda: service.update_profile(payload.user_id, payload.values),
-    )
-
-
 @app.post(
     "/v1/nutrition/targets/calculate-for-user",
     dependencies=[Depends(require_internal_token)],
@@ -147,7 +137,9 @@ async def targets_calculate(
             "targets.calculate",
             idempotency_key,
             payload.model_dump(mode="json"),
-            lambda: service.calculate_targets(payload.user_id, payload.confirm_apply),
+            lambda: service.calculate_targets(
+                payload.user_id, payload.confirm_apply, payload.profile
+            ),
         )
     except Exception as error:
         raise translate(error) from error
@@ -182,62 +174,6 @@ async def foods_catalogue(payload: FoodCatalogueRequest, service: Service):
 async def foods_detail(payload: FoodDetailRequest, service: Service):
     try:
         return await service.get_food(payload.food_id)
-    except Exception as error:
-        raise translate(error) from error
-
-
-@app.post("/v1/nutrition/meals/create", dependencies=[Depends(require_internal_token)])
-async def meals_create(
-    payload: MealRequest,
-    service: Service,
-    idempotency_key: Annotated[str | None, Header()] = None,
-):
-    return await service.idempotent(
-        payload.user_id,
-        "meals.create",
-        idempotency_key,
-        payload.model_dump(mode="json"),
-        lambda: service.create_meal(payload.user_id, payload),
-    )
-
-
-@app.post("/v1/nutrition/meals/list", dependencies=[Depends(require_internal_token)])
-async def meals_list(payload: DateRequest, service: Service):
-    return {"items": await service.list_meals(payload.user_id, payload.date)}
-
-
-@app.post("/v1/nutrition/meals/replace", dependencies=[Depends(require_internal_token)])
-async def meals_replace(
-    payload: ReplaceMealRequest,
-    service: Service,
-    idempotency_key: Annotated[str | None, Header()] = None,
-):
-    try:
-        return await service.idempotent(
-            payload.user_id,
-            "meals.replace",
-            idempotency_key,
-            payload.model_dump(mode="json"),
-            lambda: service.replace_meal(payload.user_id, payload.meal_id, payload),
-        )
-    except Exception as error:
-        raise translate(error) from error
-
-
-@app.post("/v1/nutrition/meals/delete", dependencies=[Depends(require_internal_token)])
-async def meals_delete(
-    payload: MealIdRequest,
-    service: Service,
-    idempotency_key: Annotated[str | None, Header()] = None,
-):
-    try:
-        return await service.idempotent(
-            payload.user_id,
-            "meals.delete",
-            idempotency_key,
-            payload.model_dump(mode="json"),
-            lambda: _delete_meal(service, payload),
-        )
     except Exception as error:
         raise translate(error) from error
 
@@ -351,29 +287,3 @@ async def meal_plans_archive(
 @app.post("/v1/nutrition/context", dependencies=[Depends(require_internal_token)])
 async def nutrition_context(payload: DateRequest, service: Service):
     return await service.get_nutrition_context(payload.user_id, payload.date)
-
-
-@app.post("/v1/nutrition/daily-summary", dependencies=[Depends(require_internal_token)])
-async def daily_summary(payload: DateRequest, service: Service):
-    return await service.get_daily_summary(payload.user_id, payload.date)
-
-
-@app.post("/v1/nutrition/adherence", dependencies=[Depends(require_internal_token)])
-async def adherence(payload: AdherenceRequest, service: Service):
-    return {
-        "items": await service.get_adherence(
-            payload.user_id, payload.from_date, payload.to_date
-        )
-    }
-
-
-async def _delete_meal(
-    service: NutritionService, payload: MealIdRequest
-) -> dict[str, bool]:
-    await service.delete_meal(payload.user_id, payload.meal_id)
-    return {"deleted": True}
-
-
-@app.post("/v1/nutrition/chat", dependencies=[Depends(require_internal_token)])
-async def nutrition_chat(payload: ChatRequest, service: Service):
-    return await service.chat(payload.user_id, payload.message)

@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 
 import httpx
 import pytest
@@ -49,6 +50,46 @@ async def test_food_catalogue_client_requests_all_cached_foods(monkeypatch):
     ]
     assert captured["url"].endswith("/v1/nutrition/foods/catalogue")
     assert captured["json"] == {"user_id": 7}
+
+
+@pytest.mark.asyncio
+async def test_target_calculation_client_json_encodes_decimal_measurements(monkeypatch):
+    captured = {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured.update(url=url, json=json)
+            return httpx.Response(
+                200, json={"applied": True}, request=httpx.Request("POST", url)
+            )
+
+    monkeypatch.setattr(
+        "app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client()
+    )
+
+    response = await NutritionAgentClient().calculate_targets(
+        7,
+        True,
+        {
+            "sex": "female",
+            "age": 30,
+            "weight_kg": Decimal("65.2"),
+            "height_cm": Decimal("170.5"),
+            "activity_level": "moderate",
+            "goal": "maintenance",
+        },
+    )
+
+    assert response == {"applied": True}
+    assert captured["url"].endswith("/v1/nutrition/targets/calculate-for-user")
+    assert captured["json"]["profile"]["weight_kg"] == 65.2
+    assert captured["json"]["profile"]["height_cm"] == 170.5
 
 
 @pytest.mark.asyncio
@@ -105,7 +146,13 @@ async def test_meal_plan_generation_client_forwards_scope_and_idempotency(monkey
     assert await NutritionAgentClient().generate_meal_plan(7, GenerationPayload(), "generate-1") == {"id": 42}
     assert captured["url"].endswith("/v1/nutrition/meal-plans/generate")
     assert captured["headers"]["Idempotency-Key"] == "generate-1"
-    assert captured["json"] == {"user_id": 7, "start_date": "2026-09-22", "end_date": "2026-09-22", "meal_types": ["breakfast"]}
+    assert captured["json"] == {
+        "user_id": 7,
+        "profile": {},
+        "start_date": "2026-09-22",
+        "end_date": "2026-09-22",
+        "meal_types": ["breakfast"],
+    }
 
 
 @pytest.mark.asyncio
@@ -240,4 +287,28 @@ async def test_meal_plan_client_maps_transport_failures_to_unavailable(monkeypat
     )
 
     with pytest.raises(NutritionAgentUnavailableError, match="temporarily unavailable"):
+        await NutritionAgentClient().get_nutrition_context(7, date(2026, 9, 22))
+
+
+@pytest.mark.asyncio
+async def test_unsupported_agent_operation_404_is_not_reported_as_missing_resource(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, url, *, headers, json):
+            return httpx.Response(
+                404,
+                json={"detail": "Not Found"},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr(
+        "app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client()
+    )
+
+    with pytest.raises(NutritionAgentUnavailableError, match="does not support operation"):
         await NutritionAgentClient().get_nutrition_context(7, date(2026, 9, 22))

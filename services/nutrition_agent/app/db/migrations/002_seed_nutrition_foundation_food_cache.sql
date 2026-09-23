@@ -1,8 +1,8 @@
 -- Static baseline USDA Foundation catalogue. Generated from the Foundation bulk export.
--- Migration 006 owns the nutrition_food_cache table definition.
+-- Migration 001_create_nutrition_schema.sql owns the nutrition_food_cache table definition.
 -- Only foods with energy, protein, carbohydrate, and fat per 100 g are seedable.
 -- DO NOTHING preserves later curated or API-refreshed cache records on every startup.
-INSERT INTO systemdb.nutrition_food_cache (
+INSERT INTO nutrition_food_cache (
     provider, provider_food_id, description, serving_size_g, serving_description,
     calories_per_100g, protein_g_per_100g, carbohydrate_g_per_100g, fat_g_per_100g,
     fiber_g_per_100g, allergen_data, allergen_status, raw_response
@@ -103,3 +103,4 @@ INSERT INTO systemdb.nutrition_food_cache (
     ('usda', '1105073', 'Bananas, overripe, raw', 110.0, '1.0 Banana Peeled', 357, 0.73, 20.1, 0.22, 1.7, NULL, 'unknown', '{"source":"USDA FoodData Central Foundation bulk export","fdcId":1105073}'::jsonb),
     ('usda', '1105314', 'Bananas, ripe and slightly ripe, raw', 115.0, '1.0 Banana Peeled', 97.0, 0.74, 23.0, 0.29, 1.7, NULL, 'unknown', '{"source":"USDA FoodData Central Foundation bulk export","fdcId":1105314}'::jsonb)
 ON CONFLICT (provider, provider_food_id) DO NOTHING;
+

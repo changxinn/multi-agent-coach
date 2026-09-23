@@ -1,4 +1,5 @@
 from datetime import date
+from decimal import Decimal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -6,7 +7,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes.auth import get_current_user
-from app.api.routes.nutrition import get_nutrition_service, router
+from app.api.routes.nutrition import (
+    get_main_nutrition_service,
+    get_nutrition_service,
+    router,
+)
 from app.services.nutrition_agent_client import (
     NutritionAgentUnavailableError,
     NutritionMealPlanValidationError,
@@ -22,8 +27,17 @@ def nutrition_client():
     app = FastAPI()
     app.include_router(router, prefix="/api")
     service = AsyncMock()
+    service.get_profile.return_value = {
+        "sex_for_energy_equation": "female",
+        "age": 30,
+        "weight_kg": 65,
+        "height_cm": 170,
+        "activity_level": "moderate",
+        "nutrition_goal": "maintenance",
+    }
     app.dependency_overrides[get_current_user] = lambda: {"id": 9, "role": "user"}
     app.dependency_overrides[get_nutrition_service] = lambda: service
+    app.dependency_overrides[get_main_nutrition_service] = lambda: service
     with TestClient(app) as client:
         yield client, service
 
@@ -91,6 +105,7 @@ def test_create_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutrition_
     assert service.create_meal_plan.await_args.args[0] == 9
     assert service.create_meal_plan.await_args.args[1].target_snapshot_id == 3
     assert service.create_meal_plan.await_args.args[2] == "plan-1"
+    assert service.create_meal_plan.await_args.kwargs["profile"]["age"] == 30
 
 
 def test_generate_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutrition_client):
@@ -112,6 +127,66 @@ def test_generate_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutritio
     assert service.generate_meal_plan.await_args.args[0] == 9
     assert service.generate_meal_plan.await_args.args[1].meal_types == ["breakfast", "lunch"]
     assert service.generate_meal_plan.await_args.args[2] == "generate-1"
+    assert (
+        service.generate_meal_plan.await_args.kwargs["profile"]["nutrition_goal"]
+        == "maintenance"
+    )
+
+
+def test_target_calculation_uses_main_profile_and_json_safe_measurements(
+    nutrition_client,
+):
+    client, service = nutrition_client
+    service.get_profile.return_value.update(
+        weight_kg=Decimal("65.2"), height_cm=Decimal("170.5")
+    )
+    service.calculate_targets.return_value = {"applied": True}
+
+    response = client.post(
+        "/api/nutrition/targets/calculate", json={"confirm_apply": True}
+    )
+
+    assert response.status_code == 200
+    assert service.calculate_targets.await_args.args[:2] == (9, True)
+    assert service.calculate_targets.await_args.args[2]["weight_kg"] == Decimal("65.2")
+    assert service.calculate_targets.await_args.args[2]["height_cm"] == Decimal("170.5")
+
+
+def test_active_targets_calls_nutrition_agent_target_snapshot(nutrition_client):
+    client, service = nutrition_client
+    service.get_active_target.return_value = {"calorie_target_kcal": 2100}
+
+    response = client.post("/api/nutrition/targets/active", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {"calorie_target_kcal": 2100}
+    service.get_active_target.assert_awaited_once_with(9)
+    service.get_adherence.assert_not_awaited()
+
+
+def test_active_targets_returns_empty_object_when_no_snapshot_exists(nutrition_client):
+    client, service = nutrition_client
+    service.get_active_target.side_effect = NutritionNotFoundError(
+        "Active nutrition targets not found"
+    )
+
+    response = client.post("/api/nutrition/targets/active", json={})
+
+    assert response.status_code == 200
+    assert response.json() == {}
+    service.get_active_target.assert_awaited_once_with(9)
+
+
+def test_active_targets_agent_outage_returns_service_unavailable(nutrition_client):
+    client, service = nutrition_client
+    service.get_active_target.side_effect = NutritionAgentUnavailableError(
+        "Nutrition service is temporarily unavailable"
+    )
+
+    response = client.post("/api/nutrition/targets/active", json={})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Nutrition service is temporarily unavailable"}
 
 
 def test_profile_save_rejects_unsupported_dietary_fields(nutrition_client):
@@ -300,6 +375,27 @@ def test_delete_meal_returns_json_success_contract(nutrition_client):
     assert response.status_code == 200
     assert response.json() == {"deleted": True}
     service.delete_meal.assert_awaited_once_with(9, 99)
+
+
+def test_daily_summary_and_adherence_use_main_owned_meal_history(nutrition_client):
+    client, service = nutrition_client
+    service.get_daily_summary.return_value = {"calories": 500}
+    service.get_adherence.return_value = [{"summary_date": "2026-09-20"}]
+
+    summary = client.post("/api/nutrition/daily-summary", json={"date": "2026-09-20"})
+    adherence = client.post(
+        "/api/nutrition/adherence",
+        json={"from_date": "2026-09-20", "to_date": "2026-09-21"},
+    )
+
+    assert summary.status_code == 200
+    assert summary.json() == {"calories": 500}
+    assert adherence.status_code == 200
+    assert adherence.json() == {"items": [{"summary_date": "2026-09-20"}]}
+    service.get_daily_summary.assert_awaited_once_with(9, date(2026, 9, 20))
+    service.get_adherence.assert_awaited_once_with(
+        9, date(2026, 9, 20), date(2026, 9, 21)
+    )
 
 
 def test_food_search_translates_provider_failure_to_service_unavailable(

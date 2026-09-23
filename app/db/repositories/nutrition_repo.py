@@ -16,7 +16,7 @@ class NutritionRepository:
 
     async def get_profile(self, user_id: int) -> dict[str, Any] | None:
         result = await self.db.execute(
-            text("SELECT * FROM systemdb.nutrition_profiles WHERE user_id = :user_id"),
+            text("SELECT * FROM systemdb.user_fitness_profiles WHERE user_id = :user_id"),
             {"user_id": user_id},
         )
         row = result.mappings().first()
@@ -32,7 +32,7 @@ class NutritionRepository:
         }
         result = await self.db.execute(
             text("""
-                INSERT INTO systemdb.nutrition_profiles (
+                INSERT INTO systemdb.user_fitness_profiles (
                     user_id, sex_for_energy_equation, activity_level,
                     nutrition_goal,
                     dietary_preferences, dietary_restrictions, allergies
@@ -68,9 +68,8 @@ class NutritionRepository:
                 SELECT np.sex_for_energy_equation, np.activity_level, np.nutrition_goal,
                        np.dietary_preferences, np.dietary_restrictions, np.allergies,
                        fp.age, fp.weight_kg, fp.height_cm
-                FROM systemdb.nutrition_profiles np
-                LEFT JOIN systemdb.user_fitness_profiles fp ON fp.user_id = np.user_id
-                WHERE np.user_id = :user_id
+                FROM systemdb.user_fitness_profiles fp
+                WHERE fp.user_id = :user_id
             """),
             {"user_id": user_id},
         )
@@ -262,8 +261,7 @@ class NutritionRepository:
                 'id', i.id, 'food_name', i.food_name, 'quantity', i.quantity,
                 'unit', i.unit, 'grams', i.grams, 'calories', i.calories,
                 'protein_g', i.protein_g, 'carbohydrate_g', i.carbohydrate_g,
-                'fat_g', i.fat_g, 'fiber_g', i.fiber_g, 'source', i.source,
-                'food_cache_id', i.food_cache_id
+                'fat_g', i.fat_g, 'fiber_g', i.fiber_g, 'source', i.source
             )) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS items
             FROM systemdb.nutrition_meals m
             LEFT JOIN systemdb.nutrition_meal_items i ON i.meal_id = m.id
@@ -333,9 +331,9 @@ class NutritionRepository:
         statement = text("""
             INSERT INTO systemdb.nutrition_meal_items (
                 meal_id, food_name, quantity, unit, grams, calories, protein_g,
-                carbohydrate_g, fat_g, fiber_g, source, food_cache_id
+                carbohydrate_g, fat_g, fiber_g, source
             ) VALUES (:meal_id, :food_name, :quantity, :unit, :grams, :calories,
-                :protein_g, :carbohydrate_g, :fat_g, :fiber_g, :source, :food_cache_id)
+                :protein_g, :carbohydrate_g, :fat_g, :fiber_g, :source)
         """)
         for item in items:
             await self.db.execute(statement, {"meal_id": meal_id, **item})
