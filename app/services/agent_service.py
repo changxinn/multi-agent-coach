@@ -137,6 +137,18 @@ def orchestrator_routing_api(state: "State"):
     return "end"
 
 
+def _guard_specialist_messages(
+    state: "State", messages: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Apply one final guardrail before specialist content reaches state or clients."""
+    from agents.safety import guard_output_messages
+
+    return guard_output_messages(
+        messages,
+        include_respectful_reminder=bool(state.get("respectful_language_reminder")),
+    )
+
+
 def specialist_node_api(state: "State") -> dict[str, Any]:
     """
     API version of specialist node.
@@ -217,8 +229,9 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
                 response.get("status"),
                 response.get("score"),
             )
-            return {
-                "messages": [
+            messages = _guard_specialist_messages(
+                state,
+                [
                     {
                         "role": "assistant",
                         "name": "Jordan (Recovery Coach)",
@@ -229,6 +242,9 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
                         },
                     }
                 ],
+            )
+            return {
+                "messages": messages,
                 "volley_msg_left": max(0, volley_left - 1),
             }
         except Exception:
@@ -247,7 +263,7 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
 
     if result and "messages" in result:
         return {
-            "messages": result["messages"],
+            "messages": _guard_specialist_messages(state, result["messages"]),
             "volley_msg_left": new_volley,
         }
 
