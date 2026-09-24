@@ -317,6 +317,20 @@ async def test_get_active_meal_plan_scopes_query_to_user_and_requested_date():
 
 
 @pytest.mark.asyncio
+async def test_list_meal_plans_returns_safety_review_acknowledgement():
+    db = AsyncMock()
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = []
+    db.execute.return_value = result
+
+    await NutritionRepository(db).list_meal_plans(7)
+
+    statement, values = db.execute.await_args.args
+    assert "safety_review_acknowledged_at" in str(statement)
+    assert values == {"user_id": 7}
+
+
+@pytest.mark.asyncio
 async def test_create_meal_plan_requires_a_target_snapshot_owned_by_the_user():
     service = NutritionService(AsyncMock())
     service.repo.get_target_snapshot = AsyncMock(return_value=None)
@@ -438,6 +452,27 @@ async def test_confirm_meal_plan_reassesses_draft_and_supersedes_atomically():
     args = service.repo.activate_draft_meal_plan.await_args.args
     assert args[:4] == (7, 41, date(2026, 9, 22), date(2026, 9, 22))
     assert args[4][0]["safety_status"] == "safe"
+
+
+@pytest.mark.asyncio
+async def test_confirming_a_plan_records_safety_review_acknowledgement():
+    db = AsyncMock()
+    result = MagicMock()
+    result.mappings.return_value.first.return_value = {"id": 41, "status": "active"}
+    db.execute.return_value = result
+    repo = NutritionRepository(db)
+
+    await repo.activate_draft_meal_plan(
+        7,
+        41,
+        date(2026, 9, 22),
+        date(2026, 9, 22),
+        [],
+        ["Allergen metadata requires review."],
+    )
+
+    activation_statement, _ = db.execute.await_args_list[-1].args
+    assert "safety_review_acknowledged_at = CURRENT_TIMESTAMP" in str(activation_statement)
 
 
 @pytest.mark.asyncio

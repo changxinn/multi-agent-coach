@@ -132,7 +132,8 @@ class NutritionRepository:
         result = await self.db.execute(
             text("""
                 SELECT id, target_snapshot_id, start_date, end_date, version, status,
-                    generated_plan, safety_warnings, created_at, updated_at
+                    generated_plan, safety_warnings, safety_review_acknowledged_at,
+                    created_at, updated_at
                 FROM nutrition_meal_plans WHERE user_id = :user_id
                 ORDER BY created_at DESC, id DESC
             """),
@@ -181,7 +182,9 @@ class NutritionRepository:
         result = await self.db.execute(
             text("""
                 UPDATE nutrition_meal_plans SET status = 'active',
-                    safety_warnings = CAST(:safety_warnings AS jsonb), updated_at = CURRENT_TIMESTAMP
+                    safety_warnings = CAST(:safety_warnings AS jsonb),
+                    safety_review_acknowledged_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
                 WHERE id = :meal_plan_id AND user_id = :user_id AND status = 'draft'
                 RETURNING *
             """),

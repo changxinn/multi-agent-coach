@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS nutrition_meal_plans (
     status VARCHAR(16) NOT NULL DEFAULT 'draft',
     generated_plan JSONB NOT NULL DEFAULT '{}'::jsonb,
     safety_warnings JSONB NOT NULL DEFAULT '[]'::jsonb,
+    safety_review_acknowledged_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT nutrition_meal_plan_dates_valid CHECK (end_date >= start_date),
@@ -69,6 +70,8 @@ CREATE TABLE IF NOT EXISTS nutrition_meal_plans (
     CONSTRAINT nutrition_meal_plan_status_valid CHECK (status IN ('draft', 'active', 'superseded', 'archived')),
     CONSTRAINT nutrition_meal_plan_user_range_version_unique UNIQUE (user_id, start_date, end_date, version)
 );
+ALTER TABLE nutrition_meal_plans
+    ADD COLUMN IF NOT EXISTS safety_review_acknowledged_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS nutrition_meal_plans_active_date_idx ON nutrition_meal_plans(user_id, start_date, end_date, version DESC) WHERE status = 'active';
 
 CREATE TABLE IF NOT EXISTS nutrition_planned_meals (

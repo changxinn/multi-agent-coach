@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -8,6 +9,18 @@ from services.nutrition_agent.app.migrations import (
     run_migrations,
     split_sql_statements,
 )
+
+
+def test_initial_schema_idempotently_adds_safety_review_acknowledgement_column():
+    migration = (
+        Path(__file__).parents[1]
+        / "services/nutrition_agent/app/db/migrations/001_create_nutrition_schema.sql"
+    ).read_text()
+
+    assert "safety_review_acknowledged_at TIMESTAMPTZ" in migration
+    assert (
+        "ADD COLUMN IF NOT EXISTS safety_review_acknowledged_at TIMESTAMPTZ" in migration
+    )
 
 
 def test_split_sql_statements_preserves_semicolons_in_sql_string_literals():
