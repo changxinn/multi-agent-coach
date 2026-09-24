@@ -6,12 +6,98 @@ Integrates LangGraph workflow with FastAPI.
 
 import asyncio
 import logging
+from datetime import UTC, datetime
 from typing import Any
 
 from app.services.chat_response import new_assistant_messages, strip_speaker_prefix
 from app.services.session_manager import Session, session_manager
 
 logger = logging.getLogger(__name__)
+
+
+async def _nutrition_chat_context(user_id: int) -> dict[str, Any]:
+    """Build a bounded, read-only nutrition snapshot for the chat specialist."""
+    from app.db.database import AsyncSessionLocal
+    from app.services.nutrition_agent_client import nutrition_agent_client
+    from app.services.nutrition_service import NutritionService
+
+    for_date = datetime.now(UTC).date()
+    context: dict[str, Any] = {"date": for_date.isoformat()}
+
+    try:
+        async with AsyncSessionLocal() as db:
+            service = NutritionService(db)
+            meals = await service.list_meals(user_id, for_date)
+            daily_summary = await service.get_daily_summary(user_id, for_date)
+        context["meal_logging"] = {
+            "meal_count": len(meals),
+            "meals": [_compact_meal(meal) for meal in meals[:10]],
+        }
+        context["daily_summary"] = _select_fields(
+            daily_summary,
+            "calories",
+            "protein_g",
+            "carbohydrate_g",
+            "fat_g",
+            "fiber_g",
+            "meal_count",
+            "remaining",
+        )
+    except Exception:
+        logger.exception("Unable to load canonical meal history for Nutrition chat")
+
+    try:
+        agent_context = await nutrition_agent_client.get_nutrition_context(
+            user_id, for_date
+        )
+        context["active_target"] = (
+            _select_fields(
+                agent_context.get("target_snapshot") or {},
+                "calorie_target_kcal",
+                "protein_target_g",
+                "carbohydrate_target_g",
+                "fat_target_g",
+                "fiber_target_g",
+            )
+            or None
+        )
+        context["active_meal_plan"] = (
+            _select_fields(
+                agent_context.get("meal_plan") or {},
+                "id",
+                "status",
+                "start_date",
+                "end_date",
+            )
+            or None
+        )
+    except Exception:
+        logger.exception("Unable to load Nutrition Agent context for Nutrition chat")
+
+    return context
+
+
+def _select_fields(values: dict[str, Any], *fields: str) -> dict[str, Any]:
+    return {field: values[field] for field in fields if field in values}
+
+
+def _compact_meal(meal: dict[str, Any]) -> dict[str, Any]:
+    compact = _select_fields(meal, "id", "meal_type", "eaten_at", "notes")
+    compact["items"] = [
+        _select_fields(
+            item,
+            "food_name",
+            "quantity",
+            "unit",
+            "calories",
+            "protein_g",
+            "carbohydrate_g",
+            "fat_g",
+            "fiber_g",
+        )
+        for item in meal.get("items", [])[:10]
+    ]
+    return compact
 
 
 class AgentOrchestrator:
@@ -78,12 +164,14 @@ class AgentOrchestrator:
             messages = session.messages + [
                 {"role": "user", "content": f"You: {user_message}"}
             ]
+            nutrition_context = await _nutrition_chat_context(session.user_id)
 
             initial_state = {
                 "messages": messages,
                 "volley_msg_left": 1,
                 "next_agent": None,
                 "user_profile": user_profile,
+                "nutrition_context": nutrition_context,
             }
 
             # Invoke graph

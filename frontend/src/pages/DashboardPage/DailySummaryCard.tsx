@@ -60,6 +60,7 @@ export function DailySummaryCard() {
   }
 
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- Fetch the initial server-backed summary on mount.
     void loadSummary()
   }, [])
 

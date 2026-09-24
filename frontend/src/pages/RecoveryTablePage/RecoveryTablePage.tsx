@@ -76,7 +76,7 @@ function RecoveryTable({ kind }: { kind: Kind }) {
     setSaveError(null)
     form.resetFields()
     if (record) {
-      const { id, created_at, response, tool_trace, ...values } = record
+      const { id: _id, created_at: _createdAt, response, tool_trace, ...values } = record
       form.setFieldsValue(kind === 'assessments'
         ? { ...values, response: JSON.stringify(response, null, 2), tool_trace: JSON.stringify(tool_trace, null, 2) }
         : values)

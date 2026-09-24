@@ -10,6 +10,8 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.auth import (
+    CurrentUserProfileResponse,
+    FitnessProfileUpdateRequest,
     LoginRequest,
     RegisterRequest,
     TokenResponse,
@@ -17,6 +19,7 @@ from app.api.schemas.auth import (
 from app.db.database import get_db
 from app.db.repositories.user_repo import UserRepository
 from app.services.jwt_service import create_access_token, refresh_token, validate_token
+from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
 
@@ -238,3 +241,38 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
         )
+
+
+@router.get("/auth/profile", response_model=CurrentUserProfileResponse)
+async def get_profile(
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the authenticated user's account and fitness profile."""
+    profile = await UserProfileService(db).get_user_profile(current_user["id"])
+    return {
+        "id": current_user["id"],
+        "email": current_user["email"],
+        "name": current_user["name"],
+        "role": current_user["role"],
+        "fitness_profile": profile,
+    }
+
+
+@router.put("/auth/profile", response_model=CurrentUserProfileResponse)
+async def update_profile(
+    request: FitnessProfileUpdateRequest,
+    current_user: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Update only the authenticated user's supplied fitness profile fields."""
+    profile = await UserProfileService(db).update_fitness_profile(
+        current_user["id"], **request.model_dump(exclude_unset=True)
+    )
+    return {
+        "id": current_user["id"],
+        "email": current_user["email"],
+        "name": current_user["name"],
+        "role": current_user["role"],
+        "fitness_profile": profile,
+    }

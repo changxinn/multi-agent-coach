@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import AppShell from '@/common/AppShell'
 import { useAuthStore } from '@/lib/authStore'
-import { routePages, getVisiblePages, type Role } from '@/routes'
+import { routePages, getVisiblePages } from '@/routes'
 import { Roles } from '@/lib/constants'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
 
@@ -19,7 +19,6 @@ export function MainLayout({ children }: MainLayoutProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const [userRoles, setUserRoles] = useState<Role[]>([])
 
   useEffect(() => {
     const handleResize = () => {
@@ -34,11 +33,6 @@ export function MainLayout({ children }: MainLayoutProps) {
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
-  useEffect(() => {
-    const roles = getUserRoles()
-    setUserRoles(roles)
-  }, [user, getUserRoles])
-
   const handleNavigate = (path: string) => {
     navigate(path)
   }
@@ -48,6 +42,7 @@ export function MainLayout({ children }: MainLayoutProps) {
     navigate('/login', { replace: true })
   }
 
+  const userRoles = getUserRoles()
   const visiblePages = getVisiblePages(userRoles)
   const primaryRole = userRoles.length > 0 ? userRoles[userRoles.length - 1] : Roles.Admin
   const currentPage = routePages.find((page) => page.path === location.pathname) ?? visiblePages[0] ?? routePages[0]

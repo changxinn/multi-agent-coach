@@ -158,12 +158,44 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
     from agents.specialist import specialist
     from app.config import get_settings
 
+    settings = get_settings()
     next_agent = state.get("next_agent", "training_planner")
     volley_left = state.get("volley_msg_left", 1)
 
     logger.info("Calling specialist agent: %s", next_agent)
 
-    settings = get_settings()
+    if next_agent == "nutrition_advisor" and settings.USE_NUTRITION_AGENT_SERVICE:
+        try:
+            from app.services.nutrition_agent_client import nutrition_agent_client
+
+            profile = state.get("user_profile", {})
+            response = nutrition_agent_client.respond(
+                user_id=int(profile["user_id"]),
+                messages=state.get("messages", []),
+                user_profile=profile,
+                nutrition_context=state.get("nutrition_context", {}),
+            )
+            message_text = response["message"]
+            logger.info("Nutrition Agent service generated a conversation response")
+            messages = _guard_specialist_messages(
+                state,
+                [
+                    {
+                        "role": "assistant",
+                        "name": "Sam (Nutrition Advisor)",
+                        "content": f"Sam (Nutrition Advisor): {message_text}",
+                    }
+                ],
+            )
+            return {
+                "messages": messages,
+                "volley_msg_left": max(0, volley_left - 1),
+            }
+        except Exception:
+            logger.exception(
+                "Nutrition Agent service failed; using local nutrition fallback"
+            )
+
     if next_agent == "recovery_coach" and settings.USE_RECOVERY_AGENT_SERVICE:
         try:
             from app.services.recovery_agent_client import recovery_agent_client

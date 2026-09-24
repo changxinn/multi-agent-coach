@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Card, Typography, Button, Select, Tag, message, Input } from 'antd'
 import { UserOutlined, LoginOutlined } from '@ant-design/icons'
@@ -18,26 +18,22 @@ interface QuickLoginUser {
   description: string
 }
 
+const quickLoginUsers: QuickLoginUser[] = [
+  {
+    email: 'admin@example.com',
+    password: 'ChangeMe123!',
+    role: ['admin'],
+    name: 'System Admin',
+    description: 'Default admin user - created on backend startup',
+  },
+]
+
 export function QuickLoginPage() {
   const navigate = useNavigate()
   const { login: storeLogin } = useAuthStore()
   const [selectedUser, setSelectedUser] = useState<string>('admin@example.com')
   const [password, setPassword] = useState<string>('ChangeMe123!')
   const [isLoggingIn, setIsLoggingIn] = useState(false)
-  const [quickLoginUsers, setQuickLoginUsers] = useState<QuickLoginUser[]>([])
-
-  useEffect(() => {
-    // Initialize with default admin user
-    // The backend creates this user automatically on startup
-    setQuickLoginUsers([{
-      email: 'admin@example.com',
-      password: 'ChangeMe123!',
-      role: ['admin'],
-      name: 'System Admin',
-      description: 'Default admin user - created on backend startup'
-    }])
-  }, [])
-
   const handleQuickLogin = async () => {
     setIsLoggingIn(true)
     

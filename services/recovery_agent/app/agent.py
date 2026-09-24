@@ -50,7 +50,7 @@ class RecoveryAgent:
             completion = client.chat.completions.create(
                 model=self.settings.LLM_MODEL,
                 temperature=0.2,
-                max_tokens=160,
+                max_completion_tokens=160,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": f"Structured assessment: {context}"},

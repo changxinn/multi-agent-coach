@@ -7,6 +7,8 @@ import { TableListingPage } from '@/pages/TableListingPage'
 import { CoachDataPage } from '@/pages/CoachDataPage'
 import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
 import { ChatPage } from '@/pages/ChatPage'
+import { NutritionPage } from '@/pages/NutritionPage'
+import { MyProfilePage } from '@/pages/MyProfilePage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
 import { MainLayout } from '@/common/MainLayout'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
@@ -97,6 +99,26 @@ function App() {
             <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
               <MainLayout>
                 <ChatPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.MyProfile}
+          element={
+            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+              <MainLayout>
+                <MyProfilePage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.Nutrition}
+          element={
+            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+              <MainLayout>
+                <NutritionPage />
               </MainLayout>
             </ProtectedRoute>
           }

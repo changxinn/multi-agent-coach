@@ -13,6 +13,8 @@ export const PageIds = {
   RecoveryTable: 'recovery-table',
   Timeline: 'timeline',
   Chat: 'chat',
+  Nutrition: 'nutrition',
+  MyProfile: 'my-profile',
 } as const
 
 export type PageId = typeof PageIds[keyof typeof PageIds]

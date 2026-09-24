@@ -18,6 +18,7 @@ dependencies = [
     
     # Database
     "sqlalchemy>=2.0.0",
+    "greenlet>=3.0.0",
     "asyncpg>=0.29.0",
     "psycopg2-binary>=2.9.0",
     
@@ -54,6 +55,9 @@ ignore = [
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "integration: tests requiring a live PostgreSQL integration database",
+]
 
 [tool.setuptools.packages.find]
 include = ["app*", "agents*", "tools*"]

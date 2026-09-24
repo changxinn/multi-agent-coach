@@ -125,7 +125,12 @@ class UserProfileService:
         if not user:
             raise ValueError(f"User {user_id} not found")
 
-        profile = user.fitness_profile
+        from sqlalchemy import select
+
+        result = await self.db.execute(
+            select(UserFitnessProfile).where(UserFitnessProfile.user_id == user_id)
+        )
+        profile = result.scalar_one_or_none()
 
         return {
             # Auth data

@@ -70,3 +70,24 @@ class FitnessProfileUpdateRequest(BaseModel):
     weight_kg: float | None = Field(None, gt=0, lt=500)
     height_cm: float | None = Field(None, gt=0, lt=300)
     age: int | None = Field(None, gt=0, lt=150)
+
+
+class FitnessProfileResponse(BaseModel):
+    """Fitness profile measurements returned for the authenticated user."""
+
+    user_id: int
+    fitness_goal: str
+    fitness_level: str
+    weight_kg: float | None = None
+    height_cm: float | None = None
+    age: int | None = None
+
+
+class CurrentUserProfileResponse(BaseModel):
+    """Authenticated account details together with its fitness profile."""
+
+    id: int
+    email: str
+    name: str
+    role: str
+    fitness_profile: FitnessProfileResponse

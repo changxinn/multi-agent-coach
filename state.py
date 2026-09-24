@@ -12,6 +12,7 @@ class State(TypedDict):
     next_agent: str | None
     selected_agent: NotRequired[str]
     user_profile: dict
+    nutrition_context: NotRequired[dict]
     routing_reason: NotRequired[str]
     needs_clarification: NotRequired[bool]
     safety_flags: NotRequired[list]

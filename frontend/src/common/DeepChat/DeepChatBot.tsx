@@ -118,7 +118,7 @@ export function DeepChatBot({
   /**
    * Type next character from buffer with typewriter effect
    */
-  const typeNextCharacter = useCallback(() => {
+  const typeNextCharacter = useCallback(function typeNextCharacter() {
     if (!isTypingRef.current || !deepChatRef.current) {
       console.log('📝 Typewriter stopped - isTyping:', isTypingRef.current, 'has deepChat:', !!deepChatRef.current)
       isTypingRef.current = false
@@ -382,14 +382,13 @@ export function DeepChatBot({
     }
   }, [inputValue, isSending, token, messageApi, useStreaming, useTypewriter, typeNextCharacter, updateMessageDisplay, userEmail])
 
-  // Cleanup typewriter timeout and abort streaming on component unmount
+  // Cleanup typewriter timeout and abort streaming when the user changes or the component unmounts.
   useEffect(() => {
+    const deepChat = deepChatRef.current
+
     return () => {
-      if (deepChatRef.current) {
-        saveChatHistory(
-          userEmail,
-          toStoredMessages(deepChatRef.current.getMessages() || [])
-        )
+      if (deepChat) {
+        saveChatHistory(userEmail, toStoredMessages(deepChat.getMessages() || []))
       }
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current)

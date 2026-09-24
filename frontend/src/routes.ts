@@ -1,5 +1,5 @@
 import { Roles, PageIds, Routes, Sections, type Role, type PageId, type RoutePath, type Section } from '@/lib/constants'
-import { Bot, ClipboardList, LayoutDashboard, Table, type LucideIcon } from 'lucide-react'
+import { Bot, ClipboardList, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
 
 export const DEFAULT_ICON_SIZE = 20
 
@@ -21,6 +21,14 @@ export const routePages: RoutePage[] = [
     icon: LayoutDashboard,
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
+  {
+    id: PageIds.Chat, 
+    label: 'Chat', 
+    path: Routes.Chat, 
+    section: Sections.Overview,
+    icon: Bot,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
+  },
   { 
     id: PageIds.CoachData, 
     label: 'Coach Data', 
@@ -37,13 +45,13 @@ export const routePages: RoutePage[] = [
     icon: Table,
     allowedRoles: [Roles.Admin]
   },
-  {
-    id: PageIds.Chat, 
-    label: 'Chat', 
-    path: Routes.Chat, 
-    section: Sections.Overview,
-    icon: Bot,
-    allowedRoles: [Roles.Admin] 
+  { 
+    id: PageIds.Nutrition,
+    label: 'Nutrition',
+    path: Routes.Nutrition,
+    section: Sections.Admin,
+    icon: Salad,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
   },
 ]
 
