@@ -6,7 +6,7 @@ from datetime import date
 from uuid import uuid4
 
 import pytest
-from conftest import create_profile, create_target, create_user, planned_meal
+from conftest import create_target, create_user, planned_meal
 from nutrition_agent_app.schemas import MealPlanCreateRequest
 from nutrition_agent_app.service import (
     NutritionMealPlanSafetyError,
@@ -49,13 +49,13 @@ async def create_draft(
 
 
 @pytest.mark.asyncio
-async def test_migration_009_sets_the_persisted_plan_default(postgres_session_factory):
+async def test_private_schema_sets_the_persisted_plan_default(postgres_session_factory):
     async with postgres_session_factory() as session:
         user_id = await create_user(session, "default@example.com")
         target_id = await create_target(session, user_id)
         result = await session.execute(
             text("""
-            INSERT INTO systemdb.nutrition_meal_plans
+            INSERT INTO nutrition_meal_plans
                 (user_id, target_snapshot_id, start_date, end_date, version)
             VALUES (:user_id, :target_id, '2026-09-22', '2026-09-22', 1)
             RETURNING status
@@ -72,7 +72,6 @@ async def test_confirm_supersedes_overlaps_but_retains_non_overlapping_active_pl
 ):
     async with postgres_session_factory() as session:
         user_id = await create_user(session, "overlap@example.com")
-        await create_profile(session, user_id)
         target_id = await create_target(session, user_id)
         await session.commit()
         first = await create_draft(
@@ -92,7 +91,7 @@ async def test_confirm_supersedes_overlaps_but_retains_non_overlapping_active_pl
         statuses = dict(
             (
                 await session.execute(
-                    text("SELECT id, status FROM systemdb.nutrition_meal_plans")
+                    text("SELECT id, status FROM nutrition_meal_plans")
                 )
             ).all()
         )
@@ -110,12 +109,11 @@ async def test_confirmation_rechecks_persisted_allergen_data_and_leaves_draft(
 ):
     async with postgres_session_factory() as session:
         user_id = await create_user(session, "allergy@example.com")
-        await create_profile(session, user_id, ["milk"])
         target_id = await create_target(session, user_id)
         food_id = (
             await session.execute(
                 text("""
-            INSERT INTO systemdb.nutrition_food_cache (
+            INSERT INTO nutrition_food_cache (
                 provider, provider_food_id, description, allergen_data, allergen_status, raw_response
             ) VALUES ('test', :provider_food_id, 'Oats', '{"contains": []}', 'known', '{}') RETURNING id
         """),
@@ -129,17 +127,19 @@ async def test_confirmation_rechecks_persisted_allergen_data_and_leaves_draft(
         )
         await session.execute(
             text(
-                'UPDATE systemdb.nutrition_food_cache SET allergen_data = \'{"contains": ["milk"]}\' WHERE id = :id'
+                'UPDATE nutrition_food_cache SET allergen_data = \'{"contains": ["milk"]}\' WHERE id = :id'
             ),
             {"id": food_id},
         )
         await session.commit()
         with pytest.raises(NutritionMealPlanSafetyError):
-            await NutritionService(session).confirm_meal_plan(user_id, draft["id"])
+            await NutritionService(session).confirm_meal_plan(
+                user_id, draft["id"], profile={"allergies": ["milk"]}
+            )
         await session.rollback()
         status = (
             await session.execute(
-                text("SELECT status FROM systemdb.nutrition_meal_plans WHERE id = :id"),
+                text("SELECT status FROM nutrition_meal_plans WHERE id = :id"),
                 {"id": draft["id"]},
             )
         ).scalar_one()
@@ -153,7 +153,6 @@ async def test_transitions_are_owned_and_idempotency_is_persisted(
     async with postgres_session_factory() as session:
         owner_id = await create_user(session, "owner@example.com")
         other_id = await create_user(session, "other@example.com")
-        await create_profile(session, owner_id)
         target_id = await create_target(session, owner_id)
         await session.commit()
         draft = await create_draft(
@@ -183,7 +182,7 @@ async def test_transitions_are_owned_and_idempotency_is_persisted(
         count = (
             await replay_session.execute(
                 text(
-                    "SELECT count(*) FROM systemdb.nutrition_idempotency_keys WHERE user_id = :id AND operation = 'confirm_meal_plan'"
+                    "SELECT count(*) FROM nutrition_idempotency_keys WHERE user_id = :id AND operation = 'confirm_meal_plan'"
                 ),
                 {"id": owner_id},
             )
@@ -201,7 +200,6 @@ async def test_concurrent_creation_allocates_distinct_versions(
 ):
     async with postgres_session_factory() as setup_session:
         user_id = await create_user(setup_session, "versions@example.com")
-        await create_profile(setup_session, user_id)
         target_id = await create_target(setup_session, user_id)
         await setup_session.commit()
 
@@ -223,7 +221,6 @@ async def test_concurrent_overlapping_confirmation_leaves_one_active_plan(
 ):
     async with postgres_session_factory() as setup_session:
         user_id = await create_user(setup_session, "concurrent@example.com")
-        await create_profile(setup_session, user_id)
         target_id = await create_target(setup_session, user_id)
         await setup_session.commit()
         first = await create_draft(
@@ -246,7 +243,7 @@ async def test_concurrent_overlapping_confirmation_leaves_one_active_plan(
             row[0]
             for row in (
                 await session.execute(
-                    text("SELECT status FROM systemdb.nutrition_meal_plans ORDER BY id")
+                    text("SELECT status FROM nutrition_meal_plans ORDER BY id")
                 )
             ).all()
         ]

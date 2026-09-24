@@ -30,10 +30,23 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      nutrition-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: nutritiondb
+          POSTGRES_USER: nutrition_agent
+          POSTGRES_PASSWORD: nutrition_agent
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U nutrition_agent -d nutritiondb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
-      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
+      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://nutrition_agent:nutrition_agent@localhost:5433/nutritiondb
       INTERNAL_SERVICE_TOKEN: ci-test-internal-service-token
       OPENAI_API_KEY: ci-test-openai-key
 

@@ -1,6 +1,6 @@
 """Live PostgreSQL fixtures for Nutrition Agent persistence tests."""
 
-import json
+import hashlib
 import os
 import sys
 from collections.abc import AsyncIterator
@@ -42,19 +42,22 @@ async def postgres_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSe
     try:
         async with engine.begin() as connection:
             await connection.execute(text("SELECT 1"))
-            migration_dir = Path(__file__).parents[2] / "app/db/migrations"
-            for migration in sorted(migration_dir.glob("*.sql")):
-                statements = [
-                    statement.strip()
-                    for statement in " ".join(
-                        line.strip()
-                        for line in migration.read_text(encoding="utf-8").splitlines()
-                        if line.strip() and not line.strip().startswith("--")
-                    ).split(";")
-                    if statement.strip()
-                ]
-                for statement in statements:
-                    await connection.execute(text(statement))
+            from nutrition_agent_app.migrations import split_sql_statements
+
+            schema_migration = (
+                Path(__file__).parents[2]
+                / "services/nutrition_agent/app/db/migrations/001_create_nutrition_schema.sql"
+            )
+            content = schema_migration.read_text(encoding="utf-8-sig")
+            statements = split_sql_statements(
+                " ".join(
+                    line.strip()
+                    for line in content.splitlines()
+                    if line.strip() and not line.strip().startswith("--")
+                )
+            )
+            for statement in statements:
+                await connection.execute(text(statement))
     except (SQLAlchemyError, asyncpg.PostgresError) as error:
         await engine.dispose()
         pytest.skip(f"PostgreSQL integration database is unavailable: {error}")
@@ -69,46 +72,35 @@ async def clean_postgres(
 ) -> AsyncIterator[None]:
     async with postgres_session_factory() as session:
         await session.execute(
-            text("TRUNCATE TABLE systemdb.users RESTART IDENTITY CASCADE")
+            text("""
+            TRUNCATE TABLE nutrition_planned_meals, nutrition_meal_plans,
+                nutrition_idempotency_keys, nutrition_target_snapshots,
+                nutrition_food_cache RESTART IDENTITY CASCADE
+        """)
         )
         await session.commit()
     yield
     async with postgres_session_factory() as session:
         await session.execute(
-            text("TRUNCATE TABLE systemdb.users RESTART IDENTITY CASCADE")
+            text("""
+            TRUNCATE TABLE nutrition_planned_meals, nutrition_meal_plans,
+                nutrition_idempotency_keys, nutrition_target_snapshots,
+                nutrition_food_cache RESTART IDENTITY CASCADE
+        """)
         )
         await session.commit()
 
 
 async def create_user(session: AsyncSession, email: str) -> int:
-    result = await session.execute(
-        text("""
-            INSERT INTO systemdb.users (email, password, name)
-            VALUES (:email, 'test-password', 'Integration Test User') RETURNING id
-        """),
-        {"email": email},
-    )
-    return result.scalar_one()
-
-
-async def create_profile(
-    session: AsyncSession, user_id: int, allergies: list[str] | None = None
-) -> None:
-    await session.execute(
-        text("""
-            INSERT INTO systemdb.nutrition_profiles (
-                user_id, sex_for_energy_equation, activity_level, nutrition_goal,
-                dietary_preferences, dietary_restrictions, allergies
-            ) VALUES (:user_id, 'female', 'moderate', 'maintenance', '[]', '[]', CAST(:allergies AS jsonb))
-        """),
-        {"user_id": user_id, "allergies": json.dumps(allergies or [])},
-    )
+    """Return a stable external user identifier without accessing the main database."""
+    del session
+    return int.from_bytes(hashlib.sha256(email.encode()).digest()[:8], "big") >> 1
 
 
 async def create_target(session: AsyncSession, user_id: int) -> int:
     result = await session.execute(
         text("""
-            INSERT INTO systemdb.nutrition_target_snapshots (
+            INSERT INTO nutrition_target_snapshots (
                 user_id, effective_from, bmr_kcal, tdee_kcal, calorie_target_kcal,
                 protein_target_g, carbohydrate_target_g, fat_target_g, fiber_target_g,
                 calculation_method, calculation_inputs
