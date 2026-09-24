@@ -23,6 +23,8 @@ jobs:
           POSTGRES_DB: systemdb
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd "pg_isready -U postgres -d systemdb"
           --health-interval 10s
@@ -32,6 +34,7 @@ jobs:
       JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
       NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
+      INTERNAL_SERVICE_TOKEN: ci-test-internal-service-token
       OPENAI_API_KEY: ci-test-openai-key
 
     steps:

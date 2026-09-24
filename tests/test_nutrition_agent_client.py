@@ -4,11 +4,20 @@ from decimal import Decimal
 import httpx
 import pytest
 
+from app.config import get_settings
 from app.services.nutrition_agent_client import (
     NutritionAgentClient,
     NutritionAgentUnavailableError,
     NutritionMealPlanValidationError,
 )
+
+
+@pytest.fixture(autouse=True)
+def configure_internal_service_token(monkeypatch):
+    """Keep HTTP-client unit tests independent from a developer's local .env file."""
+    monkeypatch.setattr(
+        get_settings(), "INTERNAL_SERVICE_TOKEN", "test-internal-service-token"
+    )
 
 
 def test_conversation_client_forwards_full_history(monkeypatch):
