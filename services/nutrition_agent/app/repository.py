@@ -1,7 +1,7 @@
 """Database access for the user-owned nutrition domain."""
 
 import json
-from datetime import UTC, date, datetime, time
+from datetime import date
 from typing import Any
 
 from sqlalchemy import bindparam, text

@@ -23,6 +23,7 @@ from app.api.schemas.nutrition import (
     ReplaceMealRequest,
     TargetCalculationRequest,
 )
+from app.db.database import get_db
 from app.services.nutrition_agent_client import (
     NutritionAgentClient,
     NutritionAgentUnavailableError,
@@ -32,9 +33,10 @@ from app.services.nutrition_service import (
     NutritionFoodDataError,
     NutritionNotFoundError,
     NutritionProfileIncompleteError,
+)
+from app.services.nutrition_service import (
     NutritionService as MainNutritionService,
 )
-from app.db.database import get_db
 
 router = APIRouter(prefix="/nutrition")
 
@@ -376,11 +378,13 @@ async def confirm_meal_plan(
     payload: MealPlanIdRequest,
     user: dict = Depends(get_current_user),
     service: NutritionServiceDependency = None,
+    main_service: MainNutritionServiceDependency = None,
     idempotency_key: str | None = Header(default=None),
 ):
     try:
+        profile = await main_service.get_profile(user["id"])
         return await service.confirm_meal_plan(
-            user["id"], payload.meal_plan_id, idempotency_key
+            user["id"], payload.meal_plan_id, idempotency_key, profile=profile
         )
     except NutritionNotFoundError as error:
         raise not_found(error) from error

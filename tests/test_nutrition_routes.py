@@ -264,7 +264,12 @@ def test_meal_plan_lifecycle_routes_scope_plan_ids_and_forward_idempotency(
     )
     service.get_meal_plan.assert_awaited_once_with(9, 41)
     service.list_meal_plans.assert_awaited_once_with(9)
-    service.confirm_meal_plan.assert_awaited_once_with(9, 41, "confirm-1")
+    service.confirm_meal_plan.assert_awaited_once_with(
+        9,
+        41,
+        "confirm-1",
+        profile=service.get_profile.return_value,
+    )
     service.archive_meal_plan.assert_awaited_once_with(9, 41, "archive-1")
 
 
@@ -304,7 +309,15 @@ def test_meal_plan_lifecycle_validation_errors_preserve_details(
 
     assert response.status_code == 422
     assert response.json() == {"detail": detail}
-    getattr(service, service_method).assert_awaited_once_with(9, 41, "lifecycle-1")
+    if service_method == "confirm_meal_plan":
+        getattr(service, service_method).assert_awaited_once_with(
+            9,
+            41,
+            "lifecycle-1",
+            profile=service.get_profile.return_value,
+        )
+    else:
+        getattr(service, service_method).assert_awaited_once_with(9, 41, "lifecycle-1")
 
 
 def test_meal_plan_agent_outage_returns_service_unavailable(nutrition_client):

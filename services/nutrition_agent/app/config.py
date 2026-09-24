@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     DATABASE_URL: str = ""
     RUN_MIGRATIONS: bool = False
     USDA_FDC_API_KEY: str = ""
+    NUTRITION_LLM_ENABLED: bool = True
+    NUTRITION_LLM_DEBUG_LOG_REQUESTS: bool = False
+    NUTRITION_LLM_DEBUG_LOG_RESPONSES: bool = False
+    OPENAI_API_KEY: str = ""
+    LLM_MODEL: str = "gpt-5-nano"
 
 
 settings = Settings()

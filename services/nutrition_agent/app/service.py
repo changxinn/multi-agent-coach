@@ -12,7 +12,11 @@ from .calculator import calculate_targets
 from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
 from .meal_plan_safety import assess_meal_plan_safety
 from .repository import NutritionRepository
-from .schemas import MealPlanCreateRequest, MealPlanGenerateRequest, TargetCalculationRequest
+from .schemas import (
+    MealPlanCreateRequest,
+    MealPlanGenerateRequest,
+    TargetCalculationRequest,
+)
 
 
 class NutritionNotFoundError(Exception):
@@ -239,6 +243,7 @@ class NutritionService:
                 "catalogue_food_ids": [food["id"] for food in safe_foods],
             },
             planned_meals=planned_meals,
+            profile=profile,
         )
         return await self.create_meal_plan(user_id, create_payload)
 
@@ -252,7 +257,7 @@ class NutritionService:
         return await self.repo.list_meal_plans(user_id)
 
     async def confirm_meal_plan(
-        self, user_id: int, meal_plan_id: int
+        self, user_id: int, meal_plan_id: int, *, profile: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         await self.repo.lock_user_meal_plans(user_id)
         plan = await self.get_meal_plan(user_id, meal_plan_id)
@@ -269,7 +274,7 @@ class NutritionService:
         }
         assessed_meals, safety_warnings = assess_meal_plan_safety(
             planned_meals,
-            profile,
+            profile or {},
             await self.repo.get_food_safety_metadata(food_cache_ids),
         )
         if any(meal["safety_status"] == "blocked" for meal in assessed_meals):

@@ -83,6 +83,40 @@ class NutritionAgentClient:
             ) from error
         return response.json()
 
+    def respond(
+        self,
+        *,
+        user_id: int,
+        messages: list[dict[str, Any]],
+        user_profile: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call the conversational Nutrition Agent from the synchronous graph node."""
+        settings = get_settings()
+        if not settings.INTERNAL_SERVICE_TOKEN:
+            raise NutritionAgentUnavailableError("Nutrition service is not configured")
+        try:
+            response = httpx.post(
+                f"{settings.NUTRITION_AGENT_URL.rstrip('/')}/v1/nutrition/chat",
+                headers={"X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN},
+                json=jsonable_encoder(
+                    {
+                        "user_id": user_id,
+                        "messages": messages,
+                        "user_profile": user_profile,
+                    }
+                ),
+                timeout=httpx.Timeout(30.0, connect=2.0),
+            )
+            response.raise_for_status()
+        except httpx.HTTPError as error:
+            raise NutritionAgentUnavailableError(
+                "Nutrition service is temporarily unavailable"
+            ) from error
+        payload = response.json()
+        if not isinstance(payload.get("message"), str) or not payload["message"].strip():
+            raise NutritionAgentUnavailableError("Nutrition service returned an invalid response")
+        return payload
+
     async def calculate_targets(
         self,
         user_id: int,
@@ -161,11 +195,16 @@ class NutritionAgentClient:
         return (await self._post("meal-plans/list", {"user_id": user_id}))["items"]
 
     async def confirm_meal_plan(
-        self, user_id: int, meal_plan_id: int, idempotency_key: str | None = None
+        self,
+        user_id: int,
+        meal_plan_id: int,
+        idempotency_key: str | None = None,
+        *,
+        profile: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await self._post(
             "meal-plans/confirm",
-            {"user_id": user_id, "meal_plan_id": meal_plan_id},
+            {"user_id": user_id, "meal_plan_id": meal_plan_id, "profile": profile or {}},
             idempotency_key=idempotency_key,
         )
 

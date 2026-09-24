@@ -126,7 +126,7 @@ class MealPlanCreateRequest(UserRequest):
     """Validated persistence contract for a generated, user-confirmed meal plan."""
 
     target_snapshot_id: int = Field(gt=0)
-    profile: dict[str, Any]
+    profile: dict[str, Any] = Field(default_factory=dict)
     start_date: date
     end_date: date
     generated_plan: dict[str, Any] = Field(default_factory=dict)
@@ -151,7 +151,7 @@ class MealPlanGenerateRequest(UserRequest):
     """User-selected scope for a deterministic, server-generated draft."""
 
     start_date: date
-    profile: dict[str, Any]
+    profile: dict[str, Any] = Field(default_factory=dict)
     end_date: date
     meal_types: list[Literal["breakfast", "lunch", "dinner", "snack"]] = Field(
         min_length=1
@@ -172,5 +172,24 @@ class MealPlanIdRequest(UserRequest):
     meal_plan_id: int = Field(gt=0)
 
 
+class MealPlanConfirmRequest(MealPlanIdRequest):
+    """Current main-application profile for confirmation-time safety checks."""
+
+    profile: dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationMessage(StrictModel):
+    role: Literal["user", "assistant"]
+    content: str = Field(min_length=1, max_length=8000)
+    name: str | None = Field(default=None, max_length=200)
+
+
 class ChatRequest(UserRequest):
+    """Full gateway transcript for a conversational Nutrition Agent response."""
+
+    messages: list[ConversationMessage] = Field(min_length=1, max_length=200)
+    user_profile: dict[str, Any] = Field(default_factory=dict)
+
+
+class ChatResponse(StrictModel):
     message: str = Field(min_length=1, max_length=4000)

@@ -72,31 +72,6 @@ def test_meal_plan_generation_request_requires_unique_meal_types():
 
 
 @pytest.mark.asyncio
-async def test_profile_save_clears_unsupported_dietary_values():
-    db = AsyncMock()
-    result = MagicMock()
-    result.mappings.return_value.one.return_value = {"user_id": 7}
-    db.execute.return_value = result
-    repo = NutritionRepository(db)
-
-    await repo.upsert_profile(
-        7,
-        {
-            "sex_for_energy_equation": "female",
-            "activity_level": "moderate",
-            "nutrition_goal": "maintenance",
-            "allergies": ["milk"],
-            "dietary_preferences": ["vegan"],
-            "dietary_restrictions": ["gluten_free"],
-        },
-    )
-
-    _, values = db.execute.await_args.args
-    assert values["dietary_preferences"] == "[]"
-    assert values["dietary_restrictions"] == "[]"
-
-
-@pytest.mark.asyncio
 async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
     service = NutritionService(AsyncMock())
     service.repo.get_active_target = AsyncMock(
@@ -108,9 +83,6 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
             "fat_target_g": Decimal(60),
             "fiber_target_g": Decimal(30),
         }
-    )
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": ["milk"], "dietary_preferences": [], "dietary_restrictions": []}
     )
     service.repo.list_food_catalogue = AsyncMock(
         return_value=[
@@ -134,6 +106,7 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
             start_date="2026-09-22",
             end_date="2026-09-22",
             meal_types=["breakfast", "dinner"],
+            profile={"allergies": ["milk"]},
         ),
     )
 
@@ -157,13 +130,6 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
             "carbohydrate_target_g": Decimal(180),
             "fat_target_g": Decimal(60),
             "fiber_target_g": Decimal(30),
-        }
-    )
-    service.repo.get_profile = AsyncMock(
-        return_value={
-            "allergies": [],
-            "dietary_preferences": ["vegan"],
-            "dietary_restrictions": ["gluten_free"],
         }
     )
     service.repo.list_food_catalogue = AsyncMock(
@@ -192,6 +158,11 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
             start_date="2026-09-22",
             end_date="2026-09-22",
             meal_types=["breakfast"],
+            profile={
+                "allergies": [],
+                "dietary_preferences": ["vegan"],
+                "dietary_restrictions": ["gluten_free"],
+            },
         ),
     )
 
@@ -206,7 +177,6 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
 async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies():
     service = NutritionService(AsyncMock())
     service.repo.get_active_target = AsyncMock(return_value={"id": 3})
-    service.repo.get_profile = AsyncMock(return_value={"allergies": ["milk"]})
     service.repo.list_food_catalogue = AsyncMock(
         return_value=[{"id": 11, "description": "Oats", "calories_per_100g": Decimal(400)}]
     )
@@ -222,6 +192,7 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
                 start_date="2026-09-22",
                 end_date="2026-09-22",
                 meal_types=["breakfast"],
+                profile={"allergies": ["milk"]},
             ),
         )
 
@@ -240,9 +211,6 @@ async def test_generate_meal_plan_requires_active_targets_and_a_safe_catalogue()
         await service.generate_meal_plan(7, request)
 
     service.repo.get_active_target.return_value = {"id": 3}
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": [], "dietary_preferences": [], "dietary_restrictions": []}
-    )
     service.repo.list_food_catalogue = AsyncMock(return_value=[])
     service.repo.get_food_safety_metadata = AsyncMock(return_value={})
     with pytest.raises(NutritionProfileIncompleteError, match="no safe foods"):
@@ -288,7 +256,7 @@ async def test_create_meal_plan_serializes_version_allocation_and_persists_meals
     version_statement, _ = db.execute.await_args_list[1].args
     assert "COALESCE(MAX(version), 0) + 1" in str(version_statement)
     insert_statement, insert_values = db.execute.await_args_list[2].args
-    assert "INSERT INTO systemdb.nutrition_meal_plans" in str(insert_statement)
+    assert "INSERT INTO nutrition_meal_plans" in str(insert_statement)
     assert "'draft'" in str(insert_statement)
     assert insert_values["version"] == 2
     assert insert_values["target_snapshot_id"] == 3
@@ -333,9 +301,6 @@ async def test_create_meal_plan_requires_a_target_snapshot_owned_by_the_user():
 async def test_create_meal_plan_blocks_confirmed_allergen_conflicts():
     service = NutritionService(AsyncMock())
     service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": ["milk"], "dietary_restrictions": []}
-    )
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
@@ -351,6 +316,7 @@ async def test_create_meal_plan_blocks_confirmed_allergen_conflicts():
         target_snapshot_id=3,
         start_date=date(2026, 9, 22),
         end_date=date(2026, 9, 22),
+        profile={"allergies": ["milk"]},
         planned_meals=[
             planned_meal(items=[{**planned_meal()["items"][0], "food_cache_id": 12}])
         ],
@@ -366,9 +332,6 @@ async def test_create_meal_plan_blocks_confirmed_allergen_conflicts():
 async def test_create_meal_plan_persists_server_computed_safety_results():
     service = NutritionService(AsyncMock())
     service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": [], "dietary_restrictions": []}
-    )
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
@@ -415,9 +378,6 @@ async def test_confirm_meal_plan_reassesses_draft_and_supersedes_atomically():
         ],
     }
     service.repo.get_meal_plan = AsyncMock(return_value=plan)
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": [], "dietary_restrictions": []}
-    )
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
@@ -431,7 +391,10 @@ async def test_confirm_meal_plan_reassesses_draft_and_supersedes_atomically():
         return_value={"id": 41, "status": "active"}
     )
 
-    assert await service.confirm_meal_plan(7, 41) == {"id": 41, "status": "active"}
+    assert await service.confirm_meal_plan(7, 41, profile={}) == {
+        "id": 41,
+        "status": "active",
+    }
     service.repo.lock_user_meal_plans.assert_awaited_once_with(7)
     service.repo.activate_draft_meal_plan.assert_awaited_once()
     args = service.repo.activate_draft_meal_plan.await_args.args
@@ -457,9 +420,6 @@ async def test_confirm_rejects_non_draft_and_newly_blocked_safety_results():
             {"id": 9, "items": [{"food_cache_id": 12, "food_name": "Milk"}]}
         ],
     }
-    service.repo.get_profile = AsyncMock(
-        return_value={"allergies": ["milk"], "dietary_restrictions": []}
-    )
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
@@ -470,7 +430,7 @@ async def test_confirm_rejects_non_draft_and_newly_blocked_safety_results():
         }
     )
     with pytest.raises(NutritionMealPlanSafetyError, match="confirmed allergies"):
-        await service.confirm_meal_plan(7, 41)
+        await service.confirm_meal_plan(7, 41, profile={"allergies": ["milk"]})
     service.repo.activate_draft_meal_plan.assert_not_awaited()
 
 

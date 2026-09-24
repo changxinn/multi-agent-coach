@@ -11,6 +11,35 @@ from app.services.nutrition_agent_client import (
 )
 
 
+def test_conversation_client_forwards_full_history(monkeypatch):
+    captured = {}
+
+    def post(url, *, headers, json, timeout):
+        captured.update(url=url, headers=headers, json=json, timeout=timeout)
+        return httpx.Response(
+            200,
+            json={"message": "Prioritize carbs and protein after your run."},
+            request=httpx.Request("POST", url),
+        )
+
+    monkeypatch.setattr("app.services.nutrition_agent_client.httpx.post", post)
+    response = NutritionAgentClient().respond(
+        user_id=7,
+        messages=[
+            {"role": "user", "content": "I ran 10 km."},
+            {"role": "assistant", "content": "Nice work."},
+            {"role": "user", "content": "What should I eat?"},
+        ],
+        user_profile={"goal": "performance"},
+    )
+
+    assert response["message"].startswith("Prioritize")
+    assert captured["url"].endswith("/v1/nutrition/chat")
+    assert captured["json"]["user_id"] == 7
+    assert len(captured["json"]["messages"]) == 3
+    assert captured["json"]["user_profile"] == {"goal": "performance"}
+
+
 class MealPlanPayload:
     def model_dump(self, *, mode: str):
         assert mode == "json"
@@ -221,11 +250,13 @@ async def test_meal_plan_lifecycle_client_forwards_ownership_and_idempotency(
     )
     client = NutritionAgentClient()
     assert await client.list_meal_plans(7) == []
-    assert await client.confirm_meal_plan(7, 41, "confirm-1") == {"id": 41}
+    assert await client.confirm_meal_plan(
+        7, 41, "confirm-1", profile={"allergies": ["milk"]}
+    ) == {"id": 41}
     assert await client.archive_meal_plan(7, 41, "archive-1") == {"id": 41}
     assert [request[2] for request in requests] == [
         {"user_id": 7},
-        {"user_id": 7, "meal_plan_id": 41},
+        {"user_id": 7, "meal_plan_id": 41, "profile": {"allergies": ["milk"]}},
         {"user_id": 7, "meal_plan_id": 41},
     ]
     assert requests[1][1]["Idempotency-Key"] == "confirm-1"

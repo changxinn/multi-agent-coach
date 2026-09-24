@@ -6,24 +6,22 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from .agent import NutritionAgent
 from .calculator import calculate_targets
 from .config import settings
 from .database import close_db, get_db, init_db
 from .schemas import (
-    AdherenceRequest,
     ChatRequest,
+    ChatResponse,
     DateRequest,
     EmptyNutritionRequest,
     FoodCatalogueRequest,
     FoodDetailRequest,
     FoodSearchRequest,
-    MealIdRequest,
+    MealPlanConfirmRequest,
     MealPlanCreateRequest,
     MealPlanGenerateRequest,
     MealPlanIdRequest,
-    MealRequest,
-    ProfileRequest,
-    ReplaceMealRequest,
     TargetCalculationRequest,
     TargetCalculationResponse,
     TargetsRequest,
@@ -41,6 +39,7 @@ from .service import (
 logger = logging.getLogger("uvicorn.error")
 
 app = FastAPI(title=settings.APP_NAME, version="1.0.0")
+agent = NutritionAgent(settings)
 
 
 async def require_internal_token(
@@ -101,6 +100,21 @@ async def nutrition_status(payload: EmptyNutritionRequest) -> dict[str, str]:
     """Confirm that the private Nutrition Agent endpoint is reachable."""
     del payload
     return {"status": "ready", "service": "nutrition-agent"}
+
+
+@app.post(
+    "/v1/nutrition/chat",
+    response_model=ChatResponse,
+    dependencies=[Depends(require_internal_token)],
+)
+async def nutrition_chat(payload: ChatRequest) -> ChatResponse:
+    """Generate a response from the complete gateway conversation transcript."""
+    return ChatResponse(
+        message=agent.respond(
+            messages=[message.model_dump(exclude_none=True) for message in payload.messages],
+            user_profile=payload.user_profile,
+        )
+    )
 
 
 @app.post(
@@ -248,7 +262,7 @@ async def meal_plans_list(payload: UserRequest, service: Service):
     "/v1/nutrition/meal-plans/confirm", dependencies=[Depends(require_internal_token)]
 )
 async def meal_plans_confirm(
-    payload: MealPlanIdRequest,
+    payload: MealPlanConfirmRequest,
     service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
 ):
@@ -258,7 +272,9 @@ async def meal_plans_confirm(
             "meal-plans.confirm",
             idempotency_key,
             payload.model_dump(mode="json"),
-            lambda: service.confirm_meal_plan(payload.user_id, payload.meal_plan_id),
+            lambda: service.confirm_meal_plan(
+                payload.user_id, payload.meal_plan_id, profile=payload.profile
+            ),
         )
     except Exception as error:
         raise translate(error) from error
