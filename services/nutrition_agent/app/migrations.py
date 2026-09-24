@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 logger = logging.getLogger("uvicorn.error")
 IMPORTED_FOOD_CACHE_SEEDS = {
     "003_seed_nutrition_food_cache.sql": ("usda", "170178"),
-    "004_seed_nutrition_food_cache.sql": ("usda", "2709972"),
+    "004_seed_nutrition_food_cache.sql": ("usda", "2705967"),
+    "005_seed_nutrition_food_cache.sql": ("usda", "170007"),
 }
 
 

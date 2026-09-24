@@ -37,32 +37,29 @@ def test_imported_food_cache_seeds_are_batched_and_idempotent():
     migration_dir = (
         Path(__file__).parents[1] / "services/nutrition_agent/app/db/migrations"
     )
-    first_seed = (migration_dir / "003_seed_nutrition_food_cache.sql").read_text(
-        encoding="utf-8"
-    )
-    second_seed = (migration_dir / "004_seed_nutrition_food_cache.sql").read_text(
-        encoding="utf-8"
-    )
+    seeds = [
+        migration_dir / "003_seed_nutrition_food_cache.sql",
+        migration_dir / "004_seed_nutrition_food_cache.sql",
+        migration_dir / "005_seed_nutrition_food_cache.sql",
+    ]
+    contents = [seed.read_text(encoding="utf-8") for seed in seeds]
 
-    assert first_seed.count("INSERT INTO nutrition_food_cache (") == 66
-    assert second_seed.count("INSERT INTO nutrition_food_cache (") == 67
-    assert first_seed.count("'usda', '") == 6_600
-    assert second_seed.count("'usda', '") == 6_670
-    assert first_seed.count("'usda', '") + second_seed.count("'usda', '") == 13_270
-    assert (
-        first_seed.count("ON CONFLICT (provider, provider_food_id) DO NOTHING;") == 66
-    )
-    assert (
-        second_seed.count("ON CONFLICT (provider, provider_food_id) DO NOTHING;") == 67
-    )
-    assert (
-        migration_dir / "003_seed_nutrition_food_cache.sql"
-    ).stat().st_size < 100_000_000
-    assert (
-        migration_dir / "004_seed_nutrition_food_cache.sql"
-    ).stat().st_size < 100_000_000
-    assert "'747429'," not in first_seed + second_seed
-    assert "CREATE TABLE" not in first_seed + second_seed
+    assert [
+        content.count("INSERT INTO nutrition_food_cache (") for content in contents
+    ] == [
+        37,
+        49,
+        47,
+    ]
+    assert [content.count("'usda', '") for content in contents] == [3_700, 4_900, 4_670]
+    assert sum(content.count("'usda', '") for content in contents) == 13_270
+    assert [
+        content.count("ON CONFLICT (provider, provider_food_id) DO NOTHING;")
+        for content in contents
+    ] == [37, 49, 47]
+    assert all(seed.stat().st_size < 50_000_000 for seed in seeds)
+    assert "'747429'," not in "".join(contents)
+    assert "CREATE TABLE" not in "".join(contents)
 
 
 def test_private_manual_meal_item_requires_explicit_macros():
