@@ -16,7 +16,9 @@ class NutritionRepository:
 
     async def get_profile(self, user_id: int) -> dict[str, Any] | None:
         result = await self.db.execute(
-            text("SELECT * FROM systemdb.user_fitness_profiles WHERE user_id = :user_id"),
+            text(
+                "SELECT * FROM systemdb.user_fitness_profiles WHERE user_id = :user_id"
+            ),
             {"user_id": user_id},
         )
         row = result.mappings().first()

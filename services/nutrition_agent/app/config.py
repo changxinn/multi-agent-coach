@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     NUTRITION_LLM_DEBUG_LOG_RESPONSES: bool = False
     OPENAI_API_KEY: str = ""
     LLM_MODEL: str = "gpt-5-nano"
+    NUTRITION_LLM_REASONING_EFFORT: str = "low"
 
 
 settings = Settings()

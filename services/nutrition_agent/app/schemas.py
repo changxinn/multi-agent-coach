@@ -189,6 +189,7 @@ class ChatRequest(UserRequest):
 
     messages: list[ConversationMessage] = Field(min_length=1, max_length=200)
     user_profile: dict[str, Any] = Field(default_factory=dict)
+    nutrition_context: dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatResponse(StrictModel):

@@ -26,9 +26,7 @@ def assess_meal_plan_safety(
             "Nutrition profile is missing; food safety requires review."
         )
     for meal in planned_meals:
-        assessment = _assess_meal(
-            meal, profile is not None, allergies, foods_by_id
-        )
+        assessment = _assess_meal(meal, profile is not None, allergies, foods_by_id)
         assessed_meals.append(
             {
                 **meal,

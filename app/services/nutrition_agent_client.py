@@ -68,7 +68,11 @@ class NutritionAgentClient:
             )
         if response.status_code == 422:
             detail = response.json().get("detail", "Invalid nutrition request")
-            if path in {"meal-plans/confirm", "meal-plans/archive", "meal-plans/generate"}:
+            if path in {
+                "meal-plans/confirm",
+                "meal-plans/archive",
+                "meal-plans/generate",
+            }:
                 raise NutritionMealPlanValidationError(detail)
             raise NutritionProfileIncompleteError(detail)
         if response.status_code == 503:
@@ -89,6 +93,7 @@ class NutritionAgentClient:
         user_id: int,
         messages: list[dict[str, Any]],
         user_profile: dict[str, Any],
+        nutrition_context: dict[str, Any],
     ) -> dict[str, Any]:
         """Call the conversational Nutrition Agent from the synchronous graph node."""
         settings = get_settings()
@@ -103,6 +108,7 @@ class NutritionAgentClient:
                         "user_id": user_id,
                         "messages": messages,
                         "user_profile": user_profile,
+                        "nutrition_context": nutrition_context,
                     }
                 ),
                 timeout=httpx.Timeout(30.0, connect=2.0),
@@ -113,8 +119,13 @@ class NutritionAgentClient:
                 "Nutrition service is temporarily unavailable"
             ) from error
         payload = response.json()
-        if not isinstance(payload.get("message"), str) or not payload["message"].strip():
-            raise NutritionAgentUnavailableError("Nutrition service returned an invalid response")
+        if (
+            not isinstance(payload.get("message"), str)
+            or not payload["message"].strip()
+        ):
+            raise NutritionAgentUnavailableError(
+                "Nutrition service returned an invalid response"
+            )
         return payload
 
     async def calculate_targets(
@@ -204,7 +215,11 @@ class NutritionAgentClient:
     ) -> dict[str, Any]:
         return await self._post(
             "meal-plans/confirm",
-            {"user_id": user_id, "meal_plan_id": meal_plan_id, "profile": profile or {}},
+            {
+                "user_id": user_id,
+                "meal_plan_id": meal_plan_id,
+                "profile": profile or {},
+            },
             idempotency_key=idempotency_key,
         )
 
@@ -223,5 +238,6 @@ class NutritionAgentClient:
         return await self._post(
             "context", {"user_id": user_id, "date": for_date.isoformat()}
         )
+
 
 nutrition_agent_client = NutritionAgentClient()

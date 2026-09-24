@@ -86,18 +86,44 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
     )
     service.repo.list_food_catalogue = AsyncMock(
         return_value=[
-            {"id": 10, "description": "Milk", "calories_per_100g": Decimal(60), "protein_g_per_100g": Decimal(3), "carbohydrate_g_per_100g": Decimal(5), "fat_g_per_100g": Decimal(3), "fiber_g_per_100g": Decimal(0)},
-            {"id": 11, "description": "Oats", "calories_per_100g": Decimal(400), "protein_g_per_100g": Decimal(10), "carbohydrate_g_per_100g": Decimal(70), "fat_g_per_100g": Decimal(8), "fiber_g_per_100g": Decimal(10)},
+            {
+                "id": 10,
+                "description": "Milk",
+                "calories_per_100g": Decimal(60),
+                "protein_g_per_100g": Decimal(3),
+                "carbohydrate_g_per_100g": Decimal(5),
+                "fat_g_per_100g": Decimal(3),
+                "fiber_g_per_100g": Decimal(0),
+            },
+            {
+                "id": 11,
+                "description": "Oats",
+                "calories_per_100g": Decimal(400),
+                "protein_g_per_100g": Decimal(10),
+                "carbohydrate_g_per_100g": Decimal(70),
+                "fat_g_per_100g": Decimal(8),
+                "fiber_g_per_100g": Decimal(10),
+            },
         ]
     )
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
-            10: {"id": 10, "allergen_status": "known", "allergen_data": {"contains": ["milk"]}},
-            11: {"id": 11, "allergen_status": "known", "allergen_data": {"contains": []}},
+            10: {
+                "id": 10,
+                "allergen_status": "known",
+                "allergen_data": {"contains": ["milk"]},
+            },
+            11: {
+                "id": 11,
+                "allergen_status": "known",
+                "allergen_data": {"contains": []},
+            },
         }
     )
     service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})
-    service.repo.create_meal_plan = AsyncMock(return_value={"id": 41, "status": "draft"})
+    service.repo.create_meal_plan = AsyncMock(
+        return_value={"id": 41, "status": "draft"}
+    )
 
     result = await service.generate_meal_plan(
         7,
@@ -115,7 +141,9 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
     assert create_args["target_snapshot_id"] == 3
     assert create_args["generated_plan"]["generator"] == "deterministic_catalogue_v1"
     assert len(create_args["planned_meals"]) == 2
-    assert {meal["items"][0]["food_name"] for meal in create_args["planned_meals"]} == {"Oats"}
+    assert {meal["items"][0]["food_name"] for meal in create_args["planned_meals"]} == {
+        "Oats"
+    }
     assert create_args["planned_meals"][0]["calorie_target_kcal"] == Decimal(900)
 
 
@@ -146,10 +174,14 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
         ]
     )
     service.repo.get_food_safety_metadata = AsyncMock(
-        return_value={11: {"id": 11, "allergen_status": "unknown", "allergen_data": None}}
+        return_value={
+            11: {"id": 11, "allergen_status": "unknown", "allergen_data": None}
+        }
     )
     service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})
-    service.repo.create_meal_plan = AsyncMock(return_value={"id": 41, "status": "draft"})
+    service.repo.create_meal_plan = AsyncMock(
+        return_value={"id": 41, "status": "draft"}
+    )
 
     await service.generate_meal_plan(
         7,
@@ -178,10 +210,14 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
     service = NutritionService(AsyncMock())
     service.repo.get_active_target = AsyncMock(return_value={"id": 3})
     service.repo.list_food_catalogue = AsyncMock(
-        return_value=[{"id": 11, "description": "Oats", "calories_per_100g": Decimal(400)}]
+        return_value=[
+            {"id": 11, "description": "Oats", "calories_per_100g": Decimal(400)}
+        ]
     )
     service.repo.get_food_safety_metadata = AsyncMock(
-        return_value={11: {"id": 11, "allergen_status": "unknown", "allergen_data": None}}
+        return_value={
+            11: {"id": 11, "allergen_status": "unknown", "allergen_data": None}
+        }
     )
 
     with pytest.raises(NutritionProfileIncompleteError, match="no safe foods"):
@@ -207,7 +243,9 @@ async def test_generate_meal_plan_requires_active_targets_and_a_safe_catalogue()
         end_date="2026-09-22",
         meal_types=["breakfast"],
     )
-    with pytest.raises(NutritionProfileIncompleteError, match="Active nutrition targets"):
+    with pytest.raises(
+        NutritionProfileIncompleteError, match="Active nutrition targets"
+    ):
         await service.generate_meal_plan(7, request)
 
     service.repo.get_active_target.return_value = {"id": 3}

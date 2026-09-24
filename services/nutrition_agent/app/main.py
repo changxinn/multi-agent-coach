@@ -111,8 +111,11 @@ async def nutrition_chat(payload: ChatRequest) -> ChatResponse:
     """Generate a response from the complete gateway conversation transcript."""
     return ChatResponse(
         message=agent.respond(
-            messages=[message.model_dump(exclude_none=True) for message in payload.messages],
+            messages=[
+                message.model_dump(exclude_none=True) for message in payload.messages
+            ],
             user_profile=payload.user_profile,
+            nutrition_context=payload.nutrition_context,
         )
     )
 

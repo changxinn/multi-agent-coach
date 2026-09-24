@@ -136,11 +136,14 @@ class UsdaFoodDataCentralProvider:
             measure_name = measure.get("name") if isinstance(measure, dict) else None
             amount = cls._decimal(portion.get("amount", portion.get("value")))
             modifier = portion.get("modifier")
-            description = " ".join(
-                str(value)
-                for value in (amount, measure_name, modifier)
-                if value not in (None, "")
-            ) or None
+            description = (
+                " ".join(
+                    str(value)
+                    for value in (amount, measure_name, modifier)
+                    if value not in (None, "")
+                )
+                or None
+            )
             return gram_weight, description
         return None, None
 

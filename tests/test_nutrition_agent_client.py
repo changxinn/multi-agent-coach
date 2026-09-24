@@ -31,6 +31,7 @@ def test_conversation_client_forwards_full_history(monkeypatch):
             {"role": "user", "content": "What should I eat?"},
         ],
         user_profile={"goal": "performance"},
+        nutrition_context={"date": "2026-09-24", "meal_logging": {"meal_count": 0}},
     )
 
     assert response["message"].startswith("Prioritize")
@@ -38,6 +39,10 @@ def test_conversation_client_forwards_full_history(monkeypatch):
     assert captured["json"]["user_id"] == 7
     assert len(captured["json"]["messages"]) == 3
     assert captured["json"]["user_profile"] == {"goal": "performance"}
+    assert captured["json"]["nutrition_context"] == {
+        "date": "2026-09-24",
+        "meal_logging": {"meal_count": 0},
+    }
 
 
 class MealPlanPayload:
@@ -160,19 +165,33 @@ async def test_meal_plan_generation_client_forwards_scope_and_idempotency(monkey
     captured = {}
 
     class Client:
-        async def __aenter__(self): return self
-        async def __aexit__(self, *_): return False
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
         async def post(self, url, *, headers, json):
             captured.update(url=url, headers=headers, json=json)
-            return httpx.Response(200, json={"id": 42}, request=httpx.Request("POST", url))
+            return httpx.Response(
+                200, json={"id": 42}, request=httpx.Request("POST", url)
+            )
 
     class GenerationPayload:
         def model_dump(self, *, mode: str):
             assert mode == "json"
-            return {"start_date": "2026-09-22", "end_date": "2026-09-22", "meal_types": ["breakfast"]}
+            return {
+                "start_date": "2026-09-22",
+                "end_date": "2026-09-22",
+                "meal_types": ["breakfast"],
+            }
 
-    monkeypatch.setattr("app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client())
-    assert await NutritionAgentClient().generate_meal_plan(7, GenerationPayload(), "generate-1") == {"id": 42}
+    monkeypatch.setattr(
+        "app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client()
+    )
+    assert await NutritionAgentClient().generate_meal_plan(
+        7, GenerationPayload(), "generate-1"
+    ) == {"id": 42}
     assert captured["url"].endswith("/v1/nutrition/meal-plans/generate")
     assert captured["headers"]["Idempotency-Key"] == "generate-1"
     assert captured["json"] == {
@@ -322,7 +341,9 @@ async def test_meal_plan_client_maps_transport_failures_to_unavailable(monkeypat
 
 
 @pytest.mark.asyncio
-async def test_unsupported_agent_operation_404_is_not_reported_as_missing_resource(monkeypatch):
+async def test_unsupported_agent_operation_404_is_not_reported_as_missing_resource(
+    monkeypatch,
+):
     class Client:
         async def __aenter__(self):
             return self
@@ -341,5 +362,7 @@ async def test_unsupported_agent_operation_404_is_not_reported_as_missing_resour
         "app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client()
     )
 
-    with pytest.raises(NutritionAgentUnavailableError, match="does not support operation"):
+    with pytest.raises(
+        NutritionAgentUnavailableError, match="does not support operation"
+    ):
         await NutritionAgentClient().get_nutrition_context(7, date(2026, 9, 22))

@@ -108,7 +108,9 @@ def test_create_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutrition_
     assert service.create_meal_plan.await_args.kwargs["profile"]["age"] == 30
 
 
-def test_generate_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutrition_client):
+def test_generate_meal_plan_scopes_to_user_and_forwards_idempotency_key(
+    nutrition_client,
+):
     client, service = nutrition_client
     service.generate_meal_plan.return_value = {"id": 42, "status": "draft"}
 
@@ -125,7 +127,10 @@ def test_generate_meal_plan_scopes_to_user_and_forwards_idempotency_key(nutritio
     assert response.status_code == 200
     assert response.json() == {"id": 42, "status": "draft"}
     assert service.generate_meal_plan.await_args.args[0] == 9
-    assert service.generate_meal_plan.await_args.args[1].meal_types == ["breakfast", "lunch"]
+    assert service.generate_meal_plan.await_args.args[1].meal_types == [
+        "breakfast",
+        "lunch",
+    ]
     assert service.generate_meal_plan.await_args.args[2] == "generate-1"
     assert (
         service.generate_meal_plan.await_args.kwargs["profile"]["nutrition_goal"]

@@ -16,9 +16,22 @@ concurrency:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: systemdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d systemdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
       JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
+      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
       OPENAI_API_KEY: ci-test-openai-key
 
     steps:

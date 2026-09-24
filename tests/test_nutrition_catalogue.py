@@ -33,6 +33,38 @@ def test_foundation_catalogue_seed_is_complete_and_idempotent():
     assert "CREATE TABLE" not in migration
 
 
+def test_imported_food_cache_seeds_are_batched_and_idempotent():
+    migration_dir = (
+        Path(__file__).parents[1] / "services/nutrition_agent/app/db/migrations"
+    )
+    first_seed = (migration_dir / "003_seed_nutrition_food_cache.sql").read_text(
+        encoding="utf-8"
+    )
+    second_seed = (migration_dir / "004_seed_nutrition_food_cache.sql").read_text(
+        encoding="utf-8"
+    )
+
+    assert first_seed.count("INSERT INTO nutrition_food_cache (") == 66
+    assert second_seed.count("INSERT INTO nutrition_food_cache (") == 67
+    assert first_seed.count("'usda', '") == 6_600
+    assert second_seed.count("'usda', '") == 6_670
+    assert first_seed.count("'usda', '") + second_seed.count("'usda', '") == 13_270
+    assert (
+        first_seed.count("ON CONFLICT (provider, provider_food_id) DO NOTHING;") == 66
+    )
+    assert (
+        second_seed.count("ON CONFLICT (provider, provider_food_id) DO NOTHING;") == 67
+    )
+    assert (
+        migration_dir / "003_seed_nutrition_food_cache.sql"
+    ).stat().st_size < 100_000_000
+    assert (
+        migration_dir / "004_seed_nutrition_food_cache.sql"
+    ).stat().st_size < 100_000_000
+    assert "'747429'," not in first_seed + second_seed
+    assert "CREATE TABLE" not in first_seed + second_seed
+
+
 def test_private_manual_meal_item_requires_explicit_macros():
     from services.nutrition_agent.app.schemas import MealItem
 

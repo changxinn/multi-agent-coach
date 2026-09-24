@@ -51,7 +51,9 @@ NutritionServiceDependency = Annotated[
 ]
 
 
-def get_main_nutrition_service(db: AsyncSession = Depends(get_db)) -> MainNutritionService:
+def get_main_nutrition_service(
+    db: AsyncSession = Depends(get_db),
+) -> MainNutritionService:
     """Main-application owner of canonical profiles and meal history."""
     return MainNutritionService(db)
 
@@ -166,6 +168,7 @@ async def get_active_targets(
         return {}
     except NutritionAgentUnavailableError as error:
         raise nutrition_unavailable(error) from error
+
 
 @router.post("/foods/search")
 async def search_foods(

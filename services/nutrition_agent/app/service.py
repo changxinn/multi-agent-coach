@@ -109,9 +109,9 @@ def _planned_food_item(food: dict[str, Any], grams: Decimal) -> dict[str, Any]:
         "fat_g": (Decimal(food["fat_g_per_100g"]) * multiplier).quantize(
             Decimal("0.01")
         ),
-        "fiber_g": (
-            Decimal(food.get("fiber_g_per_100g") or 0) * multiplier
-        ).quantize(Decimal("0.01")),
+        "fiber_g": (Decimal(food.get("fiber_g_per_100g") or 0) * multiplier).quantize(
+            Decimal("0.01")
+        ),
         "source": "meal_plan",
         "food_cache_id": food["id"],
     }
@@ -206,7 +206,9 @@ class NutritionService:
         safe_foods = [
             food
             for food in foods
-            if _food_is_safe_for_generation(food, safety_metadata.get(food["id"]), allergies)
+            if _food_is_safe_for_generation(
+                food, safety_metadata.get(food["id"]), allergies
+            )
         ]
         if not safe_foods:
             raise NutritionProfileIncompleteError(
@@ -219,7 +221,9 @@ class NutritionService:
         for day_offset in range(day_count):
             planned_date = payload.start_date + timedelta(days=day_offset)
             for meal_index, meal_type in enumerate(payload.meal_types):
-                food = safe_foods[(day_offset * meal_count + meal_index) % len(safe_foods)]
+                food = safe_foods[
+                    (day_offset * meal_count + meal_index) % len(safe_foods)
+                ]
                 targets = _meal_targets(target, meal_count)
                 grams = _grams_for_calories(food, targets["calorie_target_kcal"])
                 planned_meals.append(

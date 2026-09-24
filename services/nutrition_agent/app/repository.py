@@ -321,6 +321,7 @@ class NutritionRepository:
             {"snapshot_id": snapshot_id, **values},
         )
         return dict(result.mappings().one())
+
     async def close_target(self, snapshot_id: int, effective_to: date) -> None:
         await self.db.execute(
             text(
@@ -348,6 +349,7 @@ class NutritionRepository:
             {"user_id": user_id, "effective_from": effective_from, **values},
         )
         return dict(result.mappings().one())
+
     async def get_active_target(self, user_id: int) -> dict[str, Any] | None:
         result = await self.db.execute(
             text("""

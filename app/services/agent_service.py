@@ -173,6 +173,7 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
                 user_id=int(profile["user_id"]),
                 messages=state.get("messages", []),
                 user_profile=profile,
+                nutrition_context=state.get("nutrition_context", {}),
             )
             message_text = response["message"]
             logger.info("Nutrition Agent service generated a conversation response")
