@@ -401,7 +401,7 @@ class NutritionRepository:
                 SELECT id, provider_food_id, description, serving_size_g,
                        serving_description, calories_per_100g, protein_g_per_100g,
                        carbohydrate_g_per_100g, fat_g_per_100g, fiber_g_per_100g,
-                       allergen_data, allergen_status
+                       allergen_data, allergen_status, raw_response
                 FROM nutrition_food_cache
                 WHERE provider = 'usda'
                   AND calories_per_100g IS NOT NULL
@@ -433,6 +433,65 @@ class NutritionRepository:
             """)
         )
         return [dict(row) for row in result.mappings().all()]
+
+    async def browse_food_catalogue(
+        self, *, offset: int, limit: int, query: str | None = None
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Page through compatible cached USDA foods for bounded LLM retrieval."""
+        search_query = query.strip() if query and query.strip() else None
+        search_predicate = (
+            "AND description ILIKE '%' || :query || '%'" if search_query else ""
+        )
+        parameters: dict[str, Any] = {
+            "offset": offset,
+            "limit_plus_one": limit + 1,
+        }
+        if search_query:
+            parameters["query"] = search_query
+        result = await self.db.execute(
+            text(f"""
+                SELECT id, provider_food_id, description, serving_size_g,
+                       serving_description, calories_per_100g, protein_g_per_100g,
+                       carbohydrate_g_per_100g, fat_g_per_100g, fiber_g_per_100g,
+                       allergen_data, allergen_status, raw_response
+                FROM nutrition_food_cache
+                WHERE provider = 'usda'
+                  AND calories_per_100g IS NOT NULL
+                  AND protein_g_per_100g IS NOT NULL
+                  AND carbohydrate_g_per_100g IS NOT NULL
+                  AND fat_g_per_100g IS NOT NULL
+                  {search_predicate}
+                ORDER BY description, id
+                LIMIT :limit_plus_one OFFSET :offset
+            """),
+            parameters,
+        )
+        rows = [dict(row) for row in result.mappings().all()]
+        return rows[:limit], len(rows) > limit
+
+    async def get_food_catalogue_by_ids(
+        self, food_cache_ids: set[int]
+    ) -> dict[int, dict[str, Any]]:
+        """Resolve LLM food IDs from the trusted compatible USDA cache only."""
+        if not food_cache_ids:
+            return {}
+        statement = text("""
+            SELECT id, provider_food_id, description, serving_size_g,
+                   serving_description, calories_per_100g, protein_g_per_100g,
+                   carbohydrate_g_per_100g, fat_g_per_100g, fiber_g_per_100g,
+                   allergen_data, allergen_status, raw_response
+            FROM nutrition_food_cache
+            WHERE provider = 'usda'
+              AND calories_per_100g IS NOT NULL
+              AND protein_g_per_100g IS NOT NULL
+              AND carbohydrate_g_per_100g IS NOT NULL
+              AND fat_g_per_100g IS NOT NULL
+              AND id IN :food_cache_ids
+        """).bindparams(bindparam("food_cache_ids", expanding=True))
+        result = await self.db.execute(
+            statement, {"food_cache_ids": sorted(food_cache_ids)}
+        )
+        return {row["id"]: dict(row) for row in result.mappings().all()}
 
     async def cache_food(self, values: dict[str, Any]) -> dict[str, Any]:
         result = await self.db.execute(

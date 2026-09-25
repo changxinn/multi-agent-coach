@@ -1,6 +1,8 @@
 """Typed asynchronous client for the authoritative private Nutrition Agent."""
 
+import logging
 from datetime import date
+from time import perf_counter
 from typing import Any
 from uuid import uuid4
 
@@ -13,6 +15,8 @@ from app.services.nutrition_service import (
     NutritionNotFoundError,
     NutritionProfileIncompleteError,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class NutritionAgentUnavailableError(Exception):
@@ -32,15 +36,28 @@ class NutritionAgentClient:
         settings = get_settings()
         if not settings.INTERNAL_SERVICE_TOKEN:
             raise NutritionAgentUnavailableError("Nutrition service is not configured")
+        request_id = str(uuid4())
+        timeout_seconds = (
+            settings.NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS
+            if path == "meal-plans/generate"
+            else 10.0
+        )
+        started_at = perf_counter()
+        logger.info(
+            "Nutrition Agent request started operation=%s request_id=%s timeout_seconds=%.1f",
+            path,
+            request_id,
+            timeout_seconds,
+        )
         try:
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(10.0, connect=2.0)
+                timeout=httpx.Timeout(timeout_seconds, connect=2.0)
             ) as client:
                 response = await client.post(
                     f"{settings.NUTRITION_AGENT_URL.rstrip('/')}/v1/nutrition/{path}",
                     headers={
                         "X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN,
-                        "X-Request-ID": str(uuid4()),
+                        "X-Request-ID": request_id,
                         **(
                             {"Idempotency-Key": idempotency_key}
                             if idempotency_key
@@ -50,9 +67,23 @@ class NutritionAgentClient:
                     json=jsonable_encoder(payload),
                 )
         except httpx.HTTPError as error:
+            logger.warning(
+                "Nutrition Agent request failed operation=%s request_id=%s error_type=%s elapsed_seconds=%.3f",
+                path,
+                request_id,
+                type(error).__name__,
+                perf_counter() - started_at,
+            )
             raise NutritionAgentUnavailableError(
                 "Nutrition service is temporarily unavailable"
             ) from error
+        logger.info(
+            "Nutrition Agent request completed operation=%s request_id=%s status_code=%d elapsed_seconds=%.3f",
+            path,
+            request_id,
+            response.status_code,
+            perf_counter() - started_at,
+        )
         if response.status_code == 404 and path in {
             "meal-plans/get",
             "meal-plans/confirm",

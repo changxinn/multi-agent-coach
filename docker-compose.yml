@@ -47,6 +47,7 @@ services:
       - NUTRITION_AGENT_URL=http://nutrition-agent:8004
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
+      - NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS=${NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS:-120}
       - DEBUG=true
       - SEED_ADMIN_EMAIL=admin@example.com
       - SEED_ADMIN_PASSWORD=ChangeMe123!
@@ -201,11 +202,16 @@ services:
       - RUN_MIGRATIONS=true
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-}
       - LLM_MODEL=gpt-5-nano
       - NUTRITION_LLM_ENABLED=true
       - NUTRITION_LLM_REASONING_EFFORT=${NUTRITION_LLM_REASONING_EFFORT:-low}
       - NUTRITION_LLM_DEBUG_LOG_REQUESTS=${NUTRITION_LLM_DEBUG_LOG_REQUESTS:-false}
       - NUTRITION_LLM_DEBUG_LOG_RESPONSES=${NUTRITION_LLM_DEBUG_LOG_RESPONSES:-false}
+    volumes:
+      - ./services/nutrition_agent/app:/service/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004", "--reload"]
+    user: "0:0"
     restart: unless-stopped
     depends_on:
       nutrition-db:

@@ -203,6 +203,7 @@ async def test_meal_plan_generation_client_forwards_scope_and_idempotency(monkey
     ) == {"id": 42}
     assert captured["url"].endswith("/v1/nutrition/meal-plans/generate")
     assert captured["headers"]["Idempotency-Key"] == "generate-1"
+    assert captured["headers"]["X-Request-ID"]
     assert captured["json"] == {
         "user_id": 7,
         "profile": {},
@@ -210,6 +211,55 @@ async def test_meal_plan_generation_client_forwards_scope_and_idempotency(monkey
         "end_date": "2026-09-22",
         "meal_types": ["breakfast"],
     }
+
+
+@pytest.mark.asyncio
+async def test_meal_plan_generation_client_uses_configured_extended_timeout_and_logs(
+    monkeypatch, caplog
+):
+    captured = {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, url, *, headers, json):
+            captured.update(url=url, headers=headers, json=json)
+            return httpx.Response(
+                200, json={"id": 42}, request=httpx.Request("POST", url)
+            )
+
+    class GenerationPayload:
+        def model_dump(self, *, mode: str):
+            return {"start_date": "2026-09-22", "end_date": "2026-09-22"}
+
+    captured_client_options = {}
+
+    def create_client(**kwargs):
+        captured_client_options.update(kwargs)
+        return Client()
+
+    monkeypatch.setattr(
+        get_settings(), "NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS", 75.0
+    )
+    monkeypatch.setattr(
+        "app.services.nutrition_agent_client.httpx.AsyncClient", create_client
+    )
+
+    with caplog.at_level("INFO", logger="app.services.nutrition_agent_client"):
+        assert await NutritionAgentClient().generate_meal_plan(
+            7, GenerationPayload()
+        ) == {"id": 42}
+
+    timeout = captured_client_options["timeout"]
+    assert timeout.connect == 2.0
+    assert timeout.read == 75.0
+    assert "operation=meal-plans/generate" in caplog.text
+    assert "request_id=" in caplog.text
+    assert "status_code=200" in caplog.text
 
 
 @pytest.mark.asyncio

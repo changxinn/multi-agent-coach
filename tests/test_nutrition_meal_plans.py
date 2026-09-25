@@ -472,7 +472,9 @@ async def test_confirming_a_plan_records_safety_review_acknowledgement():
     )
 
     activation_statement, _ = db.execute.await_args_list[-1].args
-    assert "safety_review_acknowledged_at = CURRENT_TIMESTAMP" in str(activation_statement)
+    assert "safety_review_acknowledged_at = CURRENT_TIMESTAMP" in str(
+        activation_statement
+    )
 
 
 @pytest.mark.asyncio

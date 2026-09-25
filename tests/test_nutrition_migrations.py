@@ -19,7 +19,8 @@ def test_initial_schema_idempotently_adds_safety_review_acknowledgement_column()
 
     assert "safety_review_acknowledged_at TIMESTAMPTZ" in migration
     assert (
-        "ADD COLUMN IF NOT EXISTS safety_review_acknowledged_at TIMESTAMPTZ" in migration
+        "ADD COLUMN IF NOT EXISTS safety_review_acknowledged_at TIMESTAMPTZ"
+        in migration
     )
 
 

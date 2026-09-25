@@ -80,6 +80,7 @@ If there is a need to show a timestamp , convert timestamps to Singapore timing 
 As online data for food items may not be accurate, do not offer to give precise numbers for the food's nutritional values.
 """
 
+
 class NutritionAgent:
     """Generates Nutrition Agent replies from gateway-supplied conversation context."""
 
@@ -137,9 +138,10 @@ class NutritionAgent:
                     len(llm_messages),
                     repr(llm_messages),
                 )
-            completion = OpenAI(
-                api_key=self.settings.OPENAI_API_KEY
-            ).chat.completions.create(
+            client_kwargs: dict[str, str] = {"api_key": self.settings.OPENAI_API_KEY}
+            if self.settings.OPENAI_BASE_URL:
+                client_kwargs["base_url"] = self.settings.OPENAI_BASE_URL
+            completion = OpenAI(**client_kwargs).chat.completions.create(
                 model=self.settings.LLM_MODEL,
                 max_completion_tokens=CHAT_MAX_COMPLETION_TOKENS,
                 reasoning_effort=self.settings.NUTRITION_LLM_REASONING_EFFORT,

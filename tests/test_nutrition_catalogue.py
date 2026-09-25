@@ -1,9 +1,10 @@
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from services.nutrition_agent.app.repository import NutritionRepository
 from services.nutrition_agent.app.service import NutritionService
 
 
@@ -19,6 +20,39 @@ async def test_food_catalogue_delegates_to_unbounded_local_repository():
 
     assert result == [{"id": 1, "description": "Oats"}]
     service.repo.list_all_food_catalogue.assert_awaited_once_with()
+
+
+@pytest.mark.asyncio
+async def test_browse_food_catalogue_omits_null_search_parameter():
+    db = AsyncMock()
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = []
+    db.execute.return_value = result
+
+    foods, has_more = await NutritionRepository(db).browse_food_catalogue(
+        offset=0, limit=50, query=None
+    )
+
+    assert (foods, has_more) == ([], False)
+    statement, parameters = db.execute.await_args.args
+    assert "ILIKE" not in statement.text
+    assert parameters == {"offset": 0, "limit_plus_one": 51}
+
+
+@pytest.mark.asyncio
+async def test_browse_food_catalogue_binds_non_empty_search_parameter():
+    db = AsyncMock()
+    result = MagicMock()
+    result.mappings.return_value.all.return_value = []
+    db.execute.return_value = result
+
+    await NutritionRepository(db).browse_food_catalogue(
+        offset=25, limit=25, query=" oats "
+    )
+
+    statement, parameters = db.execute.await_args.args
+    assert "description ILIKE '%' || :query || '%'" in statement.text
+    assert parameters == {"offset": 25, "limit_plus_one": 26, "query": "oats"}
 
 
 def test_foundation_catalogue_seed_is_complete_and_idempotent():

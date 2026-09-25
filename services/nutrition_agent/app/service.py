@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -10,6 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from .calculator import calculate_targets
 from .food_data import FoodDataProviderError, UsdaFoodDataCentralProvider
+from .meal_plan_eligibility import is_eligible_for_meal_plan
+from .meal_plan_generator import MealPlanGenerationError, MealPlanLLMGenerator
 from .meal_plan_safety import assess_meal_plan_safety
 from .repository import NutritionRepository
 from .schemas import (
@@ -17,6 +20,8 @@ from .schemas import (
     MealPlanGenerateRequest,
     TargetCalculationRequest,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class NutritionNotFoundError(Exception):
@@ -60,7 +65,11 @@ def _allergen_values(value: Any) -> set[str]:
 def _food_is_safe_for_generation(
     food: dict[str, Any], metadata: dict[str, Any] | None, allergies: set[str]
 ) -> bool:
-    if not metadata or Decimal(food["calories_per_100g"]) <= 0:
+    if (
+        not is_eligible_for_meal_plan(food)
+        or not metadata
+        or Decimal(food["calories_per_100g"]) <= 0
+    ):
         return False
     allergen_status = metadata.get("allergen_status")
     if allergen_status == "unknown":
@@ -87,6 +96,16 @@ def _meal_targets(target: dict[str, Any], meal_count: int) -> dict[str, Decimal]
 def _grams_for_calories(food: dict[str, Any], calories: Decimal) -> Decimal:
     return (calories * Decimal(100) / Decimal(food["calories_per_100g"])).quantize(
         Decimal("0.01")
+    )
+
+
+def _request_ranked_foods(
+    foods: list[dict[str, Any]], request_id: str
+) -> list[dict[str, Any]]:
+    """Return a repeatable request-specific order without catalogue sort bias."""
+    return sorted(
+        foods,
+        key=lambda food: hashlib.sha256(f"{request_id}:{food['id']}".encode()).digest(),
     )
 
 
@@ -119,10 +138,14 @@ def _planned_food_item(food: dict[str, Any], grams: Decimal) -> dict[str, Any]:
 
 class NutritionService:
     def __init__(
-        self, db: AsyncSession, food_provider: UsdaFoodDataCentralProvider | None = None
+        self,
+        db: AsyncSession,
+        food_provider: UsdaFoodDataCentralProvider | None = None,
+        meal_plan_generator: MealPlanLLMGenerator | None = None,
     ):
         self.repo = NutritionRepository(db)
         self.food_provider = food_provider
+        self.meal_plan_generator = meal_plan_generator
 
     async def idempotent(
         self,
@@ -189,15 +212,60 @@ class NutritionService:
         )
 
     async def generate_meal_plan(
-        self, user_id: int, payload: MealPlanGenerateRequest
+        self,
+        user_id: int,
+        payload: MealPlanGenerateRequest,
+        *,
+        request_id: str = "missing",
     ) -> dict[str, Any]:
-        """Create a deterministic draft from active targets and safe cached USDA foods."""
+        """Create an LLM-selected, server-materialized draft with deterministic fallback."""
         target = await self.repo.get_active_target(user_id)
         if target is None:
             raise NutritionProfileIncompleteError(
                 "Active nutrition targets are required before generating a meal plan"
             )
+        logger.info(
+            "Meal-plan generation target loaded request_id=%s user_id=%d target_snapshot_id=%s",
+            request_id,
+            user_id,
+            target["id"],
+        )
         profile = payload.profile
+        generated_meals = await self._try_generate_llm_meals(
+            target, payload, request_id=request_id
+        )
+        if generated_meals is not None:
+            try:
+                planned_meals = await self._materialize_llm_meals(
+                    generated_meals, target, payload
+                )
+                create_payload = MealPlanCreateRequest(
+                    user_id=user_id,
+                    target_snapshot_id=target["id"],
+                    start_date=payload.start_date,
+                    end_date=payload.end_date,
+                    generated_plan={
+                        "generator": "llm_cached_usda_tools_v1",
+                        "target_snapshot_id": target["id"],
+                        "meal_types": payload.meal_types,
+                    },
+                    planned_meals=planned_meals,
+                    profile=profile,
+                )
+                logger.info(
+                    "Meal-plan generation persisting LLM draft request_id=%s user_id=%d meal_count=%d",
+                    request_id,
+                    user_id,
+                    len(planned_meals),
+                )
+                return await self.create_meal_plan(user_id, create_payload)
+            except MealPlanGenerationError as error:
+                logger.warning(
+                    "Meal-plan generation LLM materialization failed; using deterministic fallback request_id=%s user_id=%d error_type=%s",
+                    request_id,
+                    user_id,
+                    type(error).__name__,
+                )
         foods = await self.repo.list_food_catalogue(500)
         safety_metadata = await self.repo.get_food_safety_metadata(
             {food["id"] for food in foods}
@@ -214,6 +282,13 @@ class NutritionService:
             raise NutritionProfileIncompleteError(
                 "The local food catalogue has no safe foods with complete nutrition and compatible allergen data"
             )
+        safe_foods = _request_ranked_foods(safe_foods, request_id)
+        logger.info(
+            "Meal-plan generation using deterministic fallback request_id=%s user_id=%d safe_food_count=%d",
+            request_id,
+            user_id,
+            len(safe_foods),
+        )
 
         meal_count = len(payload.meal_types)
         planned_meals: list[dict[str, Any]] = []
@@ -249,7 +324,82 @@ class NutritionService:
             planned_meals=planned_meals,
             profile=profile,
         )
+        logger.info(
+            "Meal-plan generation persisting deterministic draft request_id=%s user_id=%d meal_count=%d",
+            request_id,
+            user_id,
+            len(planned_meals),
+        )
         return await self.create_meal_plan(user_id, create_payload)
+
+    async def _try_generate_llm_meals(
+        self,
+        target: dict[str, Any],
+        payload: MealPlanGenerateRequest,
+        *,
+        request_id: str,
+    ) -> list[dict[str, Any]] | None:
+        """Use the LLM opportunistically; generation must never prevent a draft."""
+        if self.meal_plan_generator is None:
+            from .config import settings
+
+            self.meal_plan_generator = MealPlanLLMGenerator(settings, self.repo)
+        try:
+            return await self.meal_plan_generator.generate(
+                target=target,
+                profile=payload.profile,
+                start_date=payload.start_date,
+                end_date=payload.end_date,
+                meal_types=payload.meal_types,
+                request_id=request_id,
+            )
+        except MealPlanGenerationError as error:
+            logger.warning(
+                "Meal-plan LLM generation unavailable; using deterministic fallback request_id=%s error_type=%s",
+                request_id,
+                type(error).__name__,
+            )
+            return None
+
+    async def _materialize_llm_meals(
+        self,
+        generated_meals: list[dict[str, Any]],
+        target: dict[str, Any],
+        payload: MealPlanGenerateRequest,
+    ) -> list[dict[str, Any]]:
+        """Resolve selected IDs and calculate all plan nutrition from cached facts."""
+        food_ids = {
+            item["food_cache_id"] for meal in generated_meals for item in meal["items"]
+        }
+        foods = await self.repo.get_food_catalogue_by_ids(food_ids)
+        if set(foods) != food_ids:
+            raise MealPlanGenerationError(
+                "LLM-selected food is not in the local catalogue"
+            )
+        metadata = await self.repo.get_food_safety_metadata(food_ids)
+        allergies = _normalised_values(payload.profile.get("allergies"))
+        if any(
+            not _food_is_safe_for_generation(food, metadata.get(food_id), allergies)
+            for food_id, food in foods.items()
+        ):
+            raise MealPlanGenerationError(
+                "LLM-selected food is not safe for this profile"
+            )
+        targets = _meal_targets(target, len(payload.meal_types))
+        return [
+            {
+                "planned_date": meal["planned_date"],
+                "meal_type": meal["meal_type"],
+                **targets,
+                "items": [
+                    _planned_food_item(
+                        foods[item["food_cache_id"]], Decimal(str(item["grams"]))
+                    )
+                    for item in meal["items"]
+                ],
+            }
+            for meal in generated_meals
+        ]
 
     async def get_meal_plan(self, user_id: int, meal_plan_id: int) -> dict[str, Any]:
         plan = await self.repo.get_meal_plan(user_id, meal_plan_id)
