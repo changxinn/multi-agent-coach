@@ -1,0 +1,82 @@
+name: DeepEval Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'deepeval-tests/**'
+      - 'agents/**'
+      - 'services/head_coach/**'
+      - 'services/summarizer/**'
+      - 'docker-compose.yml'
+      - 'display.py'
+      - 'utils.py'
+      - '.github/workflows/deepeval-tests-ci.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'deepeval-tests/**'
+      - 'agents/**'
+      - 'services/head_coach/**'
+      - 'services/summarizer/**'
+      - 'docker-compose.yml'
+      - 'display.py'
+      - 'utils.py'
+      - '.github/workflows/deepeval-tests-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deepeval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deepeval:
+    # Fork PRs and Dependabot cannot access the required paid API secret.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      INTERNAL_SERVICE_TOKEN: ci-deepeval-local-token
+      DEEPEVAL_JUDGE_MODEL: ${{ vars.DEEPEVAL_JUDGE_MODEL || 'gpt-4.1-mini' }}
+      DEEPEVAL_TELEMETRY_OPT_OUT: 'YES'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: deepeval-tests/requirements.txt
+      - name: Check required secret
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo '::error::Add the OPENAI_API_KEY repository secret to run DeepEval.'
+            exit 1
+          fi
+      - name: Install evaluation dependencies
+        run: python -m pip install -r deepeval-tests/requirements.txt
+      - name: Build and start agent services
+        run: docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
+      - name: Run routing, safety and summary evaluations
+        working-directory: deepeval-tests
+        run: python -m pytest . -v --junitxml=results/junit.xml
+      - name: Upload evaluation results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepeval-results
+          path: deepeval-tests/results/
+          if-no-files-found: ignore
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color head-coach summarizer
+      - name: Tear down services
+        if: always()
+        run: docker compose down
