@@ -24,6 +24,21 @@ def test_initial_schema_idempotently_adds_safety_review_acknowledgement_column()
     )
 
 
+def test_child_targeted_food_cleanup_migration_removes_only_explicitly_targeted_products():
+    migration = (
+        Path(__file__).parents[1]
+        / "services/nutrition_agent/app/db/migrations/006_remove_child_targeted_food_cache.sql"
+    ).read_text()
+
+    assert "DELETE FROM nutrition_food_cache" in migration
+    assert "description ILIKE 'Babyfood,%'" in migration
+    assert "description ILIKE 'Baby Toddler%'" in migration
+    assert "description ILIKE 'Toddler%'" in migration
+    assert "description ILIKE 'Infant formula,%'" in migration
+    assert "description = 'Water, baby'" in migration
+    assert "Carrots, baby" not in migration
+
+
 def test_split_sql_statements_preserves_semicolons_in_sql_string_literals():
     statements = split_sql_statements(
         "INSERT INTO nutrition_food_cache (description, raw_response) "

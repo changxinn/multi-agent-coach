@@ -26,8 +26,10 @@ class Settings(BaseSettings):
     NUTRITION_LLM_DEBUG_LOG_RESPONSES: bool = True
     OPENAI_API_KEY: str = ""
     OPENAI_BASE_URL: str = ""
-    LLM_MODEL: str = "gpt-6-luna"
-    NUTRITION_LLM_REASONING_EFFORT: str = "low"
+    LLM_MODEL: str = "gpt-5-nano"
+    NUTRITION_LLM_REASONING_EFFORT: str = (
+        "low"  # reasoning effort should be none for gpt-6-luna, low for gpt-5-nano
+    )
 
 
 settings = Settings()

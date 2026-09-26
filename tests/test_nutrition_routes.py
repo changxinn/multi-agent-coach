@@ -241,6 +241,7 @@ def test_meal_plan_lifecycle_routes_scope_plan_ids_and_forward_idempotency(
     service.list_meal_plans.return_value = [{"id": 41}]
     service.confirm_meal_plan.return_value = {"id": 41, "status": "active"}
     service.archive_meal_plan.return_value = {"id": 41, "status": "archived"}
+    service.delete_meal_plan.return_value = {"deleted": True}
 
     assert (
         client.post("/api/nutrition/meal-plans/get", json={"meal_plan_id": 41}).json()[
@@ -267,6 +268,11 @@ def test_meal_plan_lifecycle_routes_scope_plan_ids_and_forward_idempotency(
         ).json()["status"]
         == "archived"
     )
+    assert client.post(
+        "/api/nutrition/meal-plans/delete",
+        json={"meal_plan_id": 41},
+        headers={"Idempotency-Key": "delete-1"},
+    ).json() == {"deleted": True}
     service.get_meal_plan.assert_awaited_once_with(9, 41)
     service.list_meal_plans.assert_awaited_once_with(9)
     service.confirm_meal_plan.assert_awaited_once_with(
@@ -276,6 +282,24 @@ def test_meal_plan_lifecycle_routes_scope_plan_ids_and_forward_idempotency(
         profile=service.get_profile.return_value,
     )
     service.archive_meal_plan.assert_awaited_once_with(9, 41, "archive-1")
+    service.delete_meal_plan.assert_awaited_once_with(9, 41, "delete-1")
+
+
+def test_delete_meal_plan_translates_missing_or_other_user_plan_to_not_found(
+    nutrition_client,
+):
+    client, service = nutrition_client
+    service.delete_meal_plan.side_effect = NutritionNotFoundError("Meal plan not found")
+
+    response = client.post(
+        "/api/nutrition/meal-plans/delete",
+        json={"meal_plan_id": 41},
+        headers={"Idempotency-Key": "delete-1"},
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Meal plan not found"}
+    service.delete_meal_plan.assert_awaited_once_with(9, 41, "delete-1")
 
 
 @pytest.mark.parametrize(

@@ -212,6 +212,18 @@ class NutritionRepository:
         row = result.mappings().first()
         return dict(row) if row else None
 
+    async def delete_meal_plan(self, user_id: int, meal_plan_id: int) -> bool:
+        """Permanently remove one user-owned plan and its cascade-owned meals."""
+        result = await self.db.execute(
+            text("""
+                DELETE FROM nutrition_meal_plans
+                WHERE id = :meal_plan_id AND user_id = :user_id
+                RETURNING id
+            """),
+            {"user_id": user_id, "meal_plan_id": meal_plan_id},
+        )
+        return result.scalar_one_or_none() is not None
+
     async def get_food_safety_metadata(
         self, food_cache_ids: set[int]
     ) -> dict[int, dict[str, Any]]:

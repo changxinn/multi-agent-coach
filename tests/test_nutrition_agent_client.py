@@ -332,13 +332,16 @@ async def test_meal_plan_lifecycle_client_forwards_ownership_and_idempotency(
         7, 41, "confirm-1", profile={"allergies": ["milk"]}
     ) == {"id": 41}
     assert await client.archive_meal_plan(7, 41, "archive-1") == {"id": 41}
+    assert await client.delete_meal_plan(7, 41, "delete-1") == {"id": 41}
     assert [request[2] for request in requests] == [
         {"user_id": 7},
         {"user_id": 7, "meal_plan_id": 41, "profile": {"allergies": ["milk"]}},
         {"user_id": 7, "meal_plan_id": 41},
+        {"user_id": 7, "meal_plan_id": 41},
     ]
     assert requests[1][1]["Idempotency-Key"] == "confirm-1"
     assert requests[2][1]["Idempotency-Key"] == "archive-1"
+    assert requests[3][1]["Idempotency-Key"] == "delete-1"
 
 
 @pytest.mark.asyncio

@@ -465,6 +465,14 @@ class NutritionService:
             )
         return archived
 
+    async def delete_meal_plan(
+        self, user_id: int, meal_plan_id: int
+    ) -> dict[str, bool]:
+        """Permanently delete any plan owned by the user, regardless of lifecycle state."""
+        if not await self.repo.delete_meal_plan(user_id, meal_plan_id):
+            raise NutritionNotFoundError("Meal plan not found")
+        return {"deleted": True}
+
     async def get_active_meal_plan(
         self, user_id: int, for_date: date
     ) -> dict[str, Any] | None:

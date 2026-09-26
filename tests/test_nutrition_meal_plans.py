@@ -528,6 +528,20 @@ async def test_archive_only_allows_drafts_or_active_plans_and_uses_ownership_loo
 
 
 @pytest.mark.asyncio
+async def test_delete_permanently_removes_any_owned_plan_without_disclosing_ownership():
+    service = NutritionService(AsyncMock())
+    service.repo.delete_meal_plan = AsyncMock(return_value=False)
+
+    with pytest.raises(NutritionNotFoundError, match="Meal plan not found"):
+        await service.delete_meal_plan(7, 99)
+
+    service.repo.delete_meal_plan.assert_awaited_once_with(7, 99)
+    service.repo.delete_meal_plan = AsyncMock(return_value=True)
+    assert await service.delete_meal_plan(7, 41) == {"deleted": True}
+    service.repo.delete_meal_plan.assert_awaited_once_with(7, 41)
+
+
+@pytest.mark.asyncio
 async def test_nutrition_context_is_scoped_to_the_requested_user_and_date():
     service = NutritionService(AsyncMock())
     service.repo.get_target_for_date = AsyncMock(return_value={"id": 3})

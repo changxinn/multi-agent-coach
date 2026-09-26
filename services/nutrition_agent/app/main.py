@@ -328,6 +328,26 @@ async def meal_plans_archive(
         raise translate(error) from error
 
 
+@app.post(
+    "/v1/nutrition/meal-plans/delete", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_delete(
+    payload: MealPlanIdRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.delete",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.delete_meal_plan(payload.user_id, payload.meal_plan_id),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
 @app.post("/v1/nutrition/context", dependencies=[Depends(require_internal_token)])
 async def nutrition_context(payload: DateRequest, service: Service):
     return await service.get_nutrition_context(payload.user_id, payload.date)

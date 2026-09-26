@@ -88,6 +88,7 @@ class NutritionAgentClient:
             "meal-plans/get",
             "meal-plans/confirm",
             "meal-plans/archive",
+            "meal-plans/delete",
             "targets/active",
         }:
             raise NutritionNotFoundError(
@@ -102,6 +103,7 @@ class NutritionAgentClient:
             if path in {
                 "meal-plans/confirm",
                 "meal-plans/archive",
+                "meal-plans/delete",
                 "meal-plans/generate",
             }:
                 raise NutritionMealPlanValidationError(detail)
@@ -259,6 +261,15 @@ class NutritionAgentClient:
     ) -> dict[str, Any]:
         return await self._post(
             "meal-plans/archive",
+            {"user_id": user_id, "meal_plan_id": meal_plan_id},
+            idempotency_key=idempotency_key,
+        )
+
+    async def delete_meal_plan(
+        self, user_id: int, meal_plan_id: int, idempotency_key: str | None = None
+    ) -> dict[str, bool]:
+        return await self._post(
+            "meal-plans/delete",
             {"user_id": user_id, "meal_plan_id": meal_plan_id},
             idempotency_key=idempotency_key,
         )
