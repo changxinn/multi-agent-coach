@@ -1,0 +1,92 @@
+name: Promptfoo Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'promptfoo-tests/**'
+      - 'agents/**'
+      - 'services/head_coach/**'
+      - 'services/summarizer/**'
+      - 'docker-compose.yml'
+      - 'display.py'
+      - 'utils.py'
+      - '.github/workflows/promptfoo-tests-ci.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'promptfoo-tests/**'
+      - 'agents/**'
+      - 'services/head_coach/**'
+      - 'services/summarizer/**'
+      - 'docker-compose.yml'
+      - 'display.py'
+      - 'utils.py'
+      - '.github/workflows/promptfoo-tests-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promptfoo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  promptfoo:
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      INTERNAL_SERVICE_TOKEN: ci-promptfoo-local-token
+      PROMPTFOO_DISABLE_TELEMETRY: '1'
+      PROMPTFOO_DISABLE_UPDATE: '1'
+      PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/promptfoo
+      REQUEST_TIMEOUT_MS: '180000'
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check required secret
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo '::error::Add the OPENAI_API_KEY repository secret to run live evaluations.'
+            exit 1
+          fi
+      - name: Install Promptfoo
+        run: npm install --global promptfoo@0.120.0
+      - name: Build and start agent services
+        run: docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
+      - name: Run all four evaluation suites
+        working-directory: promptfoo-tests
+        shell: bash
+        run: |
+          mkdir -p results
+          failed=0
+          for suite in routing safety session-summary daily-summary; do
+            echo "::group::$suite"
+            if ! promptfoo eval -c "$suite.yaml" --no-cache --no-share --no-write --max-concurrency 1 --output "results/$suite.json" "results/$suite.html"; then
+              failed=1
+            fi
+            echo '::endgroup::'
+          done
+          exit "$failed"
+      - name: Upload evaluation reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: promptfoo-results
+          path: promptfoo-tests/results/
+          if-no-files-found: ignore
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose logs --no-color head-coach summarizer
+      - name: Tear down services
+        if: always()
+        run: docker compose down

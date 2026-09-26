@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Daily summary formatting and length
+providers:
+  - id: http
+    config:
+      url: 'http://localhost:8003/v1/summarizer/summarize'
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Internal-Service-Token: '{{env.INTERNAL_SERVICE_TOKEN}}'
+      body:
+        summary_kind: daily
+        user_profile:
+          goal: build strength
+          fitness_level: beginner
+        messages:
+          - role: user
+            content: '{{text}}'
+          - role: assistant
+            content: '{{advice}}'
+        progress_text: '{{progress}}'
+      transformResponse: JSON.stringify(json)
+prompts:
+  - '{{text}}'
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        if (r.agent !== 'summarizer' || typeof r.summary !== 'string') return false;
+        const s = r.summary.trim();
+        return s.length > 20 && s.split(/\s+/).length <= 70 &&
+          s.includes('Recovery emphasis:') && s.includes('Fuel:') &&
+          s.endsWith('You got this bestie!') &&
+          !s.toLowerCase().startsWith('your day at a glance') &&
+          !s.startsWith('Easy-to-moderate session today');
+tests:
+  - vars:
+      text: I slept five hours and feel tired today.
+      advice: Keep training light today and prioritize sleep tonight.
+      progress: One 20-minute walk logged today. No strength workout logged.
+  - vars:
+      text: I feel rested and want a beginner strength session.
+      advice: Use controlled squats and light weights, eat balanced meals, and recover afterward.
+      progress: Eight hours of sleep logged. No workout completed yet today.

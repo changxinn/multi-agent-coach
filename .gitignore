@@ -15,3 +15,6 @@ node_modules/
 deepeval-tests/results/
 .deepeval/
 deepeval-tests/.deepeval/
+promptfoo-tests/results/
+.promptfoo/
+.npm-cache/
