@@ -57,7 +57,6 @@ export function DeepChatBot({
   const { token, user } = useAuthStore()
   const userEmail = user?.email || 'anonymous'
   const deepChatRef = useRef<any>(null)
-  const [deepChatElement, setDeepChatElement] = useState<any>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
   const accumulatedMessageRef = useRef<string>('')
@@ -418,15 +417,13 @@ export function DeepChatBot({
 
   const setDeepChatRef = useCallback((element: any | null) => {
     deepChatRef.current = element
-    setDeepChatElement(element)
   }, [])
 
   useEffect(() => {
-    if (!isOpen || !deepChatElement || isInitialized.current) {
+    const deepChatEl = deepChatRef.current
+    if (!isOpen || !deepChatEl || isInitialized.current) {
       return
     }
-
-    const deepChatEl = deepChatElement
 
     deepChatEl.requestBodyLimits = deepChatRequestBodyLimits
     deepChatEl.textInput = deepChatTextInputConfig
@@ -482,7 +479,7 @@ export function DeepChatBot({
     return () => {
       window.clearTimeout(diagnosticTimer)
     }
-  }, [isOpen, deepChatElement, initialMessage, messageApi, token, userEmail])
+  }, [isOpen, initialMessage, messageApi, token, userEmail])
 
   return (
     <>

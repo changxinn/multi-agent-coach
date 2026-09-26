@@ -59,7 +59,7 @@ jobs:
             exit 1
           fi
       - name: Install Promptfoo
-        run: npm install --global promptfoo@0.120.0
+        run: npm install --global promptfoo@0.120.1
       - name: Build and start agent services
         run: docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
       - name: Run all four evaluation suites

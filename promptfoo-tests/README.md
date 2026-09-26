@@ -19,7 +19,7 @@ Push these files to `main`/`master`, or use Actions > Promptfoo Tests > Run work
 once the workflow is on the default branch. Relevant pushes and PRs trigger it.
 Fork and Dependabot PRs skip because they cannot access the secret.
 
-CI installs Node 22 and Promptfoo 0.120.0, builds Head Coach and Summarizer, waits
+CI installs Node 22 and Promptfoo 0.120.1, builds Head Coach and Summarizer, waits
 for health checks, and runs every suite even if one fails. A failed assertion or
 API call fails the job. Download `promptfoo-results` from the run's Artifacts to
 inspect HTML reports or machine-readable JSON. Services are always torn down.
@@ -42,7 +42,7 @@ docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
 New-Item -ItemType Directory -Force promptfoo-tests/results | Out-Null
 $failed = $false
 foreach ($suite in @('routing', 'safety', 'session-summary', 'daily-summary')) {
-    npx --yes promptfoo@0.120.0 eval -c "promptfoo-tests/$suite.yaml" --no-cache --no-share --no-write --max-concurrency 1 --output "promptfoo-tests/results/$suite.json" "promptfoo-tests/results/$suite.html"
+    npx --yes promptfoo@0.120.1 eval -c "promptfoo-tests/$suite.yaml" --no-cache --no-share --no-write --max-concurrency 1 --output "promptfoo-tests/results/$suite.json" "promptfoo-tests/results/$suite.html"
     if ($LASTEXITCODE -ne 0) { $failed = $true }
 }
 if ($failed) { throw 'One or more Promptfoo suites failed. Check the reports.' }
