@@ -12,3 +12,9 @@ frontend/.env
 frontend/environments/.env.*
 node_modules/
 *.egg-info/
+deepeval-tests/results/
+.deepeval/
+deepeval-tests/.deepeval/
+promptfoo-tests/results/
+.promptfoo/
+.npm-cache/

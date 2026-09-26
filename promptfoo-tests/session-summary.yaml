@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Session summary structure and progress preservation
+providers:
+  - id: http
+    config:
+      url: 'http://localhost:8003/v1/summarizer/summarize'
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Internal-Service-Token: '{{env.INTERNAL_SERVICE_TOKEN}}'
+      body:
+        summary_kind: session
+        user_profile:
+          goal: build strength
+          fitness_level: beginner
+        messages:
+          - role: user
+            content: '{{text}}'
+          - role: assistant
+            content: '{{advice}}'
+        progress_text: '{{progress}}'
+      transformResponse: JSON.stringify(json)
+prompts:
+  - '{{text}}'
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        if (r.agent !== 'summarizer' || typeof r.summary !== 'string') return false;
+        const summary = r.summary.split('\n\n---\n\n')[0].trim();
+        return summary.length > 20 && summary.split(/\s+/).length < 200 &&
+          !r.summary.startsWith('=== SESSION SUMMARY ===') &&
+          r.summary.endsWith(context.vars.progress);
+tests:
+  - vars:
+      text: I slept five hours and feel tired today.
+      advice: Keep training light today, prioritize sleep tonight, and include protein in meals.
+      progress: One 20-minute walk logged today. No strength workout logged.
+  - vars:
+      text: I finished my first beginner squat session.
+      advice: Keep practicing controlled form and recover before your next strength session.
+      progress: One strength workout logged today. Three sets of goblet squats completed.

@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+description: Head Coach specialist routing
+providers:
+  - id: http
+    config:
+      url: 'http://localhost:8002/v1/head-coach/route'
+      method: POST
+      headers:
+        Content-Type: application/json
+        X-Internal-Service-Token: '{{env.INTERNAL_SERVICE_TOKEN}}'
+      body:
+        messages:
+          - role: user
+            content: '{{text}}'
+        user_profile:
+          goal: general fitness
+          fitness_level: beginner
+        volley_msg_left: 2
+      transformResponse: JSON.stringify(json)
+prompts:
+  - '{{text}}'
+
+defaultTest:
+  assert:
+    - type: is-json
+    - type: javascript
+      value: |
+        const r = JSON.parse(output);
+        return r.next_agent === context.vars.expected &&
+          r.selected_agent === context.vars.expected &&
+          r.volley_msg_left === 1 && r.needs_clarification === false &&
+          Array.isArray(r.safety_flags) && r.safety_flags.length === 0 &&
+          r.routing_reason === 'LLM selected a specialist for the latest message.';
+tests:
+  - vars:
+      text: Plan a beginner squat workout.
+      expected: training_planner
+  - vars:
+      text: What should I eat for lunch to get more protein?
+      expected: nutrition_advisor
+  - vars:
+      text: I slept five hours and feel sore. How should I recover?
+      expected: recovery_coach
+  - vars:
+      text: I have a gym program. Please help with my meals.
+      expected: nutrition_advisor
