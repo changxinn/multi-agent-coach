@@ -45,7 +45,6 @@ jobs:
       INTERNAL_SERVICE_TOKEN: ci-promptfoo-local-token
       PROMPTFOO_DISABLE_TELEMETRY: '1'
       PROMPTFOO_DISABLE_UPDATE: '1'
-      PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/promptfoo
       REQUEST_TIMEOUT_MS: '180000'
 
     steps:
@@ -64,6 +63,8 @@ jobs:
       - name: Build and start agent services
         run: docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
       - name: Run all four evaluation suites
+        env:
+          PROMPTFOO_CONFIG_DIR: ${{ runner.temp }}/promptfoo
         working-directory: promptfoo-tests
         shell: bash
         run: |
