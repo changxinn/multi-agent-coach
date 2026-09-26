@@ -420,6 +420,23 @@ async def archive_meal_plan(
         raise nutrition_unavailable(error) from error
 
 
+@router.post("/meal-plans/delete")
+async def delete_meal_plan(
+    payload: MealPlanIdRequest,
+    user: dict = Depends(get_current_user),
+    service: NutritionServiceDependency = None,
+    idempotency_key: str | None = Header(default=None),
+):
+    try:
+        return await service.delete_meal_plan(
+            user["id"], payload.meal_plan_id, idempotency_key
+        )
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
 @router.post("/context")
 async def get_nutrition_context(
     payload: NutritionDateRequest,

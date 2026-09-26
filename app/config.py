@@ -78,6 +78,7 @@ class Settings(BaseSettings):
     SUMMARIZER_URL: str = "http://localhost:8003"
     USE_NUTRITION_AGENT_SERVICE: bool = False
     NUTRITION_AGENT_URL: str = "http://localhost:8004"
+    NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS: float = 120.0
     INTERNAL_SERVICE_TOKEN: str = ""
 
     # USDA FoodData Central is the initial food-data provider.

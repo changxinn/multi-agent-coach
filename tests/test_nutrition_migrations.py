@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -8,6 +9,34 @@ from services.nutrition_agent.app.migrations import (
     run_migrations,
     split_sql_statements,
 )
+
+
+def test_initial_schema_idempotently_adds_safety_review_acknowledgement_column():
+    migration = (
+        Path(__file__).parents[1]
+        / "services/nutrition_agent/app/db/migrations/001_create_nutrition_schema.sql"
+    ).read_text()
+
+    assert "safety_review_acknowledged_at TIMESTAMPTZ" in migration
+    assert (
+        "ADD COLUMN IF NOT EXISTS safety_review_acknowledged_at TIMESTAMPTZ"
+        in migration
+    )
+
+
+def test_child_targeted_food_cleanup_migration_removes_only_explicitly_targeted_products():
+    migration = (
+        Path(__file__).parents[1]
+        / "services/nutrition_agent/app/db/migrations/006_remove_child_targeted_food_cache.sql"
+    ).read_text()
+
+    assert "DELETE FROM nutrition_food_cache" in migration
+    assert "description ILIKE 'Babyfood,%'" in migration
+    assert "description ILIKE 'Baby Toddler%'" in migration
+    assert "description ILIKE 'Toddler%'" in migration
+    assert "description ILIKE 'Infant formula,%'" in migration
+    assert "description = 'Water, baby'" in migration
+    assert "Carrots, baby" not in migration
 
 
 def test_split_sql_statements_preserves_semicolons_in_sql_string_literals():
