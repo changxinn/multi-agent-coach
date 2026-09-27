@@ -1,28 +1,9 @@
 name: Promptfoo Tests
 
 on:
-  push:
-    branches: [main, master]
-    paths:
-      - 'promptfoo-tests/**'
-      - 'agents/**'
-      - 'services/head_coach/**'
-      - 'services/summarizer/**'
-      - 'docker-compose.yml'
-      - 'display.py'
-      - 'utils.py'
-      - '.github/workflows/promptfoo-tests-ci.yml'
   pull_request:
-    branches: [main, master]
-    paths:
-      - 'promptfoo-tests/**'
-      - 'agents/**'
-      - 'services/head_coach/**'
-      - 'services/summarizer/**'
-      - 'docker-compose.yml'
-      - 'display.py'
-      - 'utils.py'
-      - '.github/workflows/promptfoo-tests-ci.yml'
+    branches: [main]
+    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -36,8 +17,9 @@ jobs:
   promptfoo:
     if: >-
       github.actor != 'dependabot[bot]' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.pull_request.merged == true &&
+        github.event.pull_request.head.repo.full_name == github.repository))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:

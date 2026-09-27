@@ -82,17 +82,22 @@ async def test_daily_summary_calculates_adherence_and_remaining_macros():
         "fat_g": Decimal(50),
         "fiber_g": Decimal(20),
     }
-    repo.get_target_for_date.return_value = {
-        "id": 3,
-        "calorie_target_kcal": 2000,
-        "protein_target_g": Decimal(125),
-        "carbohydrate_target_g": Decimal(225),
-        "fat_target_g": Decimal(60),
+    client = AsyncMock()
+    client.get_nutrition_context.return_value = {
+        "target_snapshot": {
+            "id": 3,
+            "calorie_target_kcal": 2000,
+            "protein_target_g": Decimal(125),
+            "carbohydrate_target_g": Decimal(225),
+            "fat_target_g": Decimal(60),
+        }
     }
-    repo.upsert_daily_summary.side_effect = lambda _, __, values: values
     with patch("app.services.nutrition_service.NutritionRepository", return_value=repo):
-        result = await NutritionService(AsyncMock()).get_daily_summary(
-            7, datetime.now(UTC).date()
-        )
+        result = await NutritionService(
+            AsyncMock(), nutrition_client=client
+        ).get_daily_summary(7, datetime.now(UTC).date())
     assert result["calorie_adherence_pct"] == Decimal("90.00")
     assert result["remaining"]["protein_g"] == Decimal(25)
+    repo.get_target_for_date.assert_not_called()
+    repo.upsert_daily_summary.assert_not_called()
+    client.get_nutrition_context.assert_awaited_once_with(7, datetime.now(UTC).date())
