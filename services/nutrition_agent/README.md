@@ -6,12 +6,12 @@ Private FastAPI microservice for nutrition calculations, food-data queries, meal
 
 ```text
 INTERNAL_SERVICE_TOKEN=local-dev-recovery-token
-DATABASE_URL=postgresql://nutrition_agent:password@host:5432/nutritiondb
+NUTRITION_DATABASE_URL=postgresql://nutrition_agent:password@host:5432/nutritiondb
 RUN_MIGRATIONS=true
 USDA_FDC_API_KEY=
 OPENAI_API_KEY=
-# Optional endpoint for an OpenAI-compatible provider, for example https://provider.example/v1
-OPENAI_BASE_URL=
+# Optional OpenAI-compatible endpoint, for example https://provider.example/v1
+OPENAI_BASE_URL=https://api.openai.com/v1
 LLM_MODEL=gpt-5-nano
 # Set false to use deterministic meal-plan generation only.
 NUTRITION_MEAL_PLAN_LLM_ENABLED=true
@@ -23,10 +23,11 @@ NUTRITION_MEAL_PLAN_LLM_ENABLED=true
 python -m uvicorn services.nutrition_agent.app.main:app --reload --port 8004
 ```
 
-The service always loads `services/nutrition_agent/.env`, regardless of the
-directory from which Uvicorn is started. Set `RUN_MIGRATIONS=true` there for
-local database initialization. For a Nutrition database on the same local
-PostgreSQL server as the main app, use a separate database, for example
+For direct local execution, the service discovers and loads the repository-root
+`.env` file. Docker Compose injects its own environment variables, which take
+precedence and use the Docker-network `nutrition-db` hostname. Set
+`RUN_MIGRATIONS=true` for local database initialization. Use a separate
+Nutrition database, for example
 `postgresql://nutrition_agent:password@localhost:5432/nutritiondb`; do not use
 the main application's `systemdb` database.
 
