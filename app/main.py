@@ -13,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import auth, chat, coach, nutrition, recovery, session
 from app.config import get_settings
-from app.db.database import close_db, init_db
+from app.db.database import AsyncSessionLocal, close_db, init_db
+from app.db.demo_seed import seed_demo_users
 from app.services.session_manager import session_manager
 
 # Configure logging
@@ -38,6 +39,10 @@ async def lifespan(app: FastAPI):
 
     # Initialize database
     await init_db()
+
+    if settings.SEED_DEMO_USERS:
+        async with AsyncSessionLocal() as db:
+            await seed_demo_users(db, settings)
 
     # Start session cleanup task
     cleanup_task = await session_manager.start_cleanup_task(interval_hours=1)

@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Multi-Agent Coach API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    # Disabled by default so development-only credentials are never seeded implicitly.
+    SEED_DEMO_USERS: bool = False
 
     # ===========================================
     # JWT Configuration

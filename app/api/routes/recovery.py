@@ -23,9 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.routes.auth import get_current_user
 from app.db.database import get_db
 
-router = APIRouter(
-    prefix="/recovery", dependencies=[Depends(get_current_user)]
-)
+router = APIRouter(prefix="/recovery", dependencies=[Depends(get_current_user)])
 metadata = MetaData(schema="systemdb")
 
 

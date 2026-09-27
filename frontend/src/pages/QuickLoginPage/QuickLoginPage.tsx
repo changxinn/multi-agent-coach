@@ -9,6 +9,12 @@ import { login } from '@/lib/auth'
 const { Title, Text } = Typography
 const { Password } = Input
 
+const demoAccounts = [
+  { label: 'Alex (strength)', email: 'alex.demo@example.com' },
+  { label: 'Sam (endurance)', email: 'sam.demo@example.com' },
+]
+const demoPassword = 'DemoPass123!'
+
 export function QuickLoginPage() {
   const navigate = useNavigate()
   const { login: storeLogin } = useAuthStore()
@@ -29,6 +35,11 @@ export function QuickLoginPage() {
     } finally {
       setIsLoggingIn(false)
     }
+  }
+
+  const fillDemoCredentials = (demoEmail: string) => {
+    setEmail(demoEmail)
+    setPassword(demoPassword)
   }
 
   return (
@@ -56,6 +67,22 @@ export function QuickLoginPage() {
                 className="mt-1 w-full"
                 placeholder="Enter password"
               />
+            </div>
+          </div>
+          <div className="mt-4 border-t border-gray-200 pt-3">
+            <Text type="secondary" className="text-xs">
+              Local demo accounts (Docker Compose):
+            </Text>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {demoAccounts.map((account) => (
+                <Button
+                  key={account.email}
+                  size="small"
+                  onClick={() => fillDemoCredentials(account.email)}
+                >
+                  Use {account.label}
+                </Button>
+              ))}
             </div>
           </div>
         </Card>

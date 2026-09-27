@@ -77,7 +77,6 @@ The backend will automatically:
 - ✅ Create database (if not exists)
 - ✅ Create schema and tables
 - ✅ Run migrations
-- ✅ Create admin user (admin@example.com / ChangeMe123!)
 - ✅ Start API server on http://localhost:8000
 
 ### 6. Verify Installation
@@ -103,13 +102,13 @@ curl -X POST http://localhost:8000/api/auth/register \
   }'
 ```
 
-**Login:**
+**Login (Docker Compose demo account):**
 ```bash
 curl -X POST http://localhost:8000/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin@example.com",
-    "password": "ChangeMe123!"
+    "email": "alex.demo@example.com",
+    "password": "DemoPass123!"
   }'
 ```
 
@@ -185,6 +184,16 @@ This starts:
 - ✅ PostgreSQL database (port 5432)
 - ✅ Redis (port 6379, optional for session testing)
 
+The Compose API enables `SEED_DEMO_USERS=true`. On first start of a fresh main
+database it creates these accounts, with different fitness profiles:
+
+- `alex.demo@example.com` / `DemoPass123!` — intermediate strength profile
+- `sam.demo@example.com` / `DemoPass123!` — beginner endurance profile
+
+The frontend sign-in page includes quick-fill buttons for both accounts. The
+seed is idempotent: later starts never overwrite an existing user's account or
+fitness profile. It is disabled by default outside Docker Compose.
+
 Daily summary appears on the dashboard. Coach Data (admin) lists Head Coach routing events and saved summaries.
 
 **View logs:**
@@ -196,6 +205,11 @@ docker-compose logs -f api head-coach summarizer frontend
 ```bash
 docker-compose down
 ```
+
+`docker-compose down` retains the named database volumes, so registered and
+demo users persist. Use `docker-compose down -v` only when you want a full
+local reset; the next Compose startup recreates the database and reseeds the
+demo accounts.
 
 ---
 
