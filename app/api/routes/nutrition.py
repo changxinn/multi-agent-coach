@@ -265,7 +265,10 @@ async def daily_summary(
     user: dict = Depends(get_current_user),
     service: MainNutritionServiceDependency = None,
 ):
-    return await service.get_daily_summary(user["id"], payload.date)
+    try:
+        return await service.get_daily_summary(user["id"], payload.date)
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
 
 
 @router.post("/adherence")
@@ -282,11 +285,14 @@ async def adherence(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
             "Date range must be between 0 and 31 days",
         )
-    return {
-        "items": await service.get_adherence(
-            user["id"], payload.from_date, payload.to_date
-        )
-    }
+    try:
+        return {
+            "items": await service.get_adherence(
+                user["id"], payload.from_date, payload.to_date
+            )
+        }
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
 
 
 @router.post("/meal-plans/create")

@@ -26,10 +26,15 @@ class NutritionFoodDataError(Exception):
 
 class NutritionService:
     def __init__(
-        self, db: AsyncSession, food_provider: UsdaFoodDataCentralProvider | None = None
+        self,
+        db: AsyncSession,
+        food_provider: UsdaFoodDataCentralProvider | None = None,
+        *,
+        nutrition_client: Any = None,
     ):
         self.repo = NutritionRepository(db)
         self.food_provider = food_provider
+        self.nutrition_client = nutrition_client
 
     async def get_profile(self, user_id: int) -> dict[str, Any]:
         profile = await self.repo.get_profile(user_id)
@@ -142,12 +147,17 @@ class NutritionService:
 
     async def get_daily_summary(self, user_id: int, for_date: date) -> dict[str, Any]:
         totals = await self.repo.get_daily_totals(user_id, for_date)
-        target = await self.repo.get_target_for_date(user_id, for_date)
+        # Targets belong to the Nutrition service, not the shared database.
+        if self.nutrition_client is None:
+            from app.services.nutrition_agent_client import NutritionAgentClient
+
+            self.nutrition_client = NutritionAgentClient()
+        context = await self.nutrition_client.get_nutrition_context(user_id, for_date)
+        target = context["target_snapshot"]
         values = self._summary_values(totals, target)
-        summary = await self.repo.upsert_daily_summary(user_id, for_date, values)
         return {
             "date": for_date,
-            **summary,
+            **values,
             "target": target,
             "remaining": self._remaining(totals, target),
         }
