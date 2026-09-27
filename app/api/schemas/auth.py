@@ -36,7 +36,6 @@ class UserResponse(BaseModel):
     id: int
     email: str
     name: str
-    role: str
     enabled: bool
     user_image: str | None = None
 
@@ -49,15 +48,8 @@ class UserWithProfileResponse(BaseModel):
     id: int
     email: str
     name: str
-    role: str
     enabled: bool
     fitness_profile: dict | None = None
-
-
-class RoleUpdateRequest(BaseModel):
-    """Admin request to update user role."""
-
-    role: str = Field(..., pattern="^(ADMIN|STAFF|USER)$")
 
 
 class FitnessProfileUpdateRequest(BaseModel):
@@ -89,5 +81,4 @@ class CurrentUserProfileResponse(BaseModel):
     id: int
     email: str
     name: str
-    role: str
     fitness_profile: FitnessProfileResponse

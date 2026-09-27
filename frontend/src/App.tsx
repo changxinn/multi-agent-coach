@@ -1,8 +1,8 @@
 import { Routes as RouterRoutes, Route, Navigate } from 'react-router-dom'
 import { LoginPage } from '@/pages/LoginPage'
 import { QuickLoginPage } from '@/pages/QuickLoginPage'
+import { RegisterPage } from '@/pages/RegisterPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { RoleDashboard } from '@/pages/RoleDashboard'
 import { TableListingPage } from '@/pages/TableListingPage'
 import { CoachDataPage } from '@/pages/CoachDataPage'
 import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
@@ -16,7 +16,7 @@ import { UnauthorizedPage } from '@/pages/UnauthorizedPage'
 import { useAuthStore } from './lib/authStore'
 import { useEffect } from 'react'
 import { LibraryExamples } from '@/common/LibraryExamples'
-import { Roles, Routes } from '@/lib/constants'
+import { Routes } from '@/lib/constants'
 
 function App() {
   const { checkAuth } = useAuthStore()
@@ -29,6 +29,7 @@ function App() {
     <ErrorBoundary>
       <RouterRoutes>
         <Route path={Routes.Login} element={<LoginPage />} />
+        <Route path={Routes.Register} element={<RegisterPage />} />
         <Route path={Routes.QuickLogin} element={<QuickLoginPage />} />
         
         <Route path="/unauthorized" element={<UnauthorizedPage />} />
@@ -36,7 +37,7 @@ function App() {
         <Route
           path={Routes.Dashboard}
           element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <DashboardPage />
               </MainLayout>
@@ -44,29 +45,9 @@ function App() {
           }
         />
         <Route
-          path="/staff-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
-              <MainLayout>
-                <RoleDashboard role={Roles.Staff} />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin-dashboard"
-          element={
-            <ProtectedRoute allowedRoles={[Roles.Admin]}>
-              <MainLayout>
-                <RoleDashboard role={Roles.Admin} />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
           path={Routes.Forms}
           element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <LibraryExamples />
               </MainLayout>
@@ -76,7 +57,7 @@ function App() {
         <Route
           path={Routes.TableListing}
           element={
-            <ProtectedRoute allowedRoles={[Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <TableListingPage />
               </MainLayout>
@@ -86,7 +67,7 @@ function App() {
         <Route
           path={Routes.CoachData}
           element={
-            <ProtectedRoute allowedRoles={[Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <CoachDataPage />
               </MainLayout>
@@ -96,7 +77,7 @@ function App() {
         <Route
           path={Routes.Chat}
           element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <ChatPage />
               </MainLayout>
@@ -106,7 +87,7 @@ function App() {
         <Route
           path={Routes.MyProfile}
           element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <MyProfilePage />
               </MainLayout>
@@ -116,7 +97,7 @@ function App() {
         <Route
           path={Routes.Nutrition}
           element={
-            <ProtectedRoute allowedRoles={[Roles.User, Roles.Staff, Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <NutritionPage />
               </MainLayout>
@@ -126,7 +107,7 @@ function App() {
         <Route
           path={Routes.RecoveryTable}
           element={
-            <ProtectedRoute allowedRoles={[Roles.Admin]}>
+            <ProtectedRoute>
               <MainLayout>
                 <RecoveryTablePage />
               </MainLayout>

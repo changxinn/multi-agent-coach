@@ -123,7 +123,7 @@ async def run_migrations() -> None:
 
 async def init_db() -> None:
     """
-    Initialize database connection, run migrations, and seed admin user.
+    Initialize database connection and run migrations.
 
     Call this on application startup.
     """
@@ -143,13 +143,6 @@ async def init_db() -> None:
 
         # Run migrations
         await run_migrations()
-
-        # Seed admin user (idempotent - only creates if not exists)
-        from app.db.seed import seed_admin_user
-
-        async with AsyncSessionLocal() as session:
-            await seed_admin_user(session)
-            logger.info("Admin user seeding completed")
 
     except Exception as e:
         logger.error("Database initialization failed: %s", e)

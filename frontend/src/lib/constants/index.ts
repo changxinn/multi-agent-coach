@@ -2,11 +2,8 @@
  * Central export file for all application constants
  * 
  * Purpose: Single import point for all constants
- * Usage: import { Roles, Routes, Status } from '@/lib/constants'
+ * Usage: import { Routes, Status } from '@/lib/constants'
  */
-
-// Core constants
-export * from './roles'
 
 // Navigation
 export * from './routes'

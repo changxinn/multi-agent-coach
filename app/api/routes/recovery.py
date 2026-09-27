@@ -1,4 +1,4 @@
-"""Admin CRUD for the recovery tables shared with the Recovery Agent."""
+"""Authenticated CRUD for recovery tables shared with the Recovery Agent."""
 
 from typing import Any, Literal
 
@@ -23,14 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.routes.auth import get_current_user
 from app.db.database import get_db
 
-
-async def require_admin(user: dict = Depends(get_current_user)):
-    if user["role"] != "admin":
-        raise HTTPException(403, "Administrator access required")
-    return user
-
-
-router = APIRouter(prefix="/recovery", dependencies=[Depends(require_admin)])
+router = APIRouter(
+    prefix="/recovery", dependencies=[Depends(get_current_user)]
+)
 metadata = MetaData(schema="systemdb")
 
 

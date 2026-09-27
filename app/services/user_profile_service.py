@@ -137,7 +137,6 @@ class UserProfileService:
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "role": user.role,
             # Profile data
             "fitness_goal": profile.fitness_goal if profile else "general fitness",
             "fitness_level": profile.fitness_level if profile else "beginner",

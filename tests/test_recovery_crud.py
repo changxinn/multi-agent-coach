@@ -1,4 +1,4 @@
-"""Recovery API contracts, access control, and transaction failures (no live DB required)."""
+"""Recovery API contracts, authenticated access, and transaction failures."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,7 +15,7 @@ def api_client():
     app = FastAPI()
     app.include_router(router, prefix="/api")
     db = AsyncMock()
-    app.dependency_overrides[get_current_user] = lambda: {"id": 1, "role": "admin"}
+    app.dependency_overrides[get_current_user] = lambda: {"id": 1}
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as client:
         yield client, db, app
@@ -72,21 +72,12 @@ def test_create_update_list_delete(api_client, kind, payload):
 
 @pytest.mark.parametrize("kind,payload", PAYLOADS)
 def test_access_and_validation(api_client, kind, payload):
-    client, db, app = api_client
+    client, _, app = api_client
     assert (
         client.post(f"/api/recovery/{kind}", json={**payload, "user_id": 0}).status_code
         == 422
     )
     assert client.get(f"/api/recovery/{kind}?page_size=101").status_code == 422
-    app.dependency_overrides[get_current_user] = lambda: {"id": 2, "role": "user"}
-    for method, suffix in [("get", ""), ("post", ""), ("put", "/1"), ("delete", "/1")]:
-        assert (
-            client.request(
-                method, f"/api/recovery/{kind}{suffix}", json=payload
-            ).status_code
-            == 403
-        )
-    db.execute.assert_not_awaited()
     del app.dependency_overrides[get_current_user]
     assert client.get(f"/api/recovery/{kind}").status_code in (401, 403)
 

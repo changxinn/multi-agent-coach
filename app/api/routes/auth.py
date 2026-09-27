@@ -64,19 +64,16 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Account is disabled",
         )
 
-    # Create JWT token with role (default to USER if not set)
-    user_role = user.role.lower() if user.role else "user"
     token = create_access_token(
         {
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "role": user_role,  # Include role in token
             "user_image": None,
         }
     )
 
-    logger.info("User logged in successfully: %s (role: %s)", user.email, user_role)
+    logger.info("User logged in successfully: %s", user.email)
 
     return TokenResponse(
         access_token=token,
@@ -86,7 +83,6 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
             "email": user.email,
             "name": user.name,
             "user_image": None,
-            "role": user_role,
         },
     )
 
@@ -96,7 +92,6 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     """
     Register a new user.
 
-    Creates user with role='USER' by default.
     Returns JWT token.
     """
     user_repo = UserRepository(db)
@@ -121,26 +116,20 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
         email=request.email,
         password=password_hash,
         name=request.name,
-        role="USER",  # Default role
     )
 
     logger.info("New user registered: %s (ID: %d)", user.email, user.id)
 
-    # Create JWT token with role (new users default to USER)
-    user_role = "user"  # Default role for new users
     token = create_access_token(
         {
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "role": user_role,
             "user_image": None,
         }
     )
 
-    logger.info(
-        "New user registered: %s (ID: %d, role: %s)", user.email, user.id, user_role
-    )
+    logger.info("New user registered: %s (ID: %d)", user.email, user.id)
 
     return TokenResponse(
         access_token=token,
@@ -150,7 +139,6 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
             "email": user.email,
             "name": user.name,
             "user_image": None,
-            "role": user_role,
         },
     )
 
@@ -227,9 +215,6 @@ async def get_current_user(
             "id": user.id,
             "email": user.email,
             "name": user.name,
-            "role": user.role.lower()
-            if user.role
-            else "user",  # Ensure role is lowercase
             "sub": payload["sub"],  # Keep for session manager
         }
 
@@ -254,7 +239,6 @@ async def get_profile(
         "id": current_user["id"],
         "email": current_user["email"],
         "name": current_user["name"],
-        "role": current_user["role"],
         "fitness_profile": profile,
     }
 
@@ -273,6 +257,5 @@ async def update_profile(
         "id": current_user["id"],
         "email": current_user["email"],
         "name": current_user["name"],
-        "role": current_user["role"],
         "fitness_profile": profile,
     }

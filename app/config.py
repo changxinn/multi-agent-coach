@@ -39,11 +39,6 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_SCHEMA: str = "systemdb"
 
-    # Seed admin user (created on first run)
-    SEED_ADMIN_EMAIL: str = "admin@example.com"
-    SEED_ADMIN_PASSWORD: str = "ChangeMe123!"
-    SEED_ADMIN_NAME: str = "System Admin"
-
     # ===========================================
     # Session Configuration
     # ===========================================

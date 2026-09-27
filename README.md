@@ -263,38 +263,11 @@ taskkill /PID <PID> /F
 uvicorn app.main:app --reload --port 8001
 ```
 
-### Admin User Not Created
-
-Check backend logs for:
-```
-"Admin user seeding completed"
-```
-
-If missing, restart backend or manually seed:
-```bash
-python -c "from app.db.seed import seed_admin_user; from app.db.database import AsyncSessionLocal; import asyncio; asyncio.run(seed_admin_user(AsyncSessionLocal()))"
-```
-
 ### JWT Validation Failed
 
 - Ensure `JWT_SECRET_KEY` is set in `.env` (min 32 characters)
 - Check token format: `Authorization: Bearer <token>`
 - Default token expiry: 24 hours
-
----
-
-## Default Credentials
-
-**Admin User** (auto-created on first startup):
-- Email: `admin@example.com`
-- Password: `ChangeMe123!`
-
-**Customize in `.env`:**
-```env
-SEED_ADMIN_EMAIL=your-admin@example.com
-SEED_ADMIN_PASSWORD=YourSecurePassword123!
-SEED_ADMIN_NAME=Your Admin Name
-```
 
 ---
 

@@ -1,9 +1,9 @@
-"""Daily summary and admin listings for Head Coach / Summarizer."""
+"""Daily summary and authenticated listings for Head Coach / Summarizer."""
 
 import logging
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
@@ -20,15 +20,6 @@ from app.services.user_profile_service import UserProfileService
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
-    if current_user.get("role") != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin role required",
-        )
-    return current_user
 
 
 @router.post("/summaries/daily", response_model=DailySummaryResponse)
@@ -90,7 +81,7 @@ async def generate_daily_summary(
 )
 async def list_head_coach_routes(
     limit: int = Query(default=100, ge=1, le=500),
-    _: dict = Depends(require_admin),
+    _: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     repo = CoachEventsRepository(db)
@@ -101,7 +92,7 @@ async def list_head_coach_routes(
 async def list_summaries(
     limit: int = Query(default=100, ge=1, le=500),
     summary_type: str | None = Query(default=None),
-    _: dict = Depends(require_admin),
+    _: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     repo = CoachEventsRepository(db)

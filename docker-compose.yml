@@ -47,9 +47,6 @@ services:
       - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
       - NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS=${NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS:-120}
       - DEBUG=true
-      - SEED_ADMIN_EMAIL=admin@example.com
-      - SEED_ADMIN_PASSWORD=ChangeMe123!
-      - SEED_ADMIN_NAME=System Admin
     volumes:
       - ./app:/app/app
       - ./agents:/app/agents
