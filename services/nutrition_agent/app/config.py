@@ -1,24 +1,16 @@
 from pathlib import Path
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+SERVICE_DIR = Path(__file__).resolve().parents[1]
 
-def _find_root_env_file() -> Path | None:
-    """Find a repository-level .env for direct local execution, if present."""
-    for directory in Path(__file__).resolve().parents:
-        candidate = directory / ".env"
-        if candidate.is_file():
-            return candidate
-    return None
-
-
-ROOT_ENV_FILE = _find_root_env_file()
 
 class Settings(BaseSettings):
-    """Nutrition Agent settings from environment variables and a local root .env."""
+    """Nutrition Agent settings loaded from the service-local environment file."""
 
     model_config = SettingsConfigDict(
-        env_file=ROOT_ENV_FILE,
+        env_file=SERVICE_DIR / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )

@@ -10,7 +10,9 @@ from app.services.nutrition_service import NutritionService
 @pytest.mark.asyncio
 async def test_adherence_includes_the_date_for_each_daily_summary():
     service = NutritionService(AsyncMock())
-    service.get_daily_summary = AsyncMock(side_effect=[{"calories": 100}, {"calories": 200}])
+    service.get_daily_summary = AsyncMock(
+        side_effect=[{"calories": 100}, {"calories": 200}]
+    )
 
     result = await service.get_adherence(7, date(2026, 9, 20), date(2026, 9, 21))
 
@@ -18,10 +20,12 @@ async def test_adherence_includes_the_date_for_each_daily_summary():
         {"calories": 100, "summary_date": date(2026, 9, 20)},
         {"calories": 200, "summary_date": date(2026, 9, 21)},
     ]
-    service.get_daily_summary.assert_has_awaits([
-        ((7, date(2026, 9, 20)),),
-        ((7, date(2026, 9, 21)),),
-    ])
+    service.get_daily_summary.assert_has_awaits(
+        [
+            ((7, date(2026, 9, 20)),),
+            ((7, date(2026, 9, 21)),),
+        ]
+    )
 
 
 @pytest.mark.asyncio
