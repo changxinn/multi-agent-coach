@@ -187,7 +187,8 @@ class NutritionService:
         summaries = []
         current = start_date
         while current <= end_date:
-            summaries.append(await self.get_daily_summary(user_id, current))
+            summary = await self.get_daily_summary(user_id, current)
+            summaries.append({**summary, "summary_date": current})
             current += timedelta(days=1)
         return summaries
 
