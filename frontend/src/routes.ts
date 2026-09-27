@@ -1,5 +1,5 @@
-import { Roles, PageIds, Routes, Sections, type Role, type PageId, type RoutePath, type Section } from '@/lib/constants'
-import { Bot, ClipboardList, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
+import { PageIds, Routes, Sections, type PageId, type RoutePath, type Section } from '@/lib/constants'
+import { Bot, CircleUser, ClipboardList, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
 
 export const DEFAULT_ICON_SIZE = 20
 
@@ -9,7 +9,6 @@ export type RoutePage = {
   path: RoutePath
   section?: Section
   icon?: LucideIcon
-  allowedRoles?: Role[]
 }
 
 export const routePages: RoutePage[] = [
@@ -19,7 +18,6 @@ export const routePages: RoutePage[] = [
     path: Routes.Dashboard, 
     section: Sections.Overview,
     icon: LayoutDashboard,
-    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
   {
     id: PageIds.Chat, 
@@ -27,7 +25,13 @@ export const routePages: RoutePage[] = [
     path: Routes.Chat, 
     section: Sections.Overview,
     icon: Bot,
-    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
+  },
+  {
+    id: PageIds.MyProfile,
+    label: 'My Profile',
+    path: Routes.MyProfile,
+    section: Sections.Overview,
+    icon: CircleUser,
   },
   { 
     id: PageIds.Nutrition,
@@ -35,33 +39,21 @@ export const routePages: RoutePage[] = [
     path: Routes.Nutrition,
     section: Sections.Coaching,
     icon: Salad,
-    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
   },
   { 
     id: PageIds.CoachData, 
     label: 'Coach Data', 
     path: Routes.CoachData, 
-    section: Sections.Admin,
+    section: Sections.Review,
     icon: ClipboardList,
-    allowedRoles: [Roles.Admin] 
   },
   { 
     id: PageIds.RecoveryTable,
     label: 'Recovery Table',
     path: Routes.RecoveryTable,
-    section: Sections.Admin,
+    section: Sections.Review,
     icon: Table,
-    allowedRoles: [Roles.Admin]
   },
 ]
 
-export function getVisiblePages(userRoles: Role[]) {
-  return routePages.filter((page) => {
-    if (!page.allowedRoles) {
-      return true
-    }
-    return userRoles.some(role => page.allowedRoles?.includes(role))
-  })
-}
-
-export { Role }
+export const getVisiblePages = () => routePages

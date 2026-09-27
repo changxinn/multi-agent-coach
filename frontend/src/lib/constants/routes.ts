@@ -13,6 +13,7 @@ export const Routes = {
   RecoveryTable: '/recovery-table',
   Timeline: '/timeline',
   Login: '/login',
+  Register: '/register',
   QuickLogin: '/quick-login',
   Chat: '/chat',
   Nutrition: '/nutrition',

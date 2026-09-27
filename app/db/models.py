@@ -37,12 +37,6 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=False, index=True)
     password = Column(String(255), nullable=False)  # bcrypt hash
     name = Column(String(255), nullable=False)
-    role = Column(
-        String(20),
-        nullable=False,
-        default="USER",
-        server_default=text("'USER'"),
-    )
     enabled = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     created_at = Column(
         DateTime,
@@ -52,7 +46,7 @@ class User(Base):
     )
 
     def __repr__(self):
-        return f"<User(id={self.id}, email={self.email}, role={self.role})>"
+        return f"<User(id={self.id}, email={self.email})>"
 
 
 class UserFitnessProfile(Base):

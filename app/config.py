@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     APP_NAME: str = "Multi-Agent Coach API"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
+    # Disabled by default so development-only credentials are never seeded implicitly.
+    SEED_DEMO_USERS: bool = False
 
     # ===========================================
     # JWT Configuration
@@ -38,11 +40,6 @@ class Settings(BaseSettings):
     # ===========================================
     DATABASE_URL: str
     DATABASE_SCHEMA: str = "systemdb"
-
-    # Seed admin user (created on first run)
-    SEED_ADMIN_EMAIL: str = "admin@example.com"
-    SEED_ADMIN_PASSWORD: str = "ChangeMe123!"
-    SEED_ADMIN_NAME: str = "System Admin"
 
     # ===========================================
     # Session Configuration

@@ -1,17 +1,13 @@
 import { Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '../../lib/authStore'
-import { type Role, Routes } from '@/lib/constants'
+import { Routes } from '@/lib/constants'
 
 interface ProtectedRouteProps {
   children: React.ReactNode
-  allowedRoles?: Role[]
 }
 
-export function ProtectedRoute({ 
-  children, 
-  allowedRoles 
-}: ProtectedRouteProps) {
-  const { token, isAuthInitialized, getUserRoles } = useAuthStore()
+export function ProtectedRoute({ children }: ProtectedRouteProps) {
+  const { token, isAuthInitialized } = useAuthStore()
   const location = useLocation()
 
   if (!isAuthInitialized) {
@@ -20,15 +16,6 @@ export function ProtectedRoute({
 
   if (!token) {
     return <Navigate to={Routes.Login} state={{ from: location }} replace />
-  }
-
-  if (allowedRoles) {
-    const userRoles = getUserRoles()
-    const hasAccess = userRoles.some(role => allowedRoles.includes(role))
-    
-    if (!hasAccess) {
-      return <Navigate to="/unauthorized" replace />
-    }
   }
 
   return <>{children}</>

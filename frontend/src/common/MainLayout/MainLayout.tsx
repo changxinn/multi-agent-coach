@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import AppShell from '@/common/AppShell'
 import { useAuthStore } from '@/lib/authStore'
-import { routePages, getVisiblePages } from '@/routes'
-import { Roles } from '@/lib/constants'
+import { routePages } from '@/routes'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
 
 interface MainLayoutProps {
@@ -13,7 +12,7 @@ interface MainLayoutProps {
 export function MainLayout({ children }: MainLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
-  const { user, logout, getUserRoles } = useAuthStore()
+  const { user, logout } = useAuthStore()
   
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -42,17 +41,13 @@ export function MainLayout({ children }: MainLayoutProps) {
     navigate('/login', { replace: true })
   }
 
-  const userRoles = getUserRoles()
-  const visiblePages = getVisiblePages(userRoles)
-  const primaryRole = userRoles.length > 0 ? userRoles[userRoles.length - 1] : Roles.Admin
-  const currentPage = routePages.find((page) => page.path === location.pathname) ?? visiblePages[0] ?? routePages[0]
+  const currentPage = routePages.find((page) => page.path === location.pathname) ?? routePages[0]
 
   return (
     <AppShell
-      pages={visiblePages}
+      pages={routePages}
       currentPageId={currentPage.id}
       currentPageLabel={currentPage.label}
-      role={primaryRole}
       menuOpen={menuOpen}
       sidebarCollapsed={sidebarCollapsed}
       mobileMenuOpen={mobileMenuOpen}
@@ -61,7 +56,6 @@ export function MainLayout({ children }: MainLayoutProps) {
       onNavigate={handleNavigate}
       onToggleMenu={() => setMenuOpen(!menuOpen)}
       onCloseMenu={() => setMenuOpen(false)}
-      onSelectRole={() => {}}
       onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
       onOpenMobileMenu={() => setMobileMenuOpen(true)}
       onCloseMobileMenu={() => setMobileMenuOpen(false)}

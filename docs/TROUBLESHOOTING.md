@@ -177,30 +177,22 @@ relation "systemdb.users" does not exist
 
 1. **Check seeding logs**:
    ```bash
-   docker-compose logs api | grep "Admin user"
-   # Should see: "Admin user seeding completed"
+   docker-compose logs api
    ```
 
-2. **Verify admin user exists**:
+2. **Verify the user exists**:
    ```bash
    psql -h localhost -U postgres -d systemdb
-   SELECT id, email, role FROM systemdb.users WHERE email = 'admin@example.com';
+   SELECT id, email, name, enabled FROM systemdb.users;
    ```
 
-3. **Manually create admin user**:
+3. **Run migrations manually**:
    ```bash
    python -c "
-   from app.db.seed import seed_admin_user
-   from app.db.database import AsyncSessionLocal
-   import asyncio
-   asyncio.run(seed_admin_user(AsyncSessionLocal()))
+    from app.db.seed import seed_database
+    import asyncio
+    asyncio.run(seed_database())
    "
-   ```
-
-4. **Check password in .env**:
-   ```bash
-   grep SEED_ADMIN_PASSWORD .env
-   # Should be: SEED_ADMIN_PASSWORD=ChangeMe123!
    ```
 
 ---

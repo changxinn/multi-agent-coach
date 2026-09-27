@@ -46,10 +46,8 @@ services:
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
       - NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS=${NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS:-120}
+      - SEED_DEMO_USERS=true
       - DEBUG=true
-      - SEED_ADMIN_EMAIL=admin@example.com
-      - SEED_ADMIN_PASSWORD=ChangeMe123!
-      - SEED_ADMIN_NAME=System Admin
     volumes:
       - ./app:/app/app
       - ./agents:/app/agents
@@ -243,7 +241,7 @@ services:
     working_dir: /frontend
     command: >
       sh -c "npm config set registry https://registry.npmjs.org/ &&
-      npm install &&
+      npm install --package-lock=false --registry=https://registry.npmjs.org/ &&
       npm run dev -- --host 0.0.0.0 --port 5174"
     ports:
       - "5174:5174"

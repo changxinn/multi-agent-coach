@@ -23,7 +23,6 @@ def create_access_token(user_data: dict[str, Any]) -> str:
             - id: User ID (will be used as 'sub' claim)
             - email: User email
             - name: User name
-            - role: User role (admin, staff, user)
             - user_image: Optional user image URL
 
     Returns:
@@ -34,7 +33,6 @@ def create_access_token(user_data: dict[str, Any]) -> str:
             "id": 123,
             "email": "user@example.com",
             "name": "John Doe",
-            "role": "admin",
             "user_image": "https://..."
         })
     """
@@ -45,7 +43,6 @@ def create_access_token(user_data: dict[str, Any]) -> str:
         "sub": str(user_data["id"]),  # Subject (user ID)
         "email": user_data["email"],
         "name": user_data["name"],
-        "role": user_data.get("role", "user"),  # Include role, default to "user"
         "user_image": user_data.get("user_image"),
         "exp": expiry,
         "iat": now,
@@ -106,7 +103,6 @@ def refresh_token(token: str) -> str:
         "id": int(payload["sub"]),
         "email": payload["email"],
         "name": payload["name"],
-        "role": payload.get("role", "user"),  # Preserve role from original token
         "user_image": payload.get("user_image"),
     }
 

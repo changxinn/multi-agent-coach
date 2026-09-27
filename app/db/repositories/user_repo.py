@@ -47,7 +47,6 @@ class UserRepository:
         email: str,
         password: str,
         name: str,
-        role: str = "USER",
     ) -> User:
         """
         Create a new user.
@@ -56,8 +55,6 @@ class UserRepository:
             email: User email
             password: Password (should be pre-hashed with bcrypt)
             name: User name
-            role: User role (USER, STAFF, ADMIN)
-
         Returns:
             Created user
         """
@@ -65,7 +62,6 @@ class UserRepository:
             email=email,
             password=password,
             name=name,
-            role=role,
             enabled=True,
         )
 
@@ -77,27 +73,6 @@ class UserRepository:
         fitness_profile = UserFitnessProfile(user_id=user.id)
         self.db.add(fitness_profile)
         await self.db.flush()
-
-        return user
-
-    async def update_role(self, user_id: int, role: str) -> User | None:
-        """
-        Update user role.
-
-        Args:
-            user_id: User ID
-            role: New role
-
-        Returns:
-            Updated user or None if not found
-        """
-        user = await self.get_by_id(user_id)
-        if not user:
-            return None
-
-        user.role = role
-        await self.db.flush()
-        await self.db.refresh(user)
 
         return user
 
