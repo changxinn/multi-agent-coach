@@ -48,6 +48,6 @@ ON systemdb.user_fitness_profiles(user_id);
 -- ===========================================
 -- Step 5: Grant permissions
 -- ===========================================
-GRANT ALL PRIVILEGES ON SCHEMA systemdb TO postgres;
-GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA systemdb TO postgres;
-GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA systemdb TO postgres;
+GRANT ALL PRIVILEGES ON SCHEMA systemdb TO CURRENT_USER;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA systemdb TO CURRENT_USER;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA systemdb TO CURRENT_USER;
