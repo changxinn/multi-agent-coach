@@ -60,7 +60,17 @@ jobs:
             exit 1
           fi
       - name: Install Promptfoo
-        run: npm install --global promptfoo@0.120.0
+        shell: bash
+        run: |
+          npm install --global promptfoo@0.120.0
+          # 0.120.0 resolves drizzle/ on Linux but ships migrations in dist/drizzle/.
+          promptfoo_root="$(npm root --global)/promptfoo"
+          if [ ! -f "$promptfoo_root/drizzle/meta/_journal.json" ]; then
+            test -f "$promptfoo_root/dist/drizzle/meta/_journal.json"
+            mkdir -p "$promptfoo_root/drizzle"
+            cp -R "$promptfoo_root/dist/drizzle/." "$promptfoo_root/drizzle/"
+          fi
+          test -f "$promptfoo_root/drizzle/meta/_journal.json"
       - name: Build and start agent services
         run: docker compose up --build -d --wait --wait-timeout 180 head-coach summarizer
       - name: Run all four evaluation suites

@@ -25,6 +25,10 @@ API call fails the job. Download `promptfoo-results` from the run's Artifacts to
 inspect HTML reports or machine-readable JSON. Services are always torn down.
 Response caching is disabled to ensure each run calls the live application.
 The Promptfoo version is pinned; transitive npm dependencies are not locked.
+The CI install step also works around a Linux migration-path bug in 0.120.0:
+it copies the packaged `dist/drizzle` migrations to the `drizzle` path expected
+by that version. It checks for the real migration journal rather than creating
+an empty one. Revisit this workaround when upgrading Promptfoo.
 
 ## Local run (PowerShell, repository root)
 
