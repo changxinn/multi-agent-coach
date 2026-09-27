@@ -1,17 +1,13 @@
-import { defineConfig, loadEnv } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 import path from 'path'
+import { fileURLToPath } from 'url'
 
-export default defineConfig(({ mode }) => {
+const configDirectory = path.dirname(fileURLToPath(import.meta.url))
+
+export default defineConfig(() => {
   // Load environment files from environments folder
-  const envDir = path.resolve(__dirname, 'environments')
-  const env = loadEnv(mode, envDir, '')
-  
-  // Create proxy for environment variables
-  const processEnv = {} as Record<string, string>
-  Object.keys(env).forEach(key => {
-    processEnv[`VITE_${key}`] = env[key]
-  })
+  const envDir = path.resolve(configDirectory, 'environments')
 
   return {
     plugins: [react()],
@@ -21,7 +17,7 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
-        '@': path.resolve(__dirname, './src'),
+        '@': path.resolve(configDirectory, './src'),
       },
     },
   }

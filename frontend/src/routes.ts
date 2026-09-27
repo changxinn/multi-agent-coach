@@ -30,6 +30,14 @@ export const routePages: RoutePage[] = [
     allowedRoles: [Roles.User, Roles.Staff, Roles.Admin] 
   },
   { 
+    id: PageIds.Nutrition,
+    label: 'Nutrition',
+    path: Routes.Nutrition,
+    section: Sections.Coaching,
+    icon: Salad,
+    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
+  },
+  { 
     id: PageIds.CoachData, 
     label: 'Coach Data', 
     path: Routes.CoachData, 
@@ -44,14 +52,6 @@ export const routePages: RoutePage[] = [
     section: Sections.Admin,
     icon: Table,
     allowedRoles: [Roles.Admin]
-  },
-  { 
-    id: PageIds.Nutrition,
-    label: 'Nutrition',
-    path: Routes.Nutrition,
-    section: Sections.Admin,
-    icon: Salad,
-    allowedRoles: [Roles.User, Roles.Staff, Roles.Admin]
   },
 ]
 

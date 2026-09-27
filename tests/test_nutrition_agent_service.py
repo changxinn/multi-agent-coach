@@ -132,12 +132,12 @@ def test_nutrition_agent_uses_gpt5_completion_token_parameter(monkeypatch):
     create = MagicMock(return_value=completion)
     openai_client = MagicMock()
     openai_client.chat.completions.create = create
-    monkeypatch.setattr(
-        "services.nutrition_agent.app.agent.OpenAI", lambda **_: openai_client
-    )
+    openai_factory = MagicMock(return_value=openai_client)
+    monkeypatch.setattr("services.nutrition_agent.app.agent.OpenAI", openai_factory)
     configured_settings = Settings(
         NUTRITION_LLM_ENABLED=True,
         OPENAI_API_KEY="test-key",
+        OPENAI_BASE_URL="https://provider.example/v1",
         LLM_MODEL="gpt-5-nano",
     )
 
@@ -152,6 +152,9 @@ def test_nutrition_agent_uses_gpt5_completion_token_parameter(monkeypatch):
     assert create.call_args.kwargs["reasoning_effort"] == "low"
     assert "max_tokens" not in create.call_args.kwargs
     assert "temperature" not in create.call_args.kwargs
+    openai_factory.assert_called_once_with(
+        api_key="test-key", base_url="https://provider.example/v1"
+    )
 
 
 @pytest.mark.parametrize(

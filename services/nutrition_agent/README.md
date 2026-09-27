@@ -9,6 +9,12 @@ INTERNAL_SERVICE_TOKEN=local-dev-recovery-token
 DATABASE_URL=postgresql://nutrition_agent:password@host:5432/nutritiondb
 RUN_MIGRATIONS=true
 USDA_FDC_API_KEY=
+OPENAI_API_KEY=
+# Optional endpoint for an OpenAI-compatible provider, for example https://provider.example/v1
+OPENAI_BASE_URL=
+LLM_MODEL=gpt-5-nano
+# Set false to use deterministic meal-plan generation only.
+NUTRITION_MEAL_PLAN_LLM_ENABLED=true
 ```
 
 ## Run locally
@@ -45,3 +51,16 @@ locally curated or subsequently refreshed food record.
 Docker Compose sets `RUN_MIGRATIONS=true` for the Nutrition Agent container.
 This keeps service unit tests independent of a live PostgreSQL instance. In a
 production deployment, run the same migration step once as a dedicated job.
+
+## LLM meal-plan generation
+
+When `NUTRITION_MEAL_PLAN_LLM_ENABLED=true` and `OPENAI_API_KEY` is configured,
+meal-plan drafts use native OpenAI function tools to retrieve the complete cached
+USDA catalogue page by page. The model can submit only cached food IDs and gram
+amounts. The service resolves those IDs again, calculates nutrition from the cache,
+performs the existing allergy/safety validation, and records only generator
+provenance. It does not persist prompts or model reasoning.
+
+If the model is disabled, unavailable, exceeds the tool-call limit, returns an
+invalid plan, or selects an unsafe/unavailable food, the service uses the existing
+deterministic cached-catalogue generator instead.

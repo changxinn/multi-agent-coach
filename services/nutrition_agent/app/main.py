@@ -1,6 +1,7 @@
 """FastAPI entry point for the private, authoritative Nutrition Agent."""
 
 import logging
+from time import perf_counter
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -222,16 +223,40 @@ async def meal_plans_generate(
     payload: MealPlanGenerateRequest,
     service: Service,
     idempotency_key: Annotated[str | None, Header()] = None,
+    x_request_id: Annotated[str | None, Header()] = None,
 ):
+    request_id = x_request_id or "missing"
+    started_at = perf_counter()
+    logger.info(
+        "Meal-plan generation started request_id=%s user_id=%d",
+        request_id,
+        payload.user_id,
+    )
     try:
-        return await service.idempotent(
+        result = await service.idempotent(
             payload.user_id,
             "meal-plans.generate",
             idempotency_key,
             payload.model_dump(mode="json"),
-            lambda: service.generate_meal_plan(payload.user_id, payload),
+            lambda: service.generate_meal_plan(
+                payload.user_id, payload, request_id=request_id
+            ),
         )
+        logger.info(
+            "Meal-plan generation completed request_id=%s user_id=%d elapsed_seconds=%.3f",
+            request_id,
+            payload.user_id,
+            perf_counter() - started_at,
+        )
+        return result
     except Exception as error:
+        logger.exception(
+            "Meal-plan generation failed request_id=%s user_id=%d error_type=%s elapsed_seconds=%.3f",
+            request_id,
+            payload.user_id,
+            type(error).__name__,
+            perf_counter() - started_at,
+        )
         raise translate(error) from error
 
 
@@ -298,6 +323,26 @@ async def meal_plans_archive(
             idempotency_key,
             payload.model_dump(mode="json"),
             lambda: service.archive_meal_plan(payload.user_id, payload.meal_plan_id),
+        )
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/meal-plans/delete", dependencies=[Depends(require_internal_token)]
+)
+async def meal_plans_delete(
+    payload: MealPlanIdRequest,
+    service: Service,
+    idempotency_key: Annotated[str | None, Header()] = None,
+):
+    try:
+        return await service.idempotent(
+            payload.user_id,
+            "meal-plans.delete",
+            idempotency_key,
+            payload.model_dump(mode="json"),
+            lambda: service.delete_meal_plan(payload.user_id, payload.meal_plan_id),
         )
     except Exception as error:
         raise translate(error) from error

@@ -8,6 +8,7 @@
 export const Sections = {
   Overview: 'OVERVIEW',
   Admin: 'ADMIN',
+  Coaching: 'Coaching',
 } as const
 
 export type Section = typeof Sections[keyof typeof Sections]

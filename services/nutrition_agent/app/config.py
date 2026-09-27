@@ -20,11 +20,16 @@ class Settings(BaseSettings):
     RUN_MIGRATIONS: bool = False
     USDA_FDC_API_KEY: str = ""
     NUTRITION_LLM_ENABLED: bool = True
-    NUTRITION_LLM_DEBUG_LOG_REQUESTS: bool = False
-    NUTRITION_LLM_DEBUG_LOG_RESPONSES: bool = False
+    NUTRITION_MEAL_PLAN_LLM_ENABLED: bool = True
+    NUTRITION_MEAL_PLAN_LLM_MAX_COMPLETION_TOKENS: int = 4000
+    NUTRITION_LLM_DEBUG_LOG_REQUESTS: bool = True
+    NUTRITION_LLM_DEBUG_LOG_RESPONSES: bool = True
     OPENAI_API_KEY: str = ""
+    OPENAI_BASE_URL: str = ""
     LLM_MODEL: str = "gpt-5-nano"
-    NUTRITION_LLM_REASONING_EFFORT: str = "low"
+    NUTRITION_LLM_REASONING_EFFORT: str = (
+        "low"  # reasoning effort should be none for gpt-6-luna, low for gpt-5-nano
+    )
 
 
 settings = Settings()
