@@ -1,0 +1,32 @@
+.dashboard-agent-card { display: flex; height: 100%; flex-direction: column; }
+.dashboard-agent-card .ant-card-body { display: flex; flex: 1; flex-direction: column; }
+.dashboard-agent-content { flex: 1; }
+.dashboard-agent-content .ant-space-item:last-child { margin-top: auto; }
+.dashboard-agent-card .ant-card-head-title { display: flex; align-items: center; }
+.dashboard-agent-icon { display: inline-flex; margin-right: 8px; vertical-align: text-bottom; }
+.dashboard-agent-icon.training { color: #2563eb; }
+.dashboard-agent-icon.nutrition { color: #d97706; }
+.dashboard-agent-icon.recovery { color: #0f766e; }
+.dashboard-progress-row { display: flex; gap: 20px; justify-content: space-around; text-align: center; }
+.dashboard-progress-row > div { display: flex; min-width: 0; flex: 1; flex-direction: column; align-items: center; gap: 6px; }
+.dashboard-stat-row { display: flex; gap: 16px; justify-content: space-between; }
+.dashboard-stat-row .ant-statistic-content { text-align: center; }
+.dashboard-chart { min-width: 0; }
+.dashboard-chart svg { display: block; width: 100%; height: 128px; overflow: visible; }
+.dashboard-chart-grid { stroke: #d9d9d9; stroke-dasharray: 3 3; }
+.dashboard-chart-caption, .dashboard-chart-empty { display: block; margin-top: 6px; color: #8c8c8c; font-size: 12px; line-height: 1.4; }
+.dashboard-chart-key-calories { color: #d97706; }
+.dashboard-chart-key-protein { color: #0f766e; }
+.dashboard-recovery-details .ant-descriptions-item-label { width: 110px; }
+
+@media (max-width: 575px) {
+  .dashboard-progress-row { gap: 10px; }
+  .dashboard-stat-row { gap: 10px; }
+  .dashboard-chart svg { height: 120px; }
+  .dashboard-actions-card .ant-list-item { align-items: flex-start; }
+  .dashboard-actions-card .ant-list-item-action { margin-inline-start: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-chart * { transition: none !important; animation: none !important; }
+}

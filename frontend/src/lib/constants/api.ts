@@ -28,6 +28,9 @@ export const ApiEndpoints = {
     HeadCoachRoutes: '/admin/head-coach-routes',
     Summaries: '/admin/summaries',
   },
+  Dashboard: {
+    DailyCommandCenter: '/dashboard/daily-command-center',
+  },
   Session: {
     Create: '/session',
     Get: '/session',

@@ -11,7 +11,7 @@ from services.nutrition_agent.app.agent import (
     TARGETS_UNAVAILABLE_RESPONSE,
     NutritionAgent,
 )
-from services.nutrition_agent.app.config import SERVICE_DIR, Settings, settings
+from services.nutrition_agent.app.config import REPOSITORY_ROOT, Settings, settings
 from services.nutrition_agent.app.main import app, get_service, startup
 
 
@@ -21,9 +21,9 @@ def disable_migrations_for_http_tests(monkeypatch):
     monkeypatch.setattr(settings, "RUN_MIGRATIONS", False)
 
 
-def test_settings_load_service_local_env_file_regardless_of_working_directory():
-    assert SERVICE_DIR == Path(__file__).parents[1] / "services/nutrition_agent"
-    assert Settings.model_config["env_file"] == SERVICE_DIR / ".env"
+def test_settings_load_repository_root_env_file_regardless_of_working_directory():
+    assert REPOSITORY_ROOT == Path(__file__).parents[1]
+    assert Settings.model_config["env_file"] == REPOSITORY_ROOT / ".env"
 
 
 @pytest.mark.asyncio
