@@ -11,7 +11,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, chat, coach, nutrition, recovery, session
+from app.api.routes import auth, chat, coach, dashboard, nutrition, recovery, session
 from app.config import get_settings
 from app.db.database import AsyncSessionLocal, close_db, init_db
 from app.db.demo_seed import seed_demo_users
@@ -89,6 +89,7 @@ app.include_router(auth.router, prefix="/api", tags=["Authentication"])
 app.include_router(chat.router, prefix="/api", tags=["Chat"])
 app.include_router(session.router, prefix="/api", tags=["Session"])
 app.include_router(coach.router, prefix="/api", tags=["Coach"])
+app.include_router(dashboard.router, prefix="/api", tags=["Dashboard"])
 app.include_router(recovery.router, prefix="/api", tags=["Recovery"])
 app.include_router(nutrition.router, prefix="/api", tags=["Nutrition"])
 

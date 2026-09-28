@@ -4,6 +4,7 @@ import { Alert, Button, Card, Form, Input, InputNumber, Modal, Popconfirm, Selec
 import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
 import type { ColumnsType } from 'antd/es/table'
 import { api } from '@/lib/api'
+import { dailyCommandCenterQueryKey } from '@/pages/DashboardPage/useDailyCommandCenter'
 
 const { Title, Text } = Typography
 type Kind = 'sleep-logs' | 'check-ins' | 'assessments'
@@ -58,7 +59,10 @@ function RecoveryTable({ kind }: { kind: Kind }) {
     onSuccess: async () => {
       setOpen(false)
       messageApi.success(editing ? 'Record updated' : 'Record created')
-      await queryClient.invalidateQueries({ queryKey: ['recovery', kind] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['recovery', kind] }),
+        queryClient.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
+      ])
     },
     onError: (error: Error) => setSaveError(error.message),
   })
@@ -67,7 +71,10 @@ function RecoveryTable({ kind }: { kind: Kind }) {
     onSuccess: async () => {
       messageApi.success('Record deleted')
       if (query.data?.items.length === 1 && page > 1) setPage(page - 1)
-      await queryClient.invalidateQueries({ queryKey: ['recovery', kind] })
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['recovery', kind] }),
+        queryClient.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
+      ])
     },
     onError: (error: Error) => messageApi.error(error.message),
   })

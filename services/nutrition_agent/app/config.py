@@ -3,14 +3,14 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-SERVICE_DIR = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
-    """Nutrition Agent settings loaded from the service-local environment file."""
+    """Nutrition Agent settings loaded from the repository-root environment file."""
 
     model_config = SettingsConfigDict(
-        env_file=SERVICE_DIR / ".env",
+        env_file=REPOSITORY_ROOT / ".env",
         env_file_encoding="utf-8",
         extra="ignore",
     )
