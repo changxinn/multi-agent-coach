@@ -10,6 +10,7 @@ from services.nutrition_agent.app.agent import (
     SYSTEM_PROMPT,
     TARGETS_UNAVAILABLE_RESPONSE,
     NutritionAgent,
+    format_display_dates,
 )
 from services.nutrition_agent.app.config import REPOSITORY_ROOT, Settings, settings
 from services.nutrition_agent.app.main import app, get_service, startup
@@ -157,6 +158,37 @@ def test_nutrition_agent_uses_gpt5_completion_token_parameter(monkeypatch):
     )
 
 
+def test_nutrition_agent_formats_iso_dates_for_chat_display():
+    assert format_display_dates("Logged on 2026-09-28.") == "Logged on 28 Sep 2026."
+    assert format_display_dates("Logged at 2026-09-28T10:47:48+08:00 (SGT).") == (
+        "Logged at 28 Sep 2026T10:47:48+08:00 (SGT)."
+    )
+    assert format_display_dates("Target: 2,026 kcal; invalid date: 2026-99-99.") == (
+        "Target: 2,026 kcal; invalid date: 2026-99-99."
+    )
+
+
+def test_nutrition_agent_formats_accepted_model_response_dates(monkeypatch):
+    completion = MagicMock()
+    completion.choices[0].message.content = "Your latest meal was on 2026-09-28."
+    openai_client = MagicMock()
+    openai_client.chat.completions.create.return_value = completion
+    monkeypatch.setattr(
+        "services.nutrition_agent.app.agent.OpenAI", lambda **_: openai_client
+    )
+    configured_settings = Settings(
+        NUTRITION_LLM_ENABLED=True, OPENAI_API_KEY="test-key"
+    )
+
+    response = NutritionAgent(configured_settings).respond(
+        messages=[{"role": "user", "content": "What is my latest meal log?"}],
+        user_profile={},
+        nutrition_context={"date": "2026-09-28"},
+    )
+
+    assert response == "Your latest meal was on 28 Sep 2026."
+
+
 @pytest.mark.parametrize(
     "model_response",
     [
@@ -293,6 +325,7 @@ def test_nutrition_agent_allows_read_only_target_advice(monkeypatch):
 
 def test_nutrition_agent_prompt_requires_consistent_target_availability_wording():
     assert "do not say there are no active targets" in SYSTEM_PROMPT
+    assert "DD MMM YYYY" in SYSTEM_PROMPT
 
 
 def test_nutrition_agent_logs_unverified_meal_log_claim_when_debugging_enabled(

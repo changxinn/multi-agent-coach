@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from services.nutrition_agent.app.meal_plan_generator import MealPlanGenerationError
 from services.nutrition_agent.app.repository import NutritionRepository
 from services.nutrition_agent.app.schemas import (
     MealPlanCreateRequest,
@@ -43,6 +44,13 @@ def planned_meal(**overrides):
     }
 
 
+def deterministic_meal_plan_service() -> NutritionService:
+    """Create a service configured to exercise deterministic meal-plan fallback."""
+    generator = MagicMock()
+    generator.generate = AsyncMock(side_effect=MealPlanGenerationError("disabled"))
+    return NutritionService(AsyncMock(), meal_plan_generator=generator)
+
+
 def test_meal_plan_request_requires_meals_inside_a_bounded_date_range():
     payload = {
         "user_id": 7,
@@ -73,7 +81,7 @@ def test_meal_plan_generation_request_requires_unique_meal_types():
 
 @pytest.mark.asyncio
 async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
-    service = NutritionService(AsyncMock())
+    service = deterministic_meal_plan_service()
     service.repo.get_active_target = AsyncMock(
         return_value={
             "id": 3,
@@ -149,7 +157,7 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
 
 @pytest.mark.asyncio
 async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergies():
-    service = NutritionService(AsyncMock())
+    service = deterministic_meal_plan_service()
     service.repo.get_active_target = AsyncMock(
         return_value={
             "id": 3,
@@ -207,7 +215,7 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
 
 @pytest.mark.asyncio
 async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies():
-    service = NutritionService(AsyncMock())
+    service = deterministic_meal_plan_service()
     service.repo.get_active_target = AsyncMock(return_value={"id": 3})
     service.repo.list_food_catalogue = AsyncMock(
         return_value=[
@@ -235,7 +243,7 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
 
 @pytest.mark.asyncio
 async def test_generate_meal_plan_requires_active_targets_and_a_safe_catalogue():
-    service = NutritionService(AsyncMock())
+    service = deterministic_meal_plan_service()
     service.repo.get_active_target = AsyncMock(return_value=None)
     request = MealPlanGenerateRequest(
         user_id=7,
