@@ -18,6 +18,7 @@ export const Routes = {
   Chat: '/chat',
   Nutrition: '/nutrition',
   MyProfile: '/my-profile',
+  CompatibilityReviews: '/compatibility-reviews',
 } as const
 
 export type RoutePath = typeof Routes[keyof typeof Routes]

@@ -9,6 +9,7 @@ import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
 import { ChatPage } from '@/pages/ChatPage'
 import { NutritionPage } from '@/pages/NutritionPage'
 import { MyProfilePage } from '@/pages/MyProfilePage'
+import { CompatibilityReviewsPage } from '@/pages/CompatibilityReviewsPage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
 import { MainLayout } from '@/common/MainLayout'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
@@ -110,6 +111,16 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <RecoveryTablePage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.CompatibilityReviews}
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <CompatibilityReviewsPage />
               </MainLayout>
             </ProtectedRoute>
           }

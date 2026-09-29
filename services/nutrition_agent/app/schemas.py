@@ -62,6 +62,48 @@ class FoodCatalogueRequest(UserRequest):
     pass
 
 
+class CompatibilityReviewQueueRequest(StrictModel):
+    statuses: list[
+        Literal[
+            "pending",
+            "auto_classified",
+            "review_required",
+            "needs_review",
+            "approved",
+            "rejected",
+        ]
+    ] = Field(
+        default_factory=lambda: [
+            "pending",
+            "auto_classified",
+            "review_required",
+            "needs_review",
+        ],
+        min_length=1,
+    )
+    query: str | None = Field(default=None, max_length=255)
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=50, ge=1, le=100)
+
+
+class CompatibilityReviewFoodRequest(StrictModel):
+    food_cache_id: int = Field(gt=0)
+
+
+class CompatibilityReviewRequest(CompatibilityReviewFoodRequest):
+    review_status: Literal["approved", "rejected", "review_required"]
+    allergen_status: Literal["known", "unknown", "conflicting"]
+    known_allergens: list[str] = Field(default_factory=list, max_length=100)
+    strict_suitability: dict[str, str] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    confidence: Decimal | None = Field(default=None, ge=0, le=1)
+    classifier_version: str | None = Field(default=None, max_length=255)
+    policy_version: str = Field(min_length=1, max_length=255)
+    review_note: str | None = Field(default=None, max_length=4000)
+    reviewer_user_id: int = Field(gt=0)
+    reviewer_email: str = Field(min_length=3, max_length=320)
+
+
 class MealItem(StrictModel):
     food_name: str = Field(min_length=1, max_length=255)
     quantity: Decimal = Field(gt=0)

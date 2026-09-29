@@ -50,6 +50,15 @@ def _request() -> MealPlanGenerateRequest:
     )
 
 
+def _approved_metadata() -> dict:
+    return {
+        "review_status": "approved",
+        "allergen_status": "known",
+        "known_allergens": [],
+        "strict_suitability": {},
+    }
+
+
 def test_alcohol_eligibility_excludes_positive_amount_and_accepts_zero():
     assert contains_alcohol(_food(1, "Wine", "12.5"))
     assert not is_eligible_for_meal_plan(_food(1, "Wine", "12.5"))
@@ -80,6 +89,34 @@ def test_fallback_food_order_is_request_specific_not_alphabetical():
 
 
 @pytest.mark.asyncio
+async def test_deterministic_fallback_uses_each_eligible_food_before_repeating():
+    generator = MagicMock()
+    generator.generate = AsyncMock(side_effect=MealPlanGenerationError("disabled"))
+    service = NutritionService(AsyncMock(), meal_plan_generator=generator)
+    foods = [_food(11, "Oats", 0), _food(12, "Lentils", 0)]
+    service.repo.get_active_target = AsyncMock(return_value=_target())
+    service.repo.list_food_catalogue = AsyncMock(return_value=foods)
+    service.repo.get_food_safety_metadata = AsyncMock(
+        return_value={11: _approved_metadata(), 12: _approved_metadata()}
+    )
+    service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})
+    service.repo.create_meal_plan = AsyncMock(return_value={"id": 42})
+    request = MealPlanGenerateRequest(
+        user_id=7,
+        start_date="2026-09-22",
+        end_date="2026-09-22",
+        meal_types=["breakfast", "lunch", "dinner"],
+    )
+
+    await service.generate_meal_plan(7, request, request_id="request-123")
+
+    generated_plan = service.repo.create_meal_plan.await_args.kwargs["generated_plan"]
+    meals = service.repo.create_meal_plan.await_args.kwargs["planned_meals"]
+    assert [meal["items"][0]["food_cache_id"] for meal in meals][:2] == [11, 12]
+    assert generated_plan["variety_limited"] is True
+
+
+@pytest.mark.asyncio
 async def test_llm_catalogue_browse_exposes_only_alcohol_free_foods():
     repo = MagicMock()
     beer = _food(10, "Beer", "4.2")
@@ -87,19 +124,20 @@ async def test_llm_catalogue_browse_exposes_only_alcohol_free_foods():
     repo.browse_food_catalogue = AsyncMock(return_value=([beer, oats], False))
     repo.get_food_safety_metadata = AsyncMock(
         return_value={
-            10: {"allergen_status": "known", "allergen_data": []},
-            11: {"allergen_status": "known", "allergen_data": []},
+            10: _approved_metadata(),
+            11: _approved_metadata(),
         }
     )
     generator = MealPlanLLMGenerator(MagicMock(), repo)
-    exposed_ids: set[int] = set()
+    selection_tokens: dict[str, int] = {}
 
     result = await generator._browse(
-        {"cursor": 0, "limit": 25}, {"allergies": []}, exposed_ids
+        {"cursor": 0, "limit": 25}, {"allergies": []}, selection_tokens
     )
 
-    assert [food["id"] for food in result["items"]] == [11]
-    assert exposed_ids == {11}
+    assert len(result["items"]) == 1
+    assert selection_tokens[result["items"][0]["selection_token"]] == 11
+    assert set(selection_tokens.values()) == {11}
 
 
 @pytest.mark.asyncio
@@ -108,7 +146,7 @@ async def test_materializing_an_alcoholic_llm_selection_is_rejected():
     wine = _food(10, "Wine", "12.5")
     service.repo.get_food_catalogue_by_ids = AsyncMock(return_value={10: wine})
     service.repo.get_food_safety_metadata = AsyncMock(
-        return_value={10: {"allergen_status": "known", "allergen_data": []}}
+        return_value={10: _approved_metadata()}
     )
 
     with pytest.raises(MealPlanGenerationError, match="not safe"):
@@ -136,8 +174,8 @@ async def test_deterministic_fallback_excludes_positive_alcohol_foods():
     service.repo.list_food_catalogue = AsyncMock(return_value=[beer, oats])
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
-            10: {"allergen_status": "known", "allergen_data": []},
-            11: {"allergen_status": "known", "allergen_data": []},
+            10: _approved_metadata(),
+            11: _approved_metadata(),
         }
     )
     service.repo.get_target_snapshot = AsyncMock(return_value={"id": 3})

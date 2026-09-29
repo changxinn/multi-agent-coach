@@ -44,20 +44,25 @@ async def postgres_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSe
             await connection.execute(text("SELECT 1"))
             from nutrition_agent_app.migrations import split_sql_statements
 
-            schema_migration = (
-                Path(__file__).parents[2]
-                / "services/nutrition_agent/app/db/migrations/001_create_nutrition_schema.sql"
+            migration_dir = (
+                Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"
             )
-            content = schema_migration.read_text(encoding="utf-8-sig")
-            statements = split_sql_statements(
-                " ".join(
-                    line.strip()
-                    for line in content.splitlines()
-                    if line.strip() and not line.strip().startswith("--")
+            for migration_name in (
+                "001_create_nutrition_schema.sql",
+                "007_create_food_compatibility_schema.sql",
+            ):
+                content = (migration_dir / migration_name).read_text(
+                    encoding="utf-8-sig"
                 )
-            )
-            for statement in statements:
-                await connection.execute(text(statement))
+                statements = split_sql_statements(
+                    " ".join(
+                        line.strip()
+                        for line in content.splitlines()
+                        if line.strip() and not line.strip().startswith("--")
+                    )
+                )
+                for statement in statements:
+                    await connection.execute(text(statement))
     except (SQLAlchemyError, asyncpg.PostgresError) as error:
         await engine.dispose()
         pytest.skip(f"PostgreSQL integration database is unavailable: {error}")
@@ -73,7 +78,7 @@ async def clean_postgres(
     async with postgres_session_factory() as session:
         await session.execute(
             text("""
-            TRUNCATE TABLE nutrition_planned_meals, nutrition_meal_plans,
+            TRUNCATE TABLE nutrition_food_compatibility_review_history, nutrition_food_compatibility, nutrition_planned_meals, nutrition_meal_plans,
                 nutrition_idempotency_keys, nutrition_target_snapshots,
                 nutrition_food_cache RESTART IDENTITY CASCADE
         """)
@@ -83,7 +88,7 @@ async def clean_postgres(
     async with postgres_session_factory() as session:
         await session.execute(
             text("""
-            TRUNCATE TABLE nutrition_planned_meals, nutrition_meal_plans,
+            TRUNCATE TABLE nutrition_food_compatibility_review_history, nutrition_food_compatibility, nutrition_planned_meals, nutrition_meal_plans,
                 nutrition_idempotency_keys, nutrition_target_snapshots,
                 nutrition_food_cache RESTART IDENTITY CASCADE
         """)

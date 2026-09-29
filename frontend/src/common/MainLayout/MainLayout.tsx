@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import AppShell from '@/common/AppShell'
 import { useAuthStore } from '@/lib/authStore'
 import { routePages } from '@/routes'
 import { ErrorBoundary } from '@/common/ErrorBoundary'
+import { PageIds } from '@/lib/constants'
+import { api } from '@/lib/api'
 
 interface MainLayoutProps {
   children: React.ReactNode
+}
+
+type AuthProfile = {
+  is_nutrition_compatibility_admin: boolean
 }
 
 export function MainLayout({ children }: MainLayoutProps) {
   const navigate = useNavigate()
   const location = useLocation()
   const { user, logout } = useAuthStore()
+  const profile = useQuery({
+    queryKey: ['auth', 'profile'],
+    queryFn: () => api.get<AuthProfile>('/auth/profile'),
+  })
   
   const [menuOpen, setMenuOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
@@ -42,10 +53,13 @@ export function MainLayout({ children }: MainLayoutProps) {
   }
 
   const currentPage = routePages.find((page) => page.path === location.pathname) ?? routePages[0]
+  const visiblePages = routePages.filter((page) => (
+    page.id !== PageIds.CompatibilityReviews || profile.data?.is_nutrition_compatibility_admin === true
+  ))
 
   return (
     <AppShell
-      pages={routePages}
+      pages={visiblePages}
       currentPageId={currentPage.id}
       currentPageLabel={currentPage.label}
       menuOpen={menuOpen}

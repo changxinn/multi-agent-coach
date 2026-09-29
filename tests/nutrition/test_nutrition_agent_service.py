@@ -23,7 +23,7 @@ def disable_migrations_for_http_tests(monkeypatch):
 
 
 def test_settings_load_repository_root_env_file_regardless_of_working_directory():
-    assert REPOSITORY_ROOT == Path(__file__).parents[1]
+    assert REPOSITORY_ROOT == Path(__file__).parents[2]
     assert Settings.model_config["env_file"] == REPOSITORY_ROOT / ".env"
 
 

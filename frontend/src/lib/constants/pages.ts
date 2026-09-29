@@ -15,6 +15,7 @@ export const PageIds = {
   Chat: 'chat',
   Nutrition: 'nutrition',
   MyProfile: 'my-profile',
+  CompatibilityReviews: 'compatibility-reviews',
 } as const
 
 export type PageId = typeof PageIds[keyof typeof PageIds]

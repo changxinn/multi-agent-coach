@@ -46,6 +46,15 @@ DEMO_USERS = (
         height_cm=168.0,
         age=27,
     ),
+    DemoUser(
+        email="nutrition.admin@example.com",
+        name="Nutrition Reviewer",
+        fitness_goal="general fitness",
+        fitness_level="intermediate",
+        weight_kg=70.0,
+        height_cm=175.0,
+        age=35,
+    ),
 )
 
 

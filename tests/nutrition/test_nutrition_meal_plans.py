@@ -44,6 +44,15 @@ def planned_meal(**overrides):
     }
 
 
+def approved_metadata(*, allergens=(), strict_suitability=None):
+    return {
+        "review_status": "approved",
+        "allergen_status": "known",
+        "known_allergens": list(allergens),
+        "strict_suitability": strict_suitability or {},
+    }
+
+
 def deterministic_meal_plan_service() -> NutritionService:
     """Create a service configured to exercise deterministic meal-plan fallback."""
     generator = MagicMock()
@@ -117,14 +126,10 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             10: {
-                "id": 10,
-                "allergen_status": "known",
-                "allergen_data": {"contains": ["milk"]},
+                **approved_metadata(allergens=["milk"]),
             },
             11: {
-                "id": 11,
-                "allergen_status": "known",
-                "allergen_data": {"contains": []},
+                **approved_metadata(),
             },
         }
     )
@@ -156,7 +161,7 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
 
 
 @pytest.mark.asyncio
-async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergies():
+async def test_generate_meal_plan_requires_approved_compatibility_without_saved_allergies():
     service = deterministic_meal_plan_service()
     service.repo.get_active_target = AsyncMock(
         return_value={
@@ -191,26 +196,17 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
         return_value={"id": 41, "status": "draft"}
     )
 
-    await service.generate_meal_plan(
-        7,
-        MealPlanGenerateRequest(
-            user_id=7,
-            start_date="2026-09-22",
-            end_date="2026-09-22",
-            meal_types=["breakfast"],
-            profile={
-                "allergies": [],
-                "dietary_preferences": ["vegan"],
-                "dietary_restrictions": ["gluten_free"],
-            },
-        ),
-    )
-
-    create_args = service.repo.create_meal_plan.await_args.kwargs
-    assert create_args["planned_meals"][0]["safety_status"] == "review_required"
-    assert create_args["safety_warnings"] == [
-        "Oats: allergen metadata is unknown; review required."
-    ]
+    with pytest.raises(NutritionProfileIncompleteError, match="No approved foods"):
+        await service.generate_meal_plan(
+            7,
+            MealPlanGenerateRequest(
+                user_id=7,
+                start_date="2026-09-22",
+                end_date="2026-09-22",
+                meal_types=["breakfast"],
+                profile={"allergies": [], "dietary_preferences": ["vegan"]},
+            ),
+        )
 
 
 @pytest.mark.asyncio
@@ -228,7 +224,7 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
         }
     )
 
-    with pytest.raises(NutritionProfileIncompleteError, match="no safe foods"):
+    with pytest.raises(NutritionProfileIncompleteError, match="No approved foods"):
         await service.generate_meal_plan(
             7,
             MealPlanGenerateRequest(
@@ -259,7 +255,7 @@ async def test_generate_meal_plan_requires_active_targets_and_a_safe_catalogue()
     service.repo.get_active_target.return_value = {"id": 3}
     service.repo.list_food_catalogue = AsyncMock(return_value=[])
     service.repo.get_food_safety_metadata = AsyncMock(return_value={})
-    with pytest.raises(NutritionProfileIncompleteError, match="no safe foods"):
+    with pytest.raises(NutritionProfileIncompleteError, match="No approved foods"):
         await service.generate_meal_plan(7, request)
 
 
@@ -364,9 +360,7 @@ async def test_create_meal_plan_blocks_confirmed_allergen_conflicts():
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
-                "id": 12,
-                "allergen_status": "known",
-                "allergen_data": {"contains": ["milk"]},
+                **approved_metadata(allergens=["milk"]),
             }
         }
     )
@@ -395,9 +389,7 @@ async def test_create_meal_plan_persists_server_computed_safety_results():
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
-                "id": 12,
-                "allergen_status": "known",
-                "allergen_data": {"contains": ["milk"]},
+                **approved_metadata(),
             }
         }
     )
@@ -441,9 +433,7 @@ async def test_confirm_meal_plan_reassesses_draft_and_supersedes_atomically():
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
-                "id": 12,
-                "allergen_status": "known",
-                "allergen_data": {"contains": []},
+                **approved_metadata(),
             }
         }
     )
@@ -506,13 +496,11 @@ async def test_confirm_rejects_non_draft_and_newly_blocked_safety_results():
     service.repo.get_food_safety_metadata = AsyncMock(
         return_value={
             12: {
-                "id": 12,
-                "allergen_status": "known",
-                "allergen_data": {"contains": ["milk"]},
+                **approved_metadata(allergens=["milk"]),
             }
         }
     )
-    with pytest.raises(NutritionMealPlanSafetyError, match="confirmed allergies"):
+    with pytest.raises(NutritionMealPlanSafetyError, match="incompatible"):
         await service.confirm_meal_plan(7, 41, profile={"allergies": ["milk"]})
     service.repo.activate_draft_meal_plan.assert_not_awaited()
 

@@ -14,6 +14,9 @@ from .database import close_db, get_db, init_db
 from .schemas import (
     ChatRequest,
     ChatResponse,
+    CompatibilityReviewFoodRequest,
+    CompatibilityReviewQueueRequest,
+    CompatibilityReviewRequest,
     DateRequest,
     EmptyNutritionRequest,
     FoodCatalogueRequest,
@@ -192,6 +195,58 @@ async def foods_catalogue(payload: FoodCatalogueRequest, service: Service):
 async def foods_detail(payload: FoodDetailRequest, service: Service):
     try:
         return await service.get_food(payload.food_id)
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/compatibility/review-queue",
+    dependencies=[Depends(require_internal_token)],
+)
+async def compatibility_review_queue(
+    payload: CompatibilityReviewQueueRequest, service: Service
+):
+    return await service.get_compatibility_review_queue(payload)
+
+
+@app.post(
+    "/v1/nutrition/compatibility/review-detail",
+    dependencies=[Depends(require_internal_token)],
+)
+async def compatibility_review_detail(
+    payload: CompatibilityReviewFoodRequest, service: Service
+):
+    try:
+        return await service.get_compatibility_review_detail(payload.food_cache_id)
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/compatibility/review-history",
+    dependencies=[Depends(require_internal_token)],
+)
+async def compatibility_review_history(
+    payload: CompatibilityReviewFoodRequest, service: Service
+):
+    try:
+        return {
+            "items": await service.get_compatibility_review_history(
+                payload.food_cache_id
+            )
+        }
+    except Exception as error:
+        raise translate(error) from error
+
+
+@app.post(
+    "/v1/nutrition/compatibility/review", dependencies=[Depends(require_internal_token)]
+)
+async def compatibility_review(payload: CompatibilityReviewRequest, service: Service):
+    try:
+        return await service.review_food_compatibility(payload)
+    except ValueError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
     except Exception as error:
         raise translate(error) from error
 

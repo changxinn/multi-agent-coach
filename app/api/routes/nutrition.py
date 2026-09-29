@@ -9,6 +9,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.routes.auth import get_current_user
 from app.api.schemas.nutrition import (
     AdherenceRequest,
+    CompatibilityReviewFoodRequest,
+    CompatibilityReviewInput,
+    CompatibilityReviewQueueRequest,
     EmptyNutritionRequest,
     FoodCatalogueRequest,
     FoodDetailRequest,
@@ -23,11 +26,16 @@ from app.api.schemas.nutrition import (
     ReplaceMealRequest,
     TargetCalculationRequest,
 )
+from app.config import Settings, get_settings
 from app.db.database import get_db
 from app.services.nutrition_agent_client import (
     NutritionAgentClient,
     NutritionAgentUnavailableError,
+    NutritionCompatibilityReviewError,
     NutritionMealPlanValidationError,
+)
+from app.services.nutrition_compatibility_authorization import (
+    require_nutrition_compatibility_admin,
 )
 from app.services.nutrition_service import (
     NutritionFoodDataError,
@@ -63,6 +71,13 @@ MainNutritionServiceDependency = Annotated[
 ]
 
 
+def require_compatibility_reviewer(
+    user: dict = Depends(get_current_user), settings: Settings = Depends(get_settings)
+) -> dict:
+    require_nutrition_compatibility_admin(user["email"], settings)
+    return user
+
+
 def not_found(error: NutritionNotFoundError) -> HTTPException:
     return HTTPException(status.HTTP_404_NOT_FOUND, str(error))
 
@@ -73,6 +88,71 @@ def food_data_unavailable(error: NutritionFoodDataError) -> HTTPException:
 
 def nutrition_unavailable(error: NutritionAgentUnavailableError) -> HTTPException:
     return HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error))
+
+
+@router.post("/compatibility/review-queue")
+async def compatibility_review_queue(
+    payload: CompatibilityReviewQueueRequest,
+    user: dict = Depends(require_compatibility_reviewer),
+    service: NutritionServiceDependency = None,
+):
+    del user
+    try:
+        return await service.get_compatibility_review_queue(payload)
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/compatibility/review-detail")
+async def compatibility_review_detail(
+    payload: CompatibilityReviewFoodRequest,
+    user: dict = Depends(require_compatibility_reviewer),
+    service: NutritionServiceDependency = None,
+):
+    del user
+    try:
+        return await service.get_compatibility_review_detail(payload.food_cache_id)
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/compatibility/review-history")
+async def compatibility_review_history(
+    payload: CompatibilityReviewFoodRequest,
+    user: dict = Depends(require_compatibility_reviewer),
+    service: NutritionServiceDependency = None,
+):
+    del user
+    try:
+        return {
+            "items": await service.get_compatibility_review_history(
+                payload.food_cache_id
+            )
+        }
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
+
+
+@router.post("/compatibility/review")
+async def compatibility_review(
+    payload: CompatibilityReviewInput,
+    user: dict = Depends(require_compatibility_reviewer),
+    service: NutritionServiceDependency = None,
+):
+    try:
+        return await service.review_food_compatibility(
+            payload, reviewer_user_id=user["id"], reviewer_email=user["email"]
+        )
+    except NutritionCompatibilityReviewError as error:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(error)) from error
+    except NutritionNotFoundError as error:
+        raise not_found(error) from error
+    except NutritionAgentUnavailableError as error:
+        raise nutrition_unavailable(error) from error
 
 
 def retired_nutrition_operation() -> None:

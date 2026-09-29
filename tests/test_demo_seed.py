@@ -14,6 +14,7 @@ def settings(*, seed_demo_users: bool) -> Settings:
         DATABASE_URL="postgresql+asyncpg://user:password@localhost/test",
         OPENAI_API_KEY="",
         SEED_DEMO_USERS=seed_demo_users,
+        NUTRITION_COMPATIBILITY_ADMIN_EMAIL="nutrition.admin@example.com",
     )
 
 
@@ -33,7 +34,11 @@ async def test_seed_demo_users_creates_users_with_distinct_profiles(monkeypatch)
     repository = Mock()
     repository.get_by_email = AsyncMock(return_value=None)
     repository.create_user = AsyncMock(
-        side_effect=[Mock(spec=User, id=1), Mock(spec=User, id=2)]
+        side_effect=[
+            Mock(spec=User, id=1),
+            Mock(spec=User, id=2),
+            Mock(spec=User, id=3),
+        ]
     )
     repository.update_fitness_profile = AsyncMock()
     monkeypatch.setattr("app.db.demo_seed.UserRepository", lambda _: repository)
@@ -42,6 +47,7 @@ async def test_seed_demo_users_creates_users_with_distinct_profiles(monkeypatch)
 
     assert repository.get_by_email.await_args_list[0].args == (DEMO_USERS[0].email,)
     assert repository.get_by_email.await_args_list[1].args == (DEMO_USERS[1].email,)
+    assert repository.get_by_email.await_args_list[2].args == (DEMO_USERS[2].email,)
     first_created = repository.create_user.await_args_list[0].kwargs
     assert first_created["email"] == DEMO_USERS[0].email
     assert bcrypt.checkpw(DEMO_PASSWORD.encode(), first_created["password"].encode())
@@ -56,6 +62,10 @@ async def test_seed_demo_users_creates_users_with_distinct_profiles(monkeypatch)
     assert (
         repository.update_fitness_profile.await_args_list[1].kwargs["fitness_goal"]
         == "improve endurance"
+    )
+    assert (
+        repository.create_user.await_args_list[2].kwargs["email"]
+        == "nutrition.admin@example.com"
     )
     db.commit.assert_awaited_once()
 

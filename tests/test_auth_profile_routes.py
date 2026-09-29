@@ -40,6 +40,7 @@ def test_get_profile_returns_only_authenticated_users_profile(auth_profile_clien
 
     assert response.status_code == 200
     assert response.json()["email"] == "member@example.com"
+    assert response.json()["is_nutrition_compatibility_admin"] is False
     assert response.json()["fitness_profile"]["weight_kg"] == 70.5
     service.get_user_profile.assert_awaited_once_with(9)
 
