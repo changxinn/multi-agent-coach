@@ -22,7 +22,7 @@ jobs:
         env:
           POSTGRES_DB: systemdb
           POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
         ports:
           - 5432:5432
         options: >-
@@ -35,7 +35,7 @@ jobs:
         env:
           POSTGRES_DB: nutritiondb
           POSTGRES_USER: nutrition_agent
-          POSTGRES_PASSWORD: nutrition_agent
+          POSTGRES_PASSWORD: nutrition-${{ github.run_id }}-${{ github.run_attempt }}
         ports:
           - 5433:5432
         options: >-
@@ -45,8 +45,8 @@ jobs:
           --health-retries 5
     env:
       JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
-      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://nutrition_agent:nutrition_agent@localhost:5433/nutritiondb
+      DATABASE_URL: postgresql+asyncpg://postgres:${{ github.run_id }}-${{ github.run_attempt }}@localhost:5432/systemdb
+      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://nutrition_agent:nutrition-${{ github.run_id }}-${{ github.run_attempt }}@localhost:5433/nutritiondb
       INTERNAL_SERVICE_TOKEN: ci-test-internal-service-token
       OPENAI_API_KEY: ci-test-openai-key
 

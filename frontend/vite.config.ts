@@ -27,7 +27,12 @@ export default defineConfig(() => {
         provider: 'v8',
         reporter: ['text', 'lcov'],
         reportsDirectory: './coverage',
-        include: ['src/pages/DashboardPage/TrainingStatusCard.tsx', 'src/pages/DashboardPage/useDailyTrainingWorkout.ts'],
+        include: ['src/**/*.{ts,tsx}'],
+        exclude: [
+          'src/**/*.test.{ts,tsx}',
+          'src/test/**',
+          'src/**/*.d.ts',
+        ],
       },
     },
   }
