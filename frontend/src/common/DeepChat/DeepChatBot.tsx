@@ -136,7 +136,9 @@ export function DeepChatBot({
       console.log('📝 Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
       
       // Update UI
-      updateMessageDisplay()
+      void updateMessageDisplay().catch((error) => {
+        console.error('Unable to update the chat message display:', error)
+      })
       
       // Schedule next character
       typingTimeoutRef.current = setTimeout(typeNextCharacter, ChatbotConfig.TYPEWRITER.SPEED_MS)
@@ -246,7 +248,9 @@ export function DeepChatBot({
             } else {
               accumulatedMessageRef.current += tokenContent
               console.log('📝 Direct update, accumulated length:', accumulatedMessageRef.current.length)
-              updateMessageDisplay()
+              void updateMessageDisplay().catch((error) => {
+                console.error('Unable to update the chat message display:', error)
+              })
             }
           },
           streamAbortControllerRef.current
@@ -290,7 +294,9 @@ export function DeepChatBot({
               checkTyping()
             })
           } else {
-            updateMessageDisplay()
+            void updateMessageDisplay().catch((error) => {
+              console.error('Unable to update the chat message display:', error)
+            })
           }
         } else {
           throw new Error(result.message || 'The chatbot could not complete your request.')
