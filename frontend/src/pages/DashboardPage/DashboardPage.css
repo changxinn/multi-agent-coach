@@ -7,6 +7,7 @@
 .dashboard-agent-card .ant-card-head-title { display: flex; align-items: center; }
 .dashboard-agent-icon { display: inline-flex; margin-right: 8px; vertical-align: text-bottom; }
 .dashboard-agent-icon.training { color: #2563eb; }
+.dashboard-agent-icon.summary { color: #7c3aed; }
 .dashboard-agent-icon.nutrition { color: #d97706; }
 .dashboard-agent-icon.recovery { color: #0f766e; }
 .dashboard-progress-row { display: flex; gap: 20px; justify-content: space-around; text-align: center; }

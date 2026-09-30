@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Button, Card, Typography } from 'antd'
+import { Button, Card, Skeleton, Typography } from 'antd'
 import { ReloadOutlined } from '@ant-design/icons'
+import { Sun } from 'lucide-react'
 import { api } from '@/lib/api'
 import { ApiEndpoints } from '@/lib/constants'
 import { quoteOfTheDay } from '@/lib/daily-quote'
@@ -66,7 +67,7 @@ export function DailySummaryCard() {
 
   return (
     <Card
-      title="Your day at a glance"
+      title={<span><Sun size={18} className="dashboard-agent-icon summary" /> Your day at a glance</span>}
       extra={
         <Button
           type="link"
@@ -87,11 +88,7 @@ export function DailySummaryCard() {
           >
             {quote}
           </Paragraph>
-          <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
-            {loading && !summary
-              ? "Preparing today's briefing…"
-              : withLabelHighlights(summary)}
-          </Paragraph>
+          {loading ? <Skeleton active paragraph={{ rows: 3 }} /> : <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{withLabelHighlights(summary)}</Paragraph>}
         </>
       )}
     </Card>
