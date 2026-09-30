@@ -90,6 +90,35 @@ describe('DeepChatBot', () => {
     })
   })
 
+  it('shows the floating trigger, expands, and handles Enter without sending on Shift+Enter', async () => {
+    callChatbotAPI.mockResolvedValue({ success: true, message: 'Sent.' })
+    render(<DeepChatBot streaming={false} enableTypewriter={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open chatbot' }))
+    fireEvent.click(screen.getByTitle('Expand'))
+    expect(document.querySelector('.chat-container.expanded')).toBeTruthy()
+
+    const input = screen.getByPlaceholderText('Type your message...')
+    fireEvent.change(input, { target: { value: 'Need help' } })
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', shiftKey: true })
+    expect(callChatbotAPI).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+    await waitFor(() => expect(callChatbotAPI).toHaveBeenCalled())
+  })
+
+  it('renders an unsuccessful API result as an error message', async () => {
+    callChatbotAPI.mockResolvedValue({ success: false, message: 'Request rejected' })
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', text: 'Sorry, I encountered an error. Please try again.' }),
+      ]))
+    })
+  })
+
   it('aborts an in-progress stream when closed', async () => {
     let signal: AbortSignal | undefined
     streamChatbotAPI.mockImplementation((_, __, ___, ____, controller: AbortController) => {

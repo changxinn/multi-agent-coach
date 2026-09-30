@@ -37,7 +37,7 @@ export function DashboardPage() {
       </Row> : commandCenter.isError || !commandCenter.data ? <Alert
         type="warning"
         showIcon
-        message="Your daily coaching status is temporarily unavailable."
+        title="Your daily coaching status is temporarily unavailable."
         action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void commandCenter.refetch()}>Retry</Button>}
       /> : <>
         <Row gutter={[16, 16]}>

@@ -47,23 +47,23 @@ jobs:
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
       - name: Install backend dependencies
-        run: uv sync --locked --all-groups
+        run: uv sync --locked --all-groups --no-build
       - name: Run backend tests with coverage
         run: uv run pytest -q --cov=app --cov-report=xml:coverage.xml
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Install frontend dependencies
-        run: npm --prefix frontend ci --registry=https://registry.npmjs.org/
+        run: npm --prefix frontend ci --ignore-scripts --registry=https://registry.npmjs.org/
       - name: Run frontend tests with coverage
         run: npm --prefix frontend run test:coverage
       - name: Cache SonarQube packages

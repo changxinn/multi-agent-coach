@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.schemas.dashboard import RecoveryDashboardSnapshot, TrainingWorkoutResponse
 from app.db.repositories.daily_training_workout_repo import (
     DailyTrainingWorkoutRepository,
+    PersistedDailyTrainingWorkout,
 )
 from app.services.daily_command_center_service import DailyCommandCenterService
 from app.services.nutrition_service import NutritionService
@@ -164,12 +165,14 @@ class DailyTrainingWorkoutService:
         return "Recovery looks suitable for the planned effort."
 
     @staticmethod
-    def _response(values: dict[str, Any], *, reused: bool) -> TrainingWorkoutResponse:
+    def _response(
+        values: PersistedDailyTrainingWorkout, *, reused: bool
+    ) -> TrainingWorkoutResponse:
         return TrainingWorkoutResponse(
             status=values["status"],
             title=values["title"],
             workout_text=values["workout_text"],
-            recovery_note=values.get("recovery_note"),
+            recovery_note=values["recovery_note"],
             recovery_status=values["recovery_status"],
             generated_at=values["created_at"],
             reused=reused,

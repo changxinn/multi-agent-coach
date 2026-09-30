@@ -56,7 +56,7 @@ export function DeepChatBot({
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
   const { token, user } = useAuthStore()
-  const userEmail = user?.email || 'anonymous'
+  const userEmail = user?.email ?? 'anonymous'
   const deepChatRef = useRef<DeepChatElement | null>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
@@ -292,6 +292,8 @@ export function DeepChatBot({
           } else {
             updateMessageDisplay()
           }
+        } else {
+          throw new Error(result.message || 'The chatbot could not complete your request.')
         }
       }
       
@@ -406,7 +408,7 @@ export function DeepChatBot({
     }
   }, [userEmail])
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
@@ -543,7 +545,7 @@ export function DeepChatBot({
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyDown}
                   placeholder="Type your message..."
                   className="chat-input"
                   autoSize={{ minRows: 1, maxRows: 4 }}

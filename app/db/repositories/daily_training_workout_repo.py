@@ -1,17 +1,28 @@
 """Persistence for one personalized dashboard workout per user and UTC day."""
 
-from datetime import date
-from typing import Any
+from datetime import date, datetime
+from typing import Any, TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class PersistedDailyTrainingWorkout(TypedDict):
+    status: str
+    title: str
+    workout_text: str
+    recovery_note: str | None
+    recovery_status: str
+    created_at: datetime
 
 
 class DailyTrainingWorkoutRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def get(self, user_id: int, workout_date: date) -> dict[str, Any] | None:
+    async def get(
+        self, user_id: int, workout_date: date
+    ) -> PersistedDailyTrainingWorkout | None:
         result = await self.db.execute(
             text(
                 "SELECT status, title, workout_text, recovery_note, recovery_status, created_at "
@@ -21,11 +32,11 @@ class DailyTrainingWorkoutRepository:
             {"user_id": user_id, "workout_date": workout_date},
         )
         row = result.mappings().first()
-        return dict(row) if row else None
+        return PersistedDailyTrainingWorkout(**dict(row)) if row else None
 
     async def upsert(
         self, user_id: int, workout_date: date, values: dict[str, Any]
-    ) -> dict[str, Any]:
+    ) -> PersistedDailyTrainingWorkout:
         result = await self.db.execute(
             text(
                 "INSERT INTO systemdb.daily_training_workouts ("
@@ -42,4 +53,4 @@ class DailyTrainingWorkoutRepository:
             ),
             {"user_id": user_id, "workout_date": workout_date, **values},
         )
-        return dict(result.mappings().one())
+        return PersistedDailyTrainingWorkout(**dict(result.mappings().one()))

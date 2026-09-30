@@ -24,7 +24,10 @@ export function TrainingStatusCard() {
   const { workout, refresh } = useDailyTrainingWorkout()
   const isLoading = workout.isLoading || refresh.isPending
   const definitions = workout.data ? definitionsFor(workout.data.workout_text) : []
-  const guidance = workout.data && (workout.data.recovery_note || definitions.length > 0) ? (
+  const shouldShowGuidance = Boolean(
+    workout.data && (workout.data.recovery_note || definitions.length > 0),
+  )
+  const guidance = shouldShowGuidance && workout.data ? (
     <div className="dashboard-training-guidance">
       {workout.data.recovery_note && <div>{workout.data.recovery_note}</div>}
       {definitions.map(term => <div key={term.abbreviation}>{term.definition}</div>)}
@@ -38,7 +41,7 @@ export function TrainingStatusCard() {
       extra={<Tooltip title="Generate a new plan for today"><Button type="link" aria-label="Generate a new plan for today" icon={<ReloadOutlined />} loading={refresh.isPending} onClick={() => refresh.mutate()} /></Tooltip>}
     >
       <Space className={`dashboard-agent-content${hasBottomGuidance ? ' dashboard-agent-content--has-guidance' : ''}`} orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {isLoading ? <Skeleton active paragraph={{ rows: 5 }} /> : workout.isError || !workout.data ? <Alert type="warning" showIcon message="Today’s workout is temporarily unavailable." action={<Button size="small" onClick={() => void workout.refetch()}>Retry</Button>} /> : <>
+        {isLoading ? <Skeleton active paragraph={{ rows: 5 }} /> : workout.isError || !workout.data ? <Alert type="warning" showIcon title="Today’s workout is temporarily unavailable." action={<Button size="small" onClick={() => void workout.refetch()}>Retry</Button>} /> : <>
           <Text strong>{workout.data.title}</Text>
           <Text className="dashboard-training-workout">{workout.data.workout_text}</Text>
           {guidance && <div className="dashboard-training-guidance-container"><Alert className="dashboard-training-guidance-alert" type={workout.data.status === 'recovery_adjusted' ? 'warning' : 'info'} showIcon message={guidance} /></div>}

@@ -18,7 +18,7 @@ export function NutritionStatusCard({ nutrition }: { nutrition: NutritionSnapsho
   return (
     <Card className="dashboard-agent-card" title={<span><Salad size={18} className="dashboard-agent-icon nutrition" /> Nutrition Advisor</span>}>
       <Space className="dashboard-agent-content" orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {nutrition.status === 'unavailable' ? <Alert type="warning" showIcon message={nutrition.message} /> : <>
+        {nutrition.status === 'unavailable' ? <Alert type="warning" showIcon title={nutrition.message} /> : <>
           <div className="dashboard-details-chart-layout">
             <div className="dashboard-details-column">
               {hasTarget ? <div className="dashboard-progress-row">
@@ -32,7 +32,7 @@ export function NutritionStatusCard({ nutrition }: { nutrition: NutritionSnapsho
                   <Text type="secondary">Protein / {Math.round(nutrition.protein_target_g ?? 0)}g</Text>
                   <Statistic title="Protein remaining" value={Math.max(0, nutrition.remaining_protein_g ?? 0)} suffix="g" precision={0} />
                 </div>
-              </div> : <><Alert type="info" showIcon message={nutrition.message ?? 'Set nutrition targets to see today’s progress.'} /><Statistic title="Meals logged" value={nutrition.meal_count ?? 0} /></>}
+              </div> : <><Alert type="info" showIcon title={nutrition.message ?? 'Set nutrition targets to see today’s progress.'} /><Statistic title="Meals logged" value={nutrition.meal_count ?? 0} /></>}
             </div>
             <NutritionAdherenceTrendChart trend={nutrition.trend} />
           </div>

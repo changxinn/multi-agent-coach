@@ -45,7 +45,7 @@ function MealLogTab() {
   const client = useQueryClient(); const [form] = Form.useForm<MealForm>(); const [open, setOpen] = useState(false); const [catalogueSession, setCatalogueSession] = useState(0); const [messageApi, holder] = message.useMessage()
   const meals = useQuery({ queryKey: [...nutritionKey, 'meals', date()], queryFn: () => api.post<{ items: Meal[] }>('/nutrition/meals/list', { date: date() }) })
   const catalogue = useQuery({ queryKey: [...nutritionKey, 'foods', 'catalogue', catalogueSession], queryFn: () => api.post<{ items: Food[] }>('/nutrition/foods/catalogue', {}), enabled: open, staleTime: Infinity })
-  const selectedValue = Form.useWatch('food', form)?.[0]; const grams = Form.useWatch('grams', form) || 0; const selected = catalogue.data?.items.find(food => food.provider_food_id === selectedValue); const isManual = Boolean(selectedValue) && !selected
+  const selectedValue = Form.useWatch('food', form)?.[0]; const grams = Form.useWatch('grams', form) ?? 0; const selected = catalogue.data?.items.find(food => food.provider_food_id === selectedValue); const isManual = Boolean(selectedValue) && !selected
   const invalidateNutritionAndDashboard = () => Promise.all([
     client.invalidateQueries({ queryKey: nutritionKey }),
     client.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
@@ -64,7 +64,7 @@ function MealLogTab() {
         {catalogue.isError && <Alert type="warning" showIcon title="The local USDA catalogue could not be loaded. You can still enter a manual food." style={{ marginBottom: 16 }} />}
         <Form form={form} layout="vertical" initialValues={{ meal_type: 'lunch', grams: 100 }} onFinish={save.mutate}>
           <Form.Item name="meal_type" label="Meal" rules={[{ required: true }]}><Select options={['breakfast', 'lunch', 'dinner', 'snack'].map(value => ({ value }))} /></Form.Item>
-          <Form.Item name="food" label="Food" rules={[{ required: true, message: 'Select a USDA food or type a manual food name' }]}><Select mode="tags" maxCount={1} showSearch loading={catalogue.isFetching} optionFilterProp="label" options={(catalogue.data?.items || []).map(food => ({ value: food.provider_food_id, label: food.description }))} placeholder="Search local USDA catalogue or type a manual food" /></Form.Item>
+          <Form.Item name="food" label="Food" rules={[{ required: true, message: 'Select a USDA food or type a manual food name' }]}><Select mode="tags" maxCount={1} showSearch loading={catalogue.isFetching} optionFilterProp="label" options={(catalogue.data?.items ?? []).map(food => ({ value: food.provider_food_id, label: food.description }))} placeholder="Search local USDA catalogue or type a manual food" /></Form.Item>
           <Form.Item name="grams" label="Portion (grams)" rules={[{ required: true }]}><InputNumber min={1} precision={0} style={{ width: '100%' }} /></Form.Item>
           {selected && <Descriptions size="small" title="Verified USDA nutrients" items={nutrition || []} />}
           {isManual && <>
