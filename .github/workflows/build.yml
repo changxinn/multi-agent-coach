@@ -8,7 +8,40 @@ on:
 jobs:
   build:
     name: Build and analyze
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: systemdb
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d systemdb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      nutrition-postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: nutritiondb
+          POSTGRES_USER: nutrition_agent
+          POSTGRES_PASSWORD: nutrition_agent
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U nutrition_agent -d nutritiondb"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      JWT_SECRET_KEY: ci-test-jwt-secret-not-for-production
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/systemdb
+      NUTRITION_INTEGRATION_DATABASE_URL: postgresql+asyncpg://nutrition_agent:nutrition_agent@localhost:5433/nutritiondb
+      INTERNAL_SERVICE_TOKEN: ci-test-internal-service-token
+      OPENAI_API_KEY: ci-test-openai-key
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
