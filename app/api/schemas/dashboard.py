@@ -17,6 +17,18 @@ class TrainingDashboardSnapshot(BaseModel):
     last_activity_at: datetime | None = None
 
 
+class TrainingWorkoutResponse(BaseModel):
+    status: Literal["ready", "recovery_adjusted", "unavailable"]
+    title: str
+    workout_text: str
+    recovery_note: str | None = None
+    recovery_status: Literal[
+        "green", "amber", "red", "escalate", "no_assessment", "unavailable"
+    ]
+    generated_at: datetime
+    reused: bool = False
+
+
 class NutritionTrendPoint(BaseModel):
     date: date
     calorie_adherence_pct: float | None = None

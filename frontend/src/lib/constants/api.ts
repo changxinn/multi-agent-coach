@@ -30,6 +30,7 @@ export const ApiEndpoints = {
   },
   Dashboard: {
     DailyCommandCenter: '/dashboard/daily-command-center',
+    DailyTrainingWorkout: '/dashboard/training/today',
   },
   Session: {
     Create: '/session',

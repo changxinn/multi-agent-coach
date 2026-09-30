@@ -6,7 +6,11 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes.auth import get_current_user
-from app.api.routes.dashboard import get_daily_command_center_service, router
+from app.api.routes.dashboard import (
+    get_daily_command_center_service,
+    get_daily_training_workout_service,
+    router,
+)
 from app.api.schemas.dashboard import (
     NutritionDashboardSnapshot,
     RecoveryDashboardSnapshot,
@@ -34,6 +38,7 @@ def dashboard_client():
     }
     app.dependency_overrides[get_current_user] = lambda: {"id": 17}
     app.dependency_overrides[get_daily_command_center_service] = lambda: service
+    app.dependency_overrides[get_daily_training_workout_service] = lambda: service
     with TestClient(app) as client:
         yield client, service, app
 
@@ -55,6 +60,23 @@ def test_command_center_requires_authentication(dashboard_client):
     response = client.get("/api/dashboard/daily-command-center")
 
     assert response.status_code in (401, 403)
+
+
+def test_daily_training_workout_uses_authenticated_user_and_refresh_flag(dashboard_client):
+    client, service, _ = dashboard_client
+    service.get.return_value = {
+        "status": "ready",
+        "title": "Today’s personalized workout",
+        "workout_text": "Warm-up\nMain work\nCooldown",
+        "recovery_status": "green",
+        "generated_at": "2026-09-28T10:00:00Z",
+        "reused": False,
+    }
+
+    response = client.post("/api/dashboard/training/today?refresh=true&user_id=99")
+
+    assert response.status_code == 200, response.text
+    service.get.assert_awaited_once_with(17, refresh=True)
 
 
 def test_actions_prioritize_recovery_and_cap_at_three():
