@@ -26,7 +26,7 @@ const allergyOptions = [
   ['milk', 'Milk'], ['eggs', 'Eggs'], ['peanuts', 'Peanuts'], ['tree_nuts', 'Tree nuts'], ['soy', 'Soy'], ['wheat', 'Wheat'], ['fish', 'Fish'], ['shellfish', 'Shellfish'], ['sesame', 'Sesame'],
 ] as const
 
-function TabIntroduction({ description, children }: { description: string; children: ReactNode }) {
+function TabIntroduction({ description, children }: Readonly<{ description: string; children: ReactNode }>) {
   return <Space orientation="vertical" size="large" style={{ width: '100%' }}><Text type="secondary">{description}</Text>{children}</Space>
 }
 
