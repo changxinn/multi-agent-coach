@@ -74,6 +74,7 @@ def test_meal_plan_generation_request_requires_unique_meal_types():
 @pytest.mark.asyncio
 async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
     service = NutritionService(AsyncMock())
+    service._try_generate_llm_meals = AsyncMock(return_value=None)
     service.repo.get_active_target = AsyncMock(
         return_value={
             "id": 3,
@@ -150,6 +151,7 @@ async def test_generate_meal_plan_uses_active_target_and_safe_catalogue_foods():
 @pytest.mark.asyncio
 async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergies():
     service = NutritionService(AsyncMock())
+    service._try_generate_llm_meals = AsyncMock(return_value=None)
     service.repo.get_active_target = AsyncMock(
         return_value={
             "id": 3,
@@ -208,6 +210,7 @@ async def test_generate_meal_plan_allows_unknown_allergens_without_saved_allergi
 @pytest.mark.asyncio
 async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies():
     service = NutritionService(AsyncMock())
+    service._try_generate_llm_meals = AsyncMock(return_value=None)
     service.repo.get_active_target = AsyncMock(return_value={"id": 3})
     service.repo.list_food_catalogue = AsyncMock(
         return_value=[
@@ -236,6 +239,7 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
 @pytest.mark.asyncio
 async def test_generate_meal_plan_requires_active_targets_and_a_safe_catalogue():
     service = NutritionService(AsyncMock())
+    service._try_generate_llm_meals = AsyncMock(return_value=None)
     service.repo.get_active_target = AsyncMock(return_value=None)
     request = MealPlanGenerateRequest(
         user_id=7,

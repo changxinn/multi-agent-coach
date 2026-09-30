@@ -28,7 +28,9 @@ class DailyTrainingWorkoutService:
         self.db = db
         self.repo = DailyTrainingWorkoutRepository(db)
 
-    async def get(self, user_id: int, *, refresh: bool = False) -> TrainingWorkoutResponse:
+    async def get(
+        self, user_id: int, *, refresh: bool = False
+    ) -> TrainingWorkoutResponse:
         workout_date = datetime.now(UTC).date()
         if not refresh:
             existing = await self.repo.get(user_id, workout_date)
@@ -62,7 +64,9 @@ class DailyTrainingWorkoutService:
         self, user_id: int, workout_date: date
     ) -> RecoveryDashboardSnapshot:
         command_center = DailyCommandCenterService(self.db, NutritionService(self.db))
-        return await command_center._recovery_snapshot(user_id, workout_date, workout_date, [])
+        return await command_center._recovery_snapshot(
+            user_id, workout_date, workout_date, []
+        )
 
     async def _recommendation(
         self, profile: dict[str, Any], recovery: RecoveryDashboardSnapshot
@@ -91,7 +95,9 @@ class DailyTrainingWorkoutService:
             }
 
         try:
-            workout_text = await asyncio.to_thread(self._generate_workout, profile, recovery)
+            workout_text = await asyncio.to_thread(
+                self._generate_workout, profile, recovery
+            )
         except Exception:
             logger.exception("Training Planner dashboard workout generation failed")
             return {
@@ -113,7 +119,9 @@ class DailyTrainingWorkoutService:
     def _generate_workout(
         profile: dict[str, Any], recovery: RecoveryDashboardSnapshot
     ) -> str:
-        intensity = "RPE 6–7 with reduced volume" if recovery.status == "amber" else "RPE 7"
+        intensity = (
+            "RPE 6–7 with reduced volume" if recovery.status == "amber" else "RPE 7"
+        )
         system_prompt = (
             "You are Alex, a strength and conditioning coach. Create one safe, personalized "
             "workout for today. Return plain text only with labeled sections: Warm-up, Main work, "

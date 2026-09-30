@@ -11,7 +11,9 @@ def test_generation_prompt_expands_abbreviations_on_first_use(monkeypatch):
     captured_messages = []
     response = Mock(content="Warm-up\nMain work\nCooldown")
     model = Mock()
-    model.invoke.side_effect = lambda messages: captured_messages.extend(messages) or response
+    model.invoke.side_effect = lambda messages: (
+        captured_messages.extend(messages) or response
+    )
     from app.services import daily_training_workout_service as module
 
     monkeypatch.setattr(module, "ChatOpenAI", lambda **_: model)
@@ -49,10 +51,14 @@ async def test_daily_training_workout_reuses_existing_recommendation():
 
 
 @pytest.mark.asyncio
-async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(monkeypatch):
+async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(
+    monkeypatch,
+):
     service = DailyTrainingWorkoutService(AsyncMock())
     service.repo.get = AsyncMock(return_value=None)
-    service._recovery_snapshot = AsyncMock(return_value=RecoveryDashboardSnapshot(status="red"))
+    service._recovery_snapshot = AsyncMock(
+        return_value=RecoveryDashboardSnapshot(status="red")
+    )
     service.repo.upsert = AsyncMock(
         return_value={
             "status": "recovery_adjusted",
@@ -67,7 +73,9 @@ async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(m
     async def profile(_, __):
         return {"fitness_goal": "Hyrox", "fitness_level": "beginner"}
 
-    service._generate_workout = lambda *_: pytest.fail("LLM must not run for red recovery")
+    service._generate_workout = lambda *_: pytest.fail(
+        "LLM must not run for red recovery"
+    )
     from app.services import daily_training_workout_service as module
 
     monkeypatch.setattr(module.UserProfileService, "get_user_profile", profile)
@@ -79,10 +87,14 @@ async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(m
 
 
 @pytest.mark.asyncio
-async def test_amber_recovery_offloads_generation_and_persists_recommendation(monkeypatch):
+async def test_amber_recovery_offloads_generation_and_persists_recommendation(
+    monkeypatch,
+):
     service = DailyTrainingWorkoutService(AsyncMock())
     service.repo.get = AsyncMock(return_value=None)
-    service._recovery_snapshot = AsyncMock(return_value=RecoveryDashboardSnapshot(status="amber"))
+    service._recovery_snapshot = AsyncMock(
+        return_value=RecoveryDashboardSnapshot(status="amber")
+    )
     service.repo.upsert = AsyncMock(
         return_value={
             "status": "ready",

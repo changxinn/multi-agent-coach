@@ -62,7 +62,9 @@ def test_command_center_requires_authentication(dashboard_client):
     assert response.status_code in (401, 403)
 
 
-def test_daily_training_workout_uses_authenticated_user_and_refresh_flag(dashboard_client):
+def test_daily_training_workout_uses_authenticated_user_and_refresh_flag(
+    dashboard_client,
+):
     client, service, _ = dashboard_client
     service.get.return_value = {
         "status": "ready",
