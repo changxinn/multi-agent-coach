@@ -13,9 +13,26 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
-      # This step should build, test and generate coverage reports
-      # - name: Build and test
-      #   run: <build + test + generate coverage reports>
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Install backend dependencies
+        run: uv sync --locked --all-groups
+      - name: Run backend tests with coverage
+        run: uv run pytest -q --cov=app --cov-report=xml:coverage.xml
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package.json
+      - name: Install frontend dependencies
+        run: npm --prefix frontend install --package-lock=false --registry=https://registry.npmjs.org/
+      - name: Run frontend tests with coverage
+        run: npm --prefix frontend run test:coverage
       - name: Cache SonarQube packages
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -30,3 +47,5 @@ jobs:
           args: >
             -Dsonar.organization=changxinn
             -Dsonar.projectKey=changxinn_multi-agent-coach
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.javascript.lcov.reportPaths=frontend/coverage/lcov.info

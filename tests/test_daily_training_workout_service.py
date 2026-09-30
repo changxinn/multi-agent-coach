@@ -150,7 +150,9 @@ async def test_escalate_recovery_returns_cautious_workout_without_llm():
 
 
 @pytest.mark.asyncio
-async def test_generation_failure_returns_unavailable_workout_without_persisting(monkeypatch):
+async def test_generation_failure_returns_unavailable_workout_without_persisting(
+    monkeypatch,
+):
     service = DailyTrainingWorkoutService(AsyncMock())
     service.repo.get = AsyncMock(return_value=None)
     service.repo.upsert = AsyncMock()
@@ -162,9 +164,13 @@ async def test_generation_failure_returns_unavailable_workout_without_persisting
     monkeypatch.setattr(
         module.UserProfileService,
         "get_user_profile",
-        AsyncMock(return_value={"fitness_goal": "strength", "fitness_level": "beginner"}),
+        AsyncMock(
+            return_value={"fitness_goal": "strength", "fitness_level": "beginner"}
+        ),
     )
-    monkeypatch.setattr(module.asyncio, "to_thread", AsyncMock(side_effect=RuntimeError("down")))
+    monkeypatch.setattr(
+        module.asyncio, "to_thread", AsyncMock(side_effect=RuntimeError("down"))
+    )
 
     result = await service.get(7, refresh=True)
 
@@ -196,13 +202,18 @@ async def test_new_workout_persists_profile_snapshot(monkeypatch):
     monkeypatch.setattr(
         module.UserProfileService,
         "get_user_profile",
-        AsyncMock(return_value={"fitness_goal": "strength", "fitness_level": "beginner"}),
+        AsyncMock(
+            return_value={"fitness_goal": "strength", "fitness_level": "beginner"}
+        ),
     )
     monkeypatch.setattr(module.asyncio, "to_thread", AsyncMock(return_value="Warm-up"))
 
     result = await service.get(7, refresh=True)
 
-    assert result.recovery_note == "No recovery assessment is available, so this is a conservative session."
+    assert (
+        result.recovery_note
+        == "No recovery assessment is available, so this is a conservative session."
+    )
     saved_values = service.repo.upsert.await_args.args[2]
     assert saved_values["profile_snapshot"] == (
         '{"fitness_goal": "strength", "fitness_level": "beginner"}'
@@ -212,16 +223,28 @@ async def test_new_workout_persists_profile_snapshot(monkeypatch):
 @pytest.mark.parametrize(
     ("status", "expected"),
     [
-        ("amber", "Recovery is amber today—keep effort controlled and reduce volume if needed."),
-        ("no_assessment", "No recovery assessment is available, so this is a conservative session."),
-        ("unavailable", "Recovery data is temporarily unavailable, so this is a conservative session."),
+        (
+            "amber",
+            "Recovery is amber today—keep effort controlled and reduce volume if needed.",
+        ),
+        (
+            "no_assessment",
+            "No recovery assessment is available, so this is a conservative session.",
+        ),
+        (
+            "unavailable",
+            "Recovery data is temporarily unavailable, so this is a conservative session.",
+        ),
         ("green", "Recovery looks suitable for the planned effort."),
     ],
 )
 def test_recovery_notes_match_recovery_status(status, expected):
-    assert DailyTrainingWorkoutService._recovery_note(
-        RecoveryDashboardSnapshot(status=status)
-    ) == expected
+    assert (
+        DailyTrainingWorkoutService._recovery_note(
+            RecoveryDashboardSnapshot(status=status)
+        )
+        == expected
+    )
 
 
 def test_generate_workout_rejects_an_empty_model_response(monkeypatch):

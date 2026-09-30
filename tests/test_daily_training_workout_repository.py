@@ -49,7 +49,9 @@ async def test_upsert_returns_database_row_and_includes_profile_snapshot():
     db.execute.return_value = result
     values = {**row, "profile_snapshot": '{"fitness_goal": "strength"}'}
 
-    saved = await DailyTrainingWorkoutRepository(db).upsert(7, date(2026, 9, 30), values)
+    saved = await DailyTrainingWorkoutRepository(db).upsert(
+        7, date(2026, 9, 30), values
+    )
 
     assert saved == row
     statement, parameters = db.execute.await_args.args
