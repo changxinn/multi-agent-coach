@@ -34,6 +34,20 @@ export function TrainingStatusCard() {
     </div>
   ) : null
   const hasBottomGuidance = !isLoading && guidance != null
+  let workoutContent
+
+  if (isLoading) {
+    workoutContent = <Skeleton active paragraph={{ rows: 5 }} />
+  } else if (workout.isError || !workout.data) {
+    workoutContent = <Alert type="warning" showIcon title="Today’s workout is temporarily unavailable." action={<Button size="small" onClick={() => void workout.refetch()}>Retry</Button>} />
+  } else {
+    workoutContent = <>
+      <Text strong>{workout.data.title}</Text>
+      <Text className="dashboard-training-workout">{workout.data.workout_text}</Text>
+      {guidance && <div className="dashboard-training-guidance-container"><Alert className="dashboard-training-guidance-alert" type={workout.data.status === 'recovery_adjusted' ? 'warning' : 'info'} showIcon title={guidance} /></div>}
+    </>
+  }
+
   return (
     <Card
       className="dashboard-agent-card dashboard-training-card"
@@ -41,11 +55,7 @@ export function TrainingStatusCard() {
       extra={<Tooltip title="Generate a new plan for today"><Button type="link" aria-label="Generate a new plan for today" icon={<ReloadOutlined />} loading={refresh.isPending} onClick={() => refresh.mutate()} /></Tooltip>}
     >
       <Space className={`dashboard-agent-content${hasBottomGuidance ? ' dashboard-agent-content--has-guidance' : ''}`} orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {isLoading ? <Skeleton active paragraph={{ rows: 5 }} /> : workout.isError || !workout.data ? <Alert type="warning" showIcon title="Today’s workout is temporarily unavailable." action={<Button size="small" onClick={() => void workout.refetch()}>Retry</Button>} /> : <>
-          <Text strong>{workout.data.title}</Text>
-          <Text className="dashboard-training-workout">{workout.data.workout_text}</Text>
-          {guidance && <div className="dashboard-training-guidance-container"><Alert className="dashboard-training-guidance-alert" type={workout.data.status === 'recovery_adjusted' ? 'warning' : 'info'} showIcon message={guidance} /></div>}
-        </>}
+        {workoutContent}
       </Space>
     </Card>
   )

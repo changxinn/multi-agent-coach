@@ -20,7 +20,7 @@ export function RecoveryStatusCard({ recovery }: { recovery: RecoverySnapshot })
   return (
     <Card className="dashboard-agent-card" title={<span><HeartPulse size={18} className="dashboard-agent-icon recovery" /> Recovery Coach</span>}>
       <Space className="dashboard-agent-content" orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {isUnavailable ? <Alert type="warning" showIcon title={recovery.message} /> : <>
+        {isUnavailable ? <Alert type="warning" showIcon title={recovery.message} /> :
           <div className="dashboard-details-chart-layout">
             <div className="dashboard-details-column">
               {isNoAssessment ? <Alert type="info" showIcon title={recovery.message} /> : <RecoveryReadinessGauge status={recovery.status} score={recovery.assessment_score} />}
@@ -31,7 +31,7 @@ export function RecoveryStatusCard({ recovery }: { recovery: RecoverySnapshot })
             </div>
             <RecoverySleepTrendChart trend={recovery.trend} />
           </div>
-        </>}
+        }
         <Button type="primary" danger={recovery.status === 'red' || recovery.status === 'escalate'} block onClick={() => navigate(Routes.RecoveryTable)}>Open Recovery</Button>
       </Space>
     </Card>

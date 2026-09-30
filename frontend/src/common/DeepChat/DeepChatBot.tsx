@@ -417,7 +417,7 @@ export function DeepChatBot({
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }, [handleSend])
 
@@ -562,7 +562,7 @@ export function DeepChatBot({
                   shape="circle"
                   icon={<SendOutlined />}
                   size="large"
-                  onClick={handleSend}
+                  onClick={() => void handleSend()}
                   disabled={!inputValue.trim() || isSending}
                   className="send-btn"
                 />

@@ -254,8 +254,8 @@ def test_generate_workout_rejects_an_empty_model_response(monkeypatch):
     model.invoke.return_value = Mock(content="   ")
     monkeypatch.setattr(module, "ChatOpenAI", lambda **_: model)
 
+    profile = {"fitness_goal": "strength", "fitness_level": "beginner"}
+    recovery = RecoveryDashboardSnapshot(status="green")
+
     with pytest.raises(ValueError, match="empty dashboard workout"):
-        DailyTrainingWorkoutService._generate_workout(
-            {"fitness_goal": "strength", "fitness_level": "beginner"},
-            RecoveryDashboardSnapshot(status="green"),
-        )
+        DailyTrainingWorkoutService._generate_workout(profile, recovery)

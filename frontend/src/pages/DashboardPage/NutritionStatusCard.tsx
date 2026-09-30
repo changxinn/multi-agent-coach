@@ -18,7 +18,7 @@ export function NutritionStatusCard({ nutrition }: { nutrition: NutritionSnapsho
   return (
     <Card className="dashboard-agent-card" title={<span><Salad size={18} className="dashboard-agent-icon nutrition" /> Nutrition Advisor</span>}>
       <Space className="dashboard-agent-content" orientation="vertical" size="middle" style={{ width: '100%' }}>
-        {nutrition.status === 'unavailable' ? <Alert type="warning" showIcon title={nutrition.message} /> : <>
+        {nutrition.status === 'unavailable' ? <Alert type="warning" showIcon title={nutrition.message} /> :
           <div className="dashboard-details-chart-layout">
             <div className="dashboard-details-column">
               {hasTarget ? <div className="dashboard-progress-row">
@@ -36,7 +36,7 @@ export function NutritionStatusCard({ nutrition }: { nutrition: NutritionSnapsho
             </div>
             <NutritionAdherenceTrendChart trend={nutrition.trend} />
           </div>
-        </>}
+        }
         <Button type="primary" block onClick={() => navigate(Routes.Nutrition)}>{hasTarget ? 'Open Nutrition' : 'Set targets'}</Button>
       </Space>
     </Card>
