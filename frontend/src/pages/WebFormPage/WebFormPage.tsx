@@ -1,4 +1,4 @@
-import RoleSummary from '../components/RoleSummary'
+import RoleSummary from '../../common/RoleSummary'
 
 function WebFormPage() {
   return (

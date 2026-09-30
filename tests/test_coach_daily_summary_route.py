@@ -56,3 +56,24 @@ async def test_daily_summary_offloads_synchronous_summarizer(monkeypatch):
         summary_type="daily",
         summary_text="Easy session today. You got this bestie!",
     )
+
+
+@pytest.mark.asyncio
+async def test_daily_summary_reuses_existing_summary_without_generating(monkeypatch):
+    repo = Mock()
+    repo.get_today_daily_summary = AsyncMock(
+        return_value=SimpleNamespace(
+            summary_text="Keep moving.",
+            created_at=datetime(2026, 9, 30, tzinfo=UTC),
+        )
+    )
+    monkeypatch.setattr(coach, "CoachEventsRepository", lambda _: repo)
+    repo.add_summary = AsyncMock()
+
+    response = await coach.generate_daily_summary(
+        refresh=False, current_user={"id": 7}, db=Mock()
+    )
+
+    assert response.summary == "Keep moving."
+    assert response.reused is True
+    repo.add_summary.assert_not_awaited()
