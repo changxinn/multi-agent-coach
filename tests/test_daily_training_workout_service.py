@@ -60,11 +60,16 @@ async def test_recovery_snapshot_delegates_to_the_daily_command_center(monkeypat
     command_center._recovery_snapshot = AsyncMock(return_value=expected)
     monkeypatch.setattr(module, "DailyCommandCenterService", lambda *_: command_center)
 
-    result = await service._recovery_snapshot(7, datetime(2026, 9, 30, tzinfo=UTC).date())
+    result = await service._recovery_snapshot(
+        7, datetime(2026, 9, 30, tzinfo=UTC).date()
+    )
 
     assert result is expected
     command_center._recovery_snapshot.assert_awaited_once_with(
-        7, datetime(2026, 9, 30, tzinfo=UTC).date(), datetime(2026, 9, 30, tzinfo=UTC).date(), []
+        7,
+        datetime(2026, 9, 30, tzinfo=UTC).date(),
+        datetime(2026, 9, 30, tzinfo=UTC).date(),
+        [],
     )
 
 

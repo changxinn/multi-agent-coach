@@ -14,8 +14,11 @@ describe('TrainingStatusCard', () => {
     vi.clearAllMocks()
   })
 
-  it('shows a loading skeleton while the workout is loading', () => {
-    useWorkout.mockReturnValue({ workout: { isLoading: true }, refresh } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
+  it('shows a loading skeleton while a refresh is pending', () => {
+    useWorkout.mockReturnValue({
+      workout: { isLoading: false },
+      refresh: { ...refresh, isPending: true },
+    } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
 
     render(<TrainingStatusCard />)
 
@@ -60,19 +63,19 @@ describe('TrainingStatusCard', () => {
     expect(refresh.mutate).toHaveBeenCalledOnce()
   })
 
-  it('renders a ready workout without guidance and exposes pending refresh state', () => {
+  it('renders a ready workout without guidance', () => {
     useWorkout.mockReturnValue({
       workout: { isLoading: false, isError: false, data: {
         status: 'ready', title: 'Strength session', workout_text: 'Controlled squats.', recovery_note: null,
         recovery_status: 'green', generated_at: '2026-09-30T10:00:00Z', reused: true,
       } },
-      refresh: { ...refresh, isPending: true },
+      refresh,
     } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
 
     render(<TrainingStatusCard />)
 
     expect(screen.getByText('Strength session')).toBeTruthy()
     expect(document.querySelector('.dashboard-training-guidance')).toBeNull()
-    expect(document.querySelector('.ant-btn-loading')).not.toBeNull()
+    expect(document.querySelector('.ant-btn-loading')).toBeNull()
   })
 })

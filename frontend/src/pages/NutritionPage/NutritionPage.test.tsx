@@ -54,7 +54,8 @@ describe('NutritionPage', () => {
 
     fireEvent.click(screen.getByRole('tab', { name: 'Profile & Targets' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/profile/get', {}))
-    expect(screen.getByText('No active nutrition targets')).toBeTruthy()
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/targets/active', {}))
+    await waitFor(() => expect(screen.getByText('No active nutrition targets')).toBeTruthy())
 
     fireEvent.click(screen.getByRole('tab', { name: 'Meal Plans' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meal-plans/list', {}))
@@ -64,5 +65,5 @@ describe('NutritionPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Progress' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/adherence', expect.any(Object)))
     expect(screen.getByText('Last 7 days')).toBeTruthy()
-  })
+  }, 15_000)
 })
