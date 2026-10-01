@@ -1,5 +1,6 @@
 """Daily summary and authenticated listings for Head Coach / Summarizer."""
 
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -61,7 +62,12 @@ async def generate_daily_summary(
             "user_id": current_user["id"],
         },
     }
-    summary = strip_daily_summary_heading(summarizer_agent(state))
+    # The local summarizer performs a synchronous OpenAI request.  Run it in a
+    # worker thread so it cannot block the API event loop and delay unrelated
+    # requests, including Nutrition Agent context lookups.
+    summary = strip_daily_summary_heading(
+        await asyncio.to_thread(summarizer_agent, state)
+    )
     row = await repo.add_summary(
         user_id=current_user["id"],
         session_id=None,

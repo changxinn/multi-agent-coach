@@ -7,10 +7,12 @@
         "dev": "vite --port 5174",
         "dev:qa": "vite --mode qa",
         "dev:prod": "vite --mode production",
-        "build": "vite build",
+        "build": "tsc --noEmit && vite build",
         "build:qa": "vite build --mode qa",
         "build:prod": "vite build --mode production",
         "lint": "oxlint",
+        "test": "vitest run",
+        "test:coverage": "vitest run --coverage",
         "preview": "vite preview",
         "start": "set PORT=5000 && npm run dev"
     },
@@ -24,7 +26,6 @@
         "autoprefixer": "^10.5.2",
         "crypto-js": "^4.2.0",
         "deep-chat": "^2.4.2",
-        "deep-chat-react": "^2.5.0",
         "jwt-decode": "^4.0.0",
         "lucide-react": "^1.23.0",
         "marked": "^18.0.9",
@@ -41,13 +42,17 @@
     },
     "devDependencies": {
         "@tailwindcss/postcss": "^4.3.2",
+        "@testing-library/react": "^16.3.2",
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "@vitejs/plugin-react": "^6.0.3",
         "@vitejs/plugin-react-swc": "^4.3.1",
+        "@vitest/coverage-v8": "^4.0.18",
+        "jsdom": "^28.1.0",
         "oxlint": "^1.71.0",
         "typescript": "^6.0.3",
-        "vite": "^8.1.3"
+        "vite": "^8.1.3",
+        "vitest": "^4.0.18"
     },
     "bundledDependencies": [
         "@ant-design/icons",

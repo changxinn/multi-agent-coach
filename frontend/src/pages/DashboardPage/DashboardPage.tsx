@@ -14,6 +14,34 @@ const { Title, Text } = Typography
 export function DashboardPage() {
   const { user } = useAuthStore()
   const commandCenter = useDailyCommandCenter()
+  let commandCenterContent
+
+  if (commandCenter.isLoading || commandCenter.isFetching) {
+    commandCenterContent = <Row gutter={[16, 16]}>
+      <Col xs={24} lg={12}><div className="dashboard-coaching-stack"><Skeleton active paragraph={{ rows: 7 }} /><Skeleton active paragraph={{ rows: 7 }} /></div></Col>
+      <Col xs={24} lg={12}><Skeleton active paragraph={{ rows: 14 }} /></Col>
+    </Row>
+  } else if (commandCenter.isError || !commandCenter.data) {
+    commandCenterContent = <Alert
+      type="warning"
+      showIcon
+      title="Your daily coaching status is temporarily unavailable."
+      action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void commandCenter.refetch()}>Retry</Button>}
+    />
+  } else {
+    commandCenterContent = <>
+      <Row gutter={[16, 16]}>
+        <Col xs={24} lg={12} className="dashboard-coaching-column">
+          <div className="dashboard-coaching-stack">
+            <RecoveryStatusCard recovery={commandCenter.data.recovery} />
+            <NutritionStatusCard nutrition={commandCenter.data.nutrition} />
+          </div>
+        </Col>
+        <Col xs={24} lg={12} className="dashboard-training-column"><TrainingStatusCard /></Col>
+      </Row>
+      <NextBestActionsCard actions={commandCenter.data.actions} />
+    </>
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,22 +56,10 @@ export function DashboardPage() {
 
       <div>
         <Title level={3}>Today with your coaching team</Title>
-        <Text type="secondary">Review the signals your coaches use to help you decide what to do next.</Text>
+        <Text className="!text-lg" type="secondary">Review the signals your coaches use to help you decide what to do next.</Text>
       </div>
 
-      {commandCenter.isLoading || commandCenter.isFetching ? <Row gutter={[16, 16]}>{[1, 2, 3].map(key => <Col key={key} xs={24} sm={24} md={12} lg={8}><Skeleton active paragraph={{ rows: 7 }} /></Col>)}</Row> : commandCenter.isError || !commandCenter.data ? <Alert
-        type="warning"
-        showIcon
-        message="Your daily coaching status is temporarily unavailable."
-        action={<Button size="small" icon={<ReloadOutlined />} onClick={() => void commandCenter.refetch()}>Retry</Button>}
-      /> : <>
-        <Row gutter={[16, 16]}>
-          <Col xs={24} sm={24} md={12} lg={8}><RecoveryStatusCard recovery={commandCenter.data.recovery} /></Col>
-          <Col xs={24} sm={24} md={12} lg={8}><NutritionStatusCard nutrition={commandCenter.data.nutrition} /></Col>
-          <Col xs={24} sm={24} md={12} lg={8}><TrainingStatusCard training={commandCenter.data.training} /></Col>
-        </Row>
-        <NextBestActionsCard actions={commandCenter.data.actions} />
-      </>}
+      {commandCenterContent}
     </div>
   )
 }

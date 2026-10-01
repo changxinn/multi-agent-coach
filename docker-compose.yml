@@ -241,7 +241,7 @@ services:
     working_dir: /frontend
     command: >
       sh -c "npm config set registry https://registry.npmjs.org/ &&
-      npm install --package-lock=false --registry=https://registry.npmjs.org/ &&
+      npm ci --registry=https://registry.npmjs.org/ &&
       npm run dev -- --host 0.0.0.0 --port 5174"
     ports:
       - "5174:5174"

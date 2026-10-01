@@ -1,0 +1,223 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import { useAuthStore } from '@/lib/authStore'
+import { DeepChatBot } from './DeepChatBot'
+
+const { callChatbotAPI, streamChatbotAPI } = vi.hoisted(() => ({
+  callChatbotAPI: vi.fn(),
+  streamChatbotAPI: vi.fn(),
+}))
+
+vi.mock('@/lib/chatbot-api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/chatbot-api')>()
+  return { ...actual, callChatbotAPI, streamChatbotAPI }
+})
+
+type ChatMessage = { role: string; text?: string; html?: string }
+
+class DeepChatTestElement extends HTMLElement {
+  messages: ChatMessage[] = []
+  history: ChatMessage[] = []
+
+  addMessage(message: ChatMessage) {
+    this.messages.push(message)
+  }
+
+  clearMessages() {
+    this.messages = []
+  }
+
+  getMessages() {
+    return this.messages
+  }
+
+  updateMessage(message: Partial<ChatMessage>, index: number) {
+    this.messages[index] = { ...this.messages[index], ...message }
+  }
+
+  scrollToBottom() {}
+}
+
+beforeAll(() => {
+  if (!customElements.get('deep-chat')) {
+    customElements.define('deep-chat', DeepChatTestElement)
+  }
+})
+
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+})
+
+afterEach(() => {
+  callChatbotAPI.mockReset()
+  streamChatbotAPI.mockReset()
+  localStorage.clear()
+  sessionStorage.clear()
+  useAuthStore.setState({
+    token: 'test-token',
+    user: { sub: '1', email: 'coach@example.com', name: 'Coach', exp: 4_102_444_800 },
+    isAuthInitialized: true,
+  })
+})
+
+function sendMessage() {
+  fireEvent.change(screen.getByPlaceholderText('Type your message...'), { target: { value: 'Need help' } })
+  fireEvent.click(document.querySelector('.send-btn')!)
+}
+
+describe('DeepChatBot', () => {
+  it('adds and renders a non-streaming assistant response', async () => {
+    callChatbotAPI.mockResolvedValue({ success: true, message: 'Try a short walk.' })
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => expect(callChatbotAPI).toHaveBeenCalled())
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'user', text: 'Need help' }),
+        expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Try a short walk.') }),
+      ]))
+    })
+  })
+
+  it('adds a recovery message when a request fails', async () => {
+    callChatbotAPI.mockRejectedValue(new Error('Network unavailable'))
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', text: 'Sorry, I encountered an error. Please try again.' }),
+      ]))
+    })
+  })
+
+  it('shows the floating trigger, expands, and handles Enter without sending on Shift+Enter', async () => {
+    callChatbotAPI.mockResolvedValue({ success: true, message: 'Sent.' })
+    render(<DeepChatBot streaming={false} enableTypewriter={false} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open chatbot' }))
+    fireEvent.click(screen.getByTitle('Expand'))
+    expect(document.querySelector('.chat-container.expanded')).toBeTruthy()
+
+    const input = screen.getByPlaceholderText('Type your message...')
+    fireEvent.change(input, { target: { value: 'Need help' } })
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter', shiftKey: true })
+    expect(callChatbotAPI).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' })
+    await waitFor(() => expect(callChatbotAPI).toHaveBeenCalled())
+  })
+
+  it('renders an unsuccessful API result as an error message', async () => {
+    callChatbotAPI.mockResolvedValue({ success: false, message: 'Request rejected' })
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', text: 'Sorry, I encountered an error. Please try again.' }),
+      ]))
+    })
+  })
+
+  it('aborts an in-progress stream when closed', async () => {
+    let signal: AbortSignal | undefined
+    streamChatbotAPI.mockImplementation((_, __, ___, ____, controller: AbortController) => {
+      signal = controller.signal
+      return new Promise(() => undefined)
+    })
+    render(<DeepChatBot defaultOpen streaming enableTypewriter={false} showCloseButton />)
+
+    sendMessage()
+    await waitFor(() => expect(streamChatbotAPI).toHaveBeenCalled())
+    fireEvent.click(screen.getByTitle('Close'))
+
+    expect(signal?.aborted).toBe(true)
+  })
+
+  it('restores saved history instead of an initial message', async () => {
+    localStorage.setItem('deepchat_history_coach@example.com', JSON.stringify([
+      { role: 'assistant', text: 'Saved response' },
+    ]))
+    const { container } = render(<DeepChatBot defaultOpen initialMessage="Welcome" />)
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.history).toEqual([{ role: 'assistant', text: 'Saved response' }])
+    })
+  })
+
+  it('uses an initial message when no saved history exists', async () => {
+    const { container } = render(<DeepChatBot defaultOpen initialMessage="Welcome back" />)
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.history).toEqual([{ role: 'assistant', text: 'Welcome back' }])
+    })
+  })
+
+  it('cleans up chat state when the user is logged out', () => {
+    localStorage.setItem('chat_session_anonymous', 'chat_0123456789abcdef')
+    sessionStorage.setItem('chat_demo_mode_shown', 'true')
+    useAuthStore.setState({ token: null, user: null, isAuthInitialized: true })
+
+    render(<DeepChatBot defaultOpen />)
+
+    expect(localStorage.getItem('chat_session_anonymous')).toBeNull()
+    expect(sessionStorage.getItem('chat_demo_mode_shown')).toBeNull()
+  })
+
+  it('renders tokens returned by a completed stream', async () => {
+    streamChatbotAPI.mockImplementation(async (_, __, ___, onToken) => {
+      onToken('Streamed response')
+      return { success: true }
+    })
+    const { container } = render(<DeepChatBot defaultOpen streaming enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Streamed response') }),
+      ]))
+    })
+  })
+
+  it('handles a successful demo response', async () => {
+    callChatbotAPI.mockResolvedValue({ success: true, message: 'Demo response', isDemoResponse: true })
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Demo response') }),
+      ]))
+    })
+  })
+
+  it('preserves streamed content when a stream is interrupted', async () => {
+    streamChatbotAPI.mockImplementation(async (_, __, ___, onToken) => {
+      onToken('Partial response')
+      throw new Error('Connection lost')
+    })
+    const { container } = render(<DeepChatBot defaultOpen streaming enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', text: expect.stringContaining('Response interrupted') }),
+      ]))
+    })
+  })
+})
