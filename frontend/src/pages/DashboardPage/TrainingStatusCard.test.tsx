@@ -78,4 +78,18 @@ describe('TrainingStatusCard', () => {
     expect(document.querySelector('.dashboard-training-guidance')).toBeNull()
     expect(document.querySelector('.ant-btn-loading')).toBeNull()
   })
+
+  it('renders abbreviation guidance without a recovery note', () => {
+    useWorkout.mockReturnValue({
+      workout: { isLoading: false, isError: false, data: {
+        status: 'ready', title: 'Intervals', workout_text: 'Complete an EMOM.', recovery_note: null,
+        recovery_status: 'green', generated_at: '2026-09-30T10:00:00Z', reused: false,
+      } },
+      refresh,
+    } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
+
+    render(<TrainingStatusCard />)
+
+    expect(screen.getByText(/Every Minute on the Minute/)).toBeTruthy()
+  })
 })

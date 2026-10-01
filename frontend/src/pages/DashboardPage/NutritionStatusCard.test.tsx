@@ -42,4 +42,14 @@ describe('NutritionStatusCard', () => {
     expect(screen.getByText('No nutrition data recorded in the last 7 days.')).toBeTruthy()
     expect(screen.getByText('Calories / 0')).toBeTruthy()
   })
+
+  it('uses defaults for a targetless snapshot with missing values', () => {
+    render(<MemoryRouter><NutritionStatusCard nutrition={{
+      ...nutrition('no_target'), message: null, meal_count: null, remaining_protein_g: null,
+    }} /></MemoryRouter>)
+
+    expect(screen.getByText('Set nutrition targets to see today’s progress.')).toBeTruthy()
+    expect(screen.getByText('Meals logged')).toBeTruthy()
+    expect(screen.getByText('0')).toBeTruthy()
+  })
 })

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuthStore } from '@/lib/authStore'
 import { DeepChatBot } from './DeepChatBot'
 
@@ -44,9 +44,16 @@ beforeAll(() => {
   }
 })
 
+beforeEach(() => {
+  localStorage.clear()
+  sessionStorage.clear()
+})
+
 afterEach(() => {
   callChatbotAPI.mockReset()
   streamChatbotAPI.mockReset()
+  localStorage.clear()
+  sessionStorage.clear()
   useAuthStore.setState({
     token: 'test-token',
     user: { sub: '1', email: 'coach@example.com', name: 'Coach', exp: 4_102_444_800 },
@@ -146,6 +153,26 @@ describe('DeepChatBot', () => {
     })
   })
 
+  it('uses an initial message when no saved history exists', async () => {
+    const { container } = render(<DeepChatBot defaultOpen initialMessage="Welcome back" />)
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.history).toEqual([{ role: 'assistant', text: 'Welcome back' }])
+    })
+  })
+
+  it('cleans up chat state when the user is logged out', () => {
+    localStorage.setItem('chat_session_anonymous', 'chat_0123456789abcdef')
+    sessionStorage.setItem('chat_demo_mode_shown', 'true')
+    useAuthStore.setState({ token: null, user: null, isAuthInitialized: true })
+
+    render(<DeepChatBot defaultOpen />)
+
+    expect(localStorage.getItem('chat_session_anonymous')).toBeNull()
+    expect(sessionStorage.getItem('chat_demo_mode_shown')).toBeNull()
+  })
+
   it('renders tokens returned by a completed stream', async () => {
     streamChatbotAPI.mockImplementation(async (_, __, ___, onToken) => {
       onToken('Streamed response')
@@ -159,6 +186,37 @@ describe('DeepChatBot', () => {
       const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
       expect(chat.getMessages()).toEqual(expect.arrayContaining([
         expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Streamed response') }),
+      ]))
+    })
+  })
+
+  it('handles a successful demo response', async () => {
+    callChatbotAPI.mockResolvedValue({ success: true, message: 'Demo response', isDemoResponse: true })
+    const { container } = render(<DeepChatBot defaultOpen streaming={false} enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Demo response') }),
+      ]))
+    })
+  })
+
+  it('preserves streamed content when a stream is interrupted', async () => {
+    streamChatbotAPI.mockImplementation(async (_, __, ___, onToken) => {
+      onToken('Partial response')
+      throw new Error('Connection lost')
+    })
+    const { container } = render(<DeepChatBot defaultOpen streaming enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', text: expect.stringContaining('Response interrupted') }),
       ]))
     })
   })

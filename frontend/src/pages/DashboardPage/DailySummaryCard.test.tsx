@@ -20,8 +20,8 @@ describe('DailySummaryCard', () => {
     const refreshButton = screen.getByText('Refresh').closest('button')!
     await waitFor(() => expect(refreshButton.disabled).toBe(false))
     fireEvent.click(refreshButton)
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith('/summaries/daily?refresh=1', {}))
     await screen.findByText(/add protein at lunch/)
-    expect(post).toHaveBeenLastCalledWith('/summaries/daily?refresh=1', {})
   })
 
   it('shows an API failure instead of summary content', async () => {
