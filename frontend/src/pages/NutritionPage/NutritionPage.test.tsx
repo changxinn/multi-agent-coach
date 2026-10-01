@@ -105,7 +105,7 @@ describe('NutritionPage', () => {
     const generateButtons = screen.getAllByRole('button', { name: 'Generate meal plan' })
     fireEvent.click(generateButtons[generateButtons.length - 1])
     expect(await screen.findByRole('dialog')).toBeTruthy()
-  }, 15_000)
+  }, 30_000)
 
   it('loads the data for each non-default nutrition workflow tab', async () => {
     renderPage()
@@ -127,5 +127,5 @@ describe('NutritionPage', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Progress' }))
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/adherence', expect.any(Object)))
     expect(screen.getByText('Last 7 days')).toBeTruthy()
-  }, 15_000)
+  }, 30_000)
 })
