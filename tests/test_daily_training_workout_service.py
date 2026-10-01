@@ -51,6 +51,24 @@ async def test_daily_training_workout_reuses_existing_recommendation():
 
 
 @pytest.mark.asyncio
+async def test_recovery_snapshot_delegates_to_the_daily_command_center(monkeypatch):
+    service = DailyTrainingWorkoutService(AsyncMock())
+    expected = RecoveryDashboardSnapshot(status="green")
+    from app.services import daily_training_workout_service as module
+
+    command_center = Mock()
+    command_center._recovery_snapshot = AsyncMock(return_value=expected)
+    monkeypatch.setattr(module, "DailyCommandCenterService", lambda *_: command_center)
+
+    result = await service._recovery_snapshot(7, datetime(2026, 9, 30, tzinfo=UTC).date())
+
+    assert result is expected
+    command_center._recovery_snapshot.assert_awaited_once_with(
+        7, datetime(2026, 9, 30, tzinfo=UTC).date(), datetime(2026, 9, 30, tzinfo=UTC).date(), []
+    )
+
+
+@pytest.mark.asyncio
 async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(
     monkeypatch,
 ):

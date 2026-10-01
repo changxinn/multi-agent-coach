@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { NutritionPage } from './NutritionPage'
 
@@ -16,6 +16,9 @@ post.mockImplementation((endpoint: string) => {
       meal_count: 0,
       remaining: {},
     })
+  }
+  if (endpoint === '/nutrition/profile/get' || endpoint === '/nutrition/targets/active') {
+    return Promise.resolve({})
   }
   return Promise.resolve({ items: [] })
 })
@@ -40,5 +43,26 @@ describe('NutritionPage', () => {
     expect(screen.getByText('Review today’s calorie and macro totals, remaining targets, and adherence. Log meals to keep these figures up to date.')).toBeTruthy()
 
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/daily-summary', expect.any(Object)))
+  })
+
+  it('loads the data for each non-default nutrition workflow tab', async () => {
+    renderPage()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/list', expect.any(Object)))
+    expect(screen.getByText('No meals logged today.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Profile & Targets' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/profile/get', {}))
+    expect(screen.getByText('No active nutrition targets')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Plans' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meal-plans/list', {}))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meal-plans/active', expect.any(Object)))
+    expect(screen.getByText('No active meal plan covers today.')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Progress' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/adherence', expect.any(Object)))
+    expect(screen.getByText('Last 7 days')).toBeTruthy()
   })
 })

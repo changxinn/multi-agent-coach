@@ -59,4 +59,20 @@ describe('TrainingStatusCard', () => {
     expect(screen.getByText(/Dumbbell \(DB\)/)).toBeTruthy()
     expect(refresh.mutate).toHaveBeenCalledOnce()
   })
+
+  it('renders a ready workout without guidance and exposes pending refresh state', () => {
+    useWorkout.mockReturnValue({
+      workout: { isLoading: false, isError: false, data: {
+        status: 'ready', title: 'Strength session', workout_text: 'Controlled squats.', recovery_note: null,
+        recovery_status: 'green', generated_at: '2026-09-30T10:00:00Z', reused: true,
+      } },
+      refresh: { ...refresh, isPending: true },
+    } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
+
+    render(<TrainingStatusCard />)
+
+    expect(screen.getByText('Strength session')).toBeTruthy()
+    expect(document.querySelector('.dashboard-training-guidance')).toBeNull()
+    expect(document.querySelector('.ant-btn-loading')).not.toBeNull()
+  })
 })

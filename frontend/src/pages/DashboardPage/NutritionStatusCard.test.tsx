@@ -22,4 +22,24 @@ describe('NutritionStatusCard', () => {
     fireEvent.click(screen.getByRole('button', { name: buttonName }))
     expect(navigate).toHaveBeenCalledWith('/nutrition')
   })
+
+  it('clamps progress values and renders the adherence summary when data is present', () => {
+    render(<MemoryRouter><NutritionStatusCard nutrition={{
+      ...nutrition('available'), calories: -10, protein_g: 500, calorie_target_kcal: 100, protein_target_g: 100,
+      trend: [{ date: '2026-09-30', calorie_adherence_pct: 125, protein_adherence_pct: 90, meal_count: 2 }],
+    }} /></MemoryRouter>)
+
+    expect(screen.getByText('Last recorded adherence: 125% calories and 90% protein.')).toBeTruthy()
+    expect(screen.getByText('Calories / 100')).toBeTruthy()
+    expect(screen.getByText('Protein / 100g')).toBeTruthy()
+  })
+
+  it('renders zero-value targets and the empty trend message safely', () => {
+    render(<MemoryRouter><NutritionStatusCard nutrition={{
+      ...nutrition('available'), calories: null, protein_g: null, calorie_target_kcal: 0, protein_target_g: 0,
+    }} /></MemoryRouter>)
+
+    expect(screen.getByText('No adherence data recorded in the last seven days.')).toBeTruthy()
+    expect(screen.getByText('Calories / 0')).toBeTruthy()
+  })
 })

@@ -16,6 +16,7 @@ from app.api.schemas.dashboard import (
     RecoveryDashboardSnapshot,
 )
 from app.services.daily_command_center_service import DailyCommandCenterService
+from app.services.daily_training_workout_service import DailyTrainingWorkoutService
 
 
 @pytest.fixture
@@ -79,6 +80,18 @@ def test_daily_training_workout_uses_authenticated_user_and_refresh_flag(
 
     assert response.status_code == 200, response.text
     service.get.assert_awaited_once_with(17, refresh=True)
+
+
+def test_dashboard_service_factories_create_services_for_the_request_database():
+    db = AsyncMock()
+
+    command_center = get_daily_command_center_service(db)
+    training = get_daily_training_workout_service(db)
+
+    assert isinstance(command_center, DailyCommandCenterService)
+    assert command_center.db is db
+    assert isinstance(training, DailyTrainingWorkoutService)
+    assert training.db is db
 
 
 def test_actions_prioritize_recovery_and_cap_at_three():

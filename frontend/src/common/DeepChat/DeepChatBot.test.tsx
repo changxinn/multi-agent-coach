@@ -133,4 +133,33 @@ describe('DeepChatBot', () => {
 
     expect(signal?.aborted).toBe(true)
   })
+
+  it('restores saved history instead of an initial message', async () => {
+    localStorage.setItem('deepchat_history_coach@example.com', JSON.stringify([
+      { role: 'assistant', text: 'Saved response' },
+    ]))
+    const { container } = render(<DeepChatBot defaultOpen initialMessage="Welcome" />)
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.history).toEqual([{ role: 'assistant', text: 'Saved response' }])
+    })
+  })
+
+  it('renders tokens returned by a completed stream', async () => {
+    streamChatbotAPI.mockImplementation(async (_, __, ___, onToken) => {
+      onToken('Streamed response')
+      return { success: true }
+    })
+    const { container } = render(<DeepChatBot defaultOpen streaming enableTypewriter={false} />)
+
+    sendMessage()
+
+    await waitFor(() => {
+      const chat = container.querySelector('deep-chat') as unknown as DeepChatTestElement
+      expect(chat.getMessages()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ role: 'assistant', html: expect.stringContaining('Streamed response') }),
+      ]))
+    })
+  })
 })
