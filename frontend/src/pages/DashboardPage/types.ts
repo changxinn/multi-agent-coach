@@ -23,6 +23,16 @@ export interface TrainingSnapshot {
   last_activity_at: string | null
 }
 
+export interface DailyTrainingWorkout {
+  status: 'ready' | 'recovery_adjusted' | 'unavailable'
+  title: string
+  workout_text: string
+  recovery_note: string | null
+  recovery_status: RecoveryStatus
+  generated_at: string
+  reused: boolean
+}
+
 export interface NutritionSnapshot {
   status: NutritionStatus
   message: string | null

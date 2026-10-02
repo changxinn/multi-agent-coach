@@ -4,6 +4,7 @@ import { Bot } from 'lucide-react'
 import { Input, Button } from 'antd'
 import { message } from 'antd'
 import { marked } from 'marked'
+import { DeepChat as DeepChatElement } from 'deep-chat'
 
 marked.setOptions({
   gfm: true,
@@ -55,8 +56,8 @@ export function DeepChatBot({
   const [inputValue, setInputValue] = useState('')
   const [isSending, setIsSending] = useState(false)
   const { token, user } = useAuthStore()
-  const userEmail = user?.email || 'anonymous'
-  const deepChatRef = useRef<any>(null)
+  const userEmail = user?.email ?? 'anonymous'
+  const deepChatRef = useRef<DeepChatElement | null>(null)
   const sessionId = useRef<string>(getSessionId(userEmail))
   const streamingMessageIndexRef = useRef<number | null>(null)
   const accumulatedMessageRef = useRef<string>('')
@@ -65,7 +66,7 @@ export function DeepChatBot({
   const hasInitialMessage = useRef(false)
   const hasShownOllamaToast = useRef(false)
   const inputRef = useRef<any>(null)
-  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tokenBufferRef = useRef<string>('')  // Buffer for incoming tokens
   const isTypingRef = useRef<boolean>(false)  // Track if typewriter is currently typing
   const displayIndexRef = useRef(0)  // Current character index being displayed
@@ -78,8 +79,9 @@ export function DeepChatBot({
    * Update message display in DeepChat UI
    * Uses marked library to render Markdown
    */
-  const updateMessageDisplay = useCallback(() => {
-    if (!deepChatRef.current) return
+  const updateMessageDisplay = useCallback(async () => {
+    const deepChat = deepChatRef.current
+    if (!deepChat) return
     
     // Preserve whitespace by replacing multiple spaces with non-breaking spaces
     // This prevents HTML from collapsing consecutive spaces
@@ -88,30 +90,30 @@ export function DeepChatBot({
     })
     
     // Convert markdown to HTML using marked
-    const htmlContent = marked.parse(preservedText)
+    const htmlContent = await marked.parse(preservedText)
     
-    const allMessages = deepChatRef.current.getMessages()
+    const allMessages = deepChat.getMessages()
     const lastMessageIndex = allMessages.length - 1
     const lastMessage = allMessages[lastMessageIndex]
     
     if (lastMessage?.html?.includes('typing-dots')) {
       // Remove loading message and add new message with HTML
-      deepChatRef.current.clearMessages()
-      allMessages.slice(0, -1).forEach((m: any) => deepChatRef.current.addMessage(m))
-      deepChatRef.current.addMessage({
+      deepChat.clearMessages()
+      allMessages.slice(0, -1).forEach(message => deepChat.addMessage(message))
+      deepChat.addMessage({
         role: 'assistant',
         html: htmlContent
       })
       streamingMessageIndexRef.current = allMessages.length - 1
     } else {
       // Update existing message with HTML
-      deepChatRef.current.updateMessage(
-        { html: htmlContent },
-        streamingMessageIndexRef.current
-      )
+      const messageIndex = streamingMessageIndexRef.current
+      if (messageIndex !== null) {
+        deepChat.updateMessage({ html: htmlContent }, messageIndex)
+      }
     }
     
-    deepChatRef.current.scrollToBottom()
+    deepChat.scrollToBottom()
   }, [])
   
   /**
@@ -134,7 +136,9 @@ export function DeepChatBot({
       console.log('📝 Typing char:', char, '| Display index:', displayIndexRef.current, '| Accumulated:', accumulatedMessageRef.current.length)
       
       // Update UI
-      updateMessageDisplay()
+      void updateMessageDisplay().catch((error) => {
+        console.error('Unable to update the chat message display:', error)
+      })
       
       // Schedule next character
       typingTimeoutRef.current = setTimeout(typeNextCharacter, ChatbotConfig.TYPEWRITER.SPEED_MS)
@@ -244,7 +248,9 @@ export function DeepChatBot({
             } else {
               accumulatedMessageRef.current += tokenContent
               console.log('📝 Direct update, accumulated length:', accumulatedMessageRef.current.length)
-              updateMessageDisplay()
+              void updateMessageDisplay().catch((error) => {
+                console.error('Unable to update the chat message display:', error)
+              })
             }
           },
           streamAbortControllerRef.current
@@ -288,8 +294,12 @@ export function DeepChatBot({
               checkTyping()
             })
           } else {
-            updateMessageDisplay()
+            void updateMessageDisplay().catch((error) => {
+              console.error('Unable to update the chat message display:', error)
+            })
           }
+        } else {
+          throw new Error(result.message || 'The chatbot could not complete your request.')
         }
       }
       
@@ -327,7 +337,7 @@ export function DeepChatBot({
           const lastMessage = allMessages[allMessages.length - 1]
           if (lastMessage?.html?.includes('typing-dots')) {
             deepChatRef.current.clearMessages()
-            allMessages.slice(0, -1).forEach((m: any) => deepChatRef.current.addMessage(m))
+            allMessages.slice(0, -1).forEach(message => deepChatRef.current?.addMessage(message))
           }
           
           deepChatRef.current.addMessage({
@@ -404,10 +414,10 @@ export function DeepChatBot({
     }
   }, [userEmail])
 
-  const handleKeyPress = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
-      handleSend()
+      void handleSend()
     }
   }, [handleSend])
 
@@ -415,7 +425,7 @@ export function DeepChatBot({
     setIsExpanded(true)
   }, [])
 
-  const setDeepChatRef = useCallback((element: any | null) => {
+  const setDeepChatRef = useCallback((element: DeepChatElement | null) => {
     deepChatRef.current = element
   }, [])
 
@@ -428,24 +438,12 @@ export function DeepChatBot({
     deepChatEl.requestBodyLimits = deepChatRequestBodyLimits
     deepChatEl.textInput = deepChatTextInputConfig
     deepChatEl.auxiliaryStyle = deepChatAuxiliaryStyle
-    deepChatEl.style = {
-      width: '100%',
-      height: '100%',
-      border: 'none',
-    }
-
-    deepChatEl.connect = null
-    deepChatEl.interceptors = null
-    deepChatEl.onTextInput = null
-    deepChatEl.submitMessageOnEnter = false
-    deepChatEl.autoSave = false
-    deepChatEl.renderHTML = true
-    deepChatEl.allowHTML = true
-    deepChatEl.disableHTML = false
-    deepChatEl.renderHtml = true
-    deepChatEl.allowHtml = true
-    deepChatEl.parseHTML = true
-    deepChatEl.innerHTML = true
+    deepChatEl.style.width = '100%'
+    deepChatEl.style.height = '100%'
+    deepChatEl.style.border = 'none'
+    deepChatEl.connect = undefined
+    deepChatEl.requestInterceptor = undefined
+    deepChatEl.responseInterceptor = undefined
 
     const saved = loadChatHistory(userEmail)
     console.debug('[DeepChat] Restoring history', {
@@ -540,7 +538,7 @@ export function DeepChatBot({
             </header>
             
             <div className="chat-content">
-              <deep-chat displayLoadingBubble="true" ref={setDeepChatRef} demo={true} />
+              <deep-chat displayLoadingBubble={true} ref={setDeepChatRef} demo={true} />
             </div>
             
             <div className="input-area">
@@ -553,7 +551,7 @@ export function DeepChatBot({
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
-                  onKeyPress={handleKeyPress}
+                  onKeyDown={handleKeyDown}
                   placeholder="Type your message..."
                   className="chat-input"
                   autoSize={{ minRows: 1, maxRows: 4 }}
@@ -564,7 +562,7 @@ export function DeepChatBot({
                   shape="circle"
                   icon={<SendOutlined />}
                   size="large"
-                  onClick={handleSend}
+                  onClick={() => void handleSend()}
                   disabled={!inputValue.trim() || isSending}
                   className="send-btn"
                 />

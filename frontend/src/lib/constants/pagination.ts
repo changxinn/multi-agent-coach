@@ -17,7 +17,7 @@ export const Pagination = {
 } as const
 
 // Helper to get page size options
-export const getPageSizeOptions = (max?: number): number[] => {
+export const getPageSizeOptions = (max?: number): readonly number[] => {
   if (!max) return Pagination.PageSizeOptions
   return Pagination.PageSizeOptions.filter(size => size <= max)
 }

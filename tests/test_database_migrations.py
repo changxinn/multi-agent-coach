@@ -34,3 +34,14 @@ def test_shared_state_migration_upgrades_legacy_meal_item_columns_before_index()
 
     assert upgrade_statement in migration
     assert migration.index(upgrade_statement) < migration.index(provider_index)
+
+
+def test_daily_training_workout_migration_enforces_one_workout_per_user_day():
+    migration = (
+        Path(__file__).parents[1]
+        / "app/db/migrations/007_create_daily_training_workouts.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "CREATE TABLE IF NOT EXISTS systemdb.daily_training_workouts" in migration
+    assert "UNIQUE (user_id, workout_date)" in migration
+    assert "status IN ('ready', 'recovery_adjusted')" in migration

@@ -36,14 +36,6 @@ export class ErrorBoundary extends Component<Props, State> {
     // Sentry.captureException(error, { extra: { componentStack: errorInfo.componentStack } })
   }
 
-  private handleReload = () => {
-    window.location.reload()
-  }
-
-  private handleGoBack = () => {
-    window.history.back()
-  }
-
   public render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
