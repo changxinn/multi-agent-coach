@@ -18,3 +18,13 @@ deepeval-tests/.deepeval/
 promptfoo-tests/results/
 .promptfoo/
 .npm-cache/
+
+# Coverage reports
+coverage/
+frontend/coverage/
+*.coverage
+.coverage
+htmlcov/
+
+# Build output
+frontend/dist/
