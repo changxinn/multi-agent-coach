@@ -1,0 +1,205 @@
+name: Deploy to EC2
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Commit, branch, or tag to deploy"
+        required: false
+        default: "main"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ec2-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy application to EC2
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      APP_DIR: ${{ vars.EC2_APP_DIR || '/opt/multi-agent-coach' }}
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.workflow_run.head_sha }}
+
+    steps:
+      - name: Check out deployment revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
+      - name: Prepare SSH key
+        shell: bash
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" > "$HOME/.ssh/ec2_deploy_key"
+          chmod 600 "$HOME/.ssh/ec2_deploy_key"
+          ssh-keyscan -H "${{ secrets.EC2_HOST }}" >> "$HOME/.ssh/known_hosts"
+
+      - name: Create deployment environment file
+        shell: bash
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          USDA_FDC_API_KEY: ${{ secrets.USDA_FDC_API_KEY }}
+          JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+          INTERNAL_SERVICE_TOKEN: ${{ secrets.INTERNAL_SERVICE_TOKEN }}
+          MAIN_DB_PASSWORD: ${{ secrets.MAIN_DB_PASSWORD }}
+          NUTRITION_DB_PASSWORD: ${{ secrets.NUTRITION_DB_PASSWORD }}
+          EC2_PUBLIC_URL: ${{ secrets.EC2_PUBLIC_URL }}
+        run: |
+          set -euo pipefail
+          : "${OPENAI_API_KEY:?OPENAI_API_KEY is required}"
+          : "${JWT_SECRET_KEY:?JWT_SECRET_KEY is required}"
+          : "${INTERNAL_SERVICE_TOKEN:?INTERNAL_SERVICE_TOKEN is required}"
+          : "${MAIN_DB_PASSWORD:?MAIN_DB_PASSWORD is required}"
+          : "${NUTRITION_DB_PASSWORD:?NUTRITION_DB_PASSWORD is required}"
+          : "${EC2_PUBLIC_URL:?Set the EC2_PUBLIC_URL repository secret, for example http://203.0.113.10}"
+          {
+            printf 'OPENAI_API_KEY=%s\n' "$OPENAI_API_KEY"
+            printf 'USDA_FDC_API_KEY=%s\n' "$USDA_FDC_API_KEY"
+            printf 'JWT_SECRET_KEY=%s\n' "$JWT_SECRET_KEY"
+            printf 'INTERNAL_SERVICE_TOKEN=%s\n' "$INTERNAL_SERVICE_TOKEN"
+            printf 'MAIN_DB_USER=main_app\n'
+            printf 'MAIN_DB_PASSWORD=%s\n' "$MAIN_DB_PASSWORD"
+            printf 'NUTRITION_DB_USER=nutrition_agent\n'
+            printf 'NUTRITION_DB_PASSWORD=%s\n' "$NUTRITION_DB_PASSWORD"
+            printf 'FRONTEND_URL=%s:5174\n' "$EC2_PUBLIC_URL"
+            printf 'ALLOWED_ORIGINS=%s:5174\n' "$EC2_PUBLIC_URL"
+            printf 'VITE_API_BASE_URL=%s:8000/api\n' "$EC2_PUBLIC_URL"
+            printf 'SEED_DEMO_USERS=false\nDEBUG=false\nRUN_MIGRATIONS=true\n'
+          } > .env.ec2
+
+      - name: Bootstrap EC2 dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/ec2_deploy_key" "${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          missing_os_packages=()
+          for package in git openssh-server ca-certificates curl gnupg; do
+            if ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed'; then
+              missing_os_packages+=("$package")
+            fi
+          done
+
+          if [ "${#missing_os_packages[@]}" -gt 0 ]; then
+            sudo -n apt-get update
+            sudo -n apt-get install -y "${missing_os_packages[@]}"
+          fi
+
+          add_docker_repository() {
+            sudo -n install -m 0755 -d /etc/apt/keyrings
+            if [ ! -f /etc/apt/keyrings/docker.asc ]; then
+              curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo -n tee /etc/apt/keyrings/docker.asc >/dev/null
+              sudo -n chmod a+r /etc/apt/keyrings/docker.asc
+            fi
+            . /etc/os-release
+            printf 'Types: deb\nURIs: https://download.docker.com/linux/ubuntu\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' "$VERSION_CODENAME" "$(dpkg --print-architecture)" | sudo -n tee /etc/apt/sources.list.d/docker.sources >/dev/null
+            sudo -n apt-get update
+          }
+
+          if ! command -v docker >/dev/null 2>&1; then
+            add_docker_repository
+            sudo -n apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+          elif ! docker compose version >/dev/null 2>&1; then
+            add_docker_repository
+            sudo -n apt-get install -y docker-compose-plugin
+          fi
+
+          sudo -n systemctl enable --now docker ssh
+
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "Docker Compose is unavailable after bootstrap. Check the Docker apt repository and package architecture."
+            exit 1
+          fi
+
+          if ! id -nG "$(id -un)" | tr ' ' '\n' | grep -qx docker; then
+            sudo -n usermod -aG docker "$(id -un)"
+            echo "Docker group membership was added. The deployment step will use a new SSH connection."
+          fi
+          REMOTE
+
+      - name: Upload source and runtime configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive_path="$RUNNER_TEMP/deployment.tar.gz"
+          tar --exclude=.git --exclude=.env --exclude=.env.local --exclude=.env.production --exclude=node_modules --exclude=frontend/node_modules --exclude=frontend/dist -czf "$archive_path" .
+          scp -i "$HOME/.ssh/ec2_deploy_key" "$archive_path" "${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}:/tmp/multi-agent-coach-${GITHUB_SHA}.tar.gz"
+
+      - name: Deploy on EC2
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/ec2_deploy_key" "${{ secrets.EC2_USERNAME }}@${{ secrets.EC2_HOST }}" \
+            "APP_DIR='$APP_DIR' ARCHIVE='/tmp/multi-agent-coach-${GITHUB_SHA}.tar.gz'" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if [ -d "$APP_DIR" ]; then
+            if [ ! -w "$APP_DIR" ]; then
+              echo "Deployment user cannot write to $APP_DIR. Fix its ownership before retrying."
+              exit 1
+            fi
+          else
+            sudo -n mkdir -p "$APP_DIR"
+            sudo -n chown "$(id -un):$(id -gn)" "$APP_DIR"
+          fi
+          tar -xzf "$ARCHIVE" -C "$APP_DIR"
+          rm -f "$ARCHIVE"
+          cd "$APP_DIR"
+          mv .env.ec2 .env
+          chmod 600 .env
+          docker compose -f docker-compose.yml -f docker-compose.ec2.yml config >/dev/null
+          if docker compose -f docker-compose.yml -f docker-compose.ec2.yml ps -q | grep -q .; then
+            echo "Stopping the existing Compose deployment before rebuilding."
+            docker compose -f docker-compose.yml -f docker-compose.ec2.yml down --remove-orphans
+          else
+            echo "No existing Compose containers found."
+          fi
+          echo "Disk usage before Docker cleanup:"
+          df -h /
+          docker builder prune -af
+          docker image prune -af
+          echo "Disk usage after Docker cleanup:"
+          df -h /
+          available_kb=$(df --output=avail / | tail -1 | tr -d ' ')
+          minimum_kb=$((6 * 1024 * 1024))
+          if [ "$available_kb" -lt "$minimum_kb" ]; then
+            echo "Insufficient disk space for Docker build: ${available_kb} KiB available; ${minimum_kb} KiB required."
+            exit 1
+          fi
+          services=(api recovery-agent head-coach summarizer nutrition-agent frontend)
+          for service in "${services[@]}"; do
+            echo "Building ${service}"
+            docker compose -f docker-compose.yml -f docker-compose.ec2.yml build --pull "$service"
+            docker builder prune -af
+            echo "Disk usage after ${service}:"
+            df -h /
+          done
+          docker compose -f docker-compose.yml -f docker-compose.ec2.yml up -d --no-build --remove-orphans
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://localhost:8000/health >/dev/null; then
+              docker compose -f docker-compose.yml -f docker-compose.ec2.yml ps
+              exit 0
+            fi
+            sleep 10
+          done
+          docker compose -f docker-compose.yml -f docker-compose.ec2.yml ps
+          docker compose -f docker-compose.yml -f docker-compose.ec2.yml logs --tail=200 api
+          exit 1
+          REMOTE
+
+      - name: Cleanup local deployment files
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/deployment.tar.gz" .env.ec2 "$HOME/.ssh/ec2_deploy_key"
