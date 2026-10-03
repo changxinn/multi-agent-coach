@@ -15,7 +15,7 @@ RUN npm run build
 FROM nginx:1.27-alpine
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --chown=nginx:nginx --from=builder /frontend/dist /usr/share/nginx/html
+COPY --from=builder /frontend/dist /usr/share/nginx/html
 
 RUN mkdir -p /var/cache/nginx /var/run \
     && chown -R nginx:nginx /var/cache/nginx /var/run
