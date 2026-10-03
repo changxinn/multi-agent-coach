@@ -3,7 +3,7 @@ FROM node:22-alpine AS builder
 WORKDIR /frontend
 
 COPY package*.json ./
-RUN npm ci --registry=https://registry.npmjs.org/
+RUN npm ci --ignore-scripts --registry=https://registry.npmjs.org/
 
 COPY . .
 
