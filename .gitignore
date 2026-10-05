@@ -16,6 +16,7 @@ deepeval-tests/results/
 .deepeval/
 deepeval-tests/.deepeval/
 promptfoo-tests/results/
+zap-reports/
 .promptfoo/
 .npm-cache/
 
