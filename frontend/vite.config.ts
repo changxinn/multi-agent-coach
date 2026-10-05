@@ -12,6 +12,9 @@ export default defineConfig(() => {
   return {
     plugins: [react()],
     envDir,
+    server: {
+      allowedHosts: ['frontend'],
+    },
     build: {
       chunkSizeWarningLimit: 2000, // in KiB (default is 500)
     },
