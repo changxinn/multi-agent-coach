@@ -3,9 +3,9 @@
 The [OWASP ZAP Baseline](../.github/workflows/zap-dast-ci.yml) GitHub Actions
 workflow starts an isolated Docker Compose copy of the app and scans the public
 frontend at `http://frontend:5174/` and API documentation at
-`http://api:8000/docs`. It runs when a pull request is merged into `main`, or
-manually through **Actions → OWASP ZAP Baseline → Run workflow**. Direct pushes
-to `main` do not trigger it.
+`http://api:8000/docs`. It runs on every push to `main`, including a pull
+request merge, alongside CI and SonarQube. It can also be started manually
+through **Actions → OWASP ZAP Baseline → Run workflow**.
 
 Open the Actions run and download the **zap-baseline-reports** artifact. It
 contains `frontend.html`, `frontend.json`, `api.html`, and `api.json`. Reports
