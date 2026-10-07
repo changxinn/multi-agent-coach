@@ -1,62 +1,15 @@
-"""Authenticated CRUD for recovery tables shared with the Recovery Agent."""
+"""Authenticated frontend CRUD backed by the private Recovery Agent database."""
 
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import (
-    BigInteger,
-    Column,
-    DateTime,
-    Integer,
-    MetaData,
-    String,
-    Table,
-    Text,
-    func,
-    select,
-)
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_user
-from app.db.database import get_db
-
-router = APIRouter(prefix="/recovery", dependencies=[Depends(get_current_user)])
-metadata = MetaData(schema="systemdb")
-
-
-def recovery_table(name, *columns):
-    return Table(
-        name,
-        metadata,
-        Column("id", BigInteger, primary_key=True),
-        Column("user_id", BigInteger, nullable=False),
-        *columns,
-        Column("created_at", DateTime(timezone=True), server_default=func.now()),
-    )
-
-
-sleep_logs = recovery_table(
-    "sleep_logs",
-    Column("duration_minutes", Integer),
-    Column("quality", Integer),
-    Column("notes", Text),
-)
-checkins = recovery_table(
-    "recovery_checkins",
-    Column("energy", Integer),
-    Column("soreness", Integer),
-    Column("stress", Integer),
-    Column("notes", Text),
-)
-assessments = recovery_table(
-    "recovery_assessments",
-    Column("status", String(16)),
-    Column("score", Integer),
-    Column("response", JSONB),
-    Column("tool_trace", JSONB),
+from app.services.recovery_agent_client import (
+    RecoveryAgentUnavailableError,
+    RecoveryRecordError,
+    recovery_agent_client,
 )
 
 
@@ -85,83 +38,53 @@ class AssessmentInput(RecoveryInput):
     tool_trace: list[str]
 
 
-async def save(db, statement):
+router = APIRouter(prefix="/recovery", dependencies=[Depends(get_current_user)])
+
+
+async def remote(call):
     try:
-        row = (await db.execute(statement)).mappings().first()
-        if row is None:
-            raise HTTPException(404, "Recovery record not found")
-        await db.commit()
-        return dict(row)
-    except IntegrityError as exc:
-        await db.rollback()
-        raise HTTPException(
-            409,
-            "Unable to save record. Check that the user ID exists and values are valid.",
-        ) from exc
+        return await call
+    except RecoveryRecordError as exc:
+        raise HTTPException(exc.status_code, str(exc)) from exc
+    except RecoveryAgentUnavailableError as exc:
+        raise HTTPException(503, "Recovery service is unavailable") from exc
 
 
-def register_crud(path: str, table: Table, schema: type[BaseModel]):
-    # Each route closes over an explicit table; client input never selects SQL identifiers.
+def register_crud(resource, schema):
     async def listing(
         page: int = Query(1, ge=1),
         page_size: int = Query(10, ge=1, le=100),
         user_id: int | None = Query(None, gt=0),
-        db: AsyncSession = Depends(get_db),
     ):
-        conditions = [table.c.user_id == user_id] if user_id is not None else []
-        total = await db.scalar(
-            select(func.count()).select_from(table).where(*conditions)
-        )
-        rows = await db.execute(
-            select(table)
-            .where(*conditions)
-            .order_by(table.c.created_at.desc(), table.c.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        )
-        return {"items": [dict(row) for row in rows.mappings()], "total": total}
-
-    async def create(payload: schema, db: AsyncSession = Depends(get_db)):
-        return await save(
-            db, table.insert().values(**payload.model_dump()).returning(*table.c)
+        return await remote(
+            recovery_agent_client.list_records(resource, page, page_size, user_id)
         )
 
-    async def update(
-        record_id: int, payload: schema, db: AsyncSession = Depends(get_db)
-    ):
-        return await save(
-            db,
-            table.update()
-            .where(table.c.id == record_id)
-            .values(**payload.model_dump())
-            .returning(*table.c),
+    async def create(payload: schema):
+        return await remote(
+            recovery_agent_client.write_record(resource, payload.model_dump())
         )
 
-    async def delete(record_id: int, db: AsyncSession = Depends(get_db)):
-        result = await db.execute(
-            table.delete().where(table.c.id == record_id).returning(table.c.id)
+    async def update(record_id: int, payload: schema):
+        return await remote(
+            recovery_agent_client.write_record(
+                resource, payload.model_dump(), record_id
+            )
         )
-        if result.scalar_one_or_none() is None:
-            raise HTTPException(404, "Recovery record not found")
-        await db.commit()
+
+    async def delete(record_id: int):
+        await remote(recovery_agent_client.delete_record(resource, record_id))
         return Response(status_code=204)
 
-    router.add_api_route(path, listing, methods=["GET"], name=f"list_{table.name}")
+    path = "/" + resource
+    router.add_api_route(path, listing, methods=["GET"])
+    router.add_api_route(path, create, methods=["POST"], status_code=201)
+    router.add_api_route(path + "/{record_id}", update, methods=["PUT"])
     router.add_api_route(
-        path, create, methods=["POST"], status_code=201, name=f"create_{table.name}"
-    )
-    router.add_api_route(
-        path + "/{record_id}", update, methods=["PUT"], name=f"update_{table.name}"
-    )
-    router.add_api_route(
-        path + "/{record_id}",
-        delete,
-        methods=["DELETE"],
-        status_code=204,
-        name=f"delete_{table.name}",
+        path + "/{record_id}", delete, methods=["DELETE"], status_code=204
     )
 
 
-register_crud("/sleep-logs", sleep_logs, SleepInput)
-register_crud("/check-ins", checkins, CheckInInput)
-register_crud("/assessments", assessments, AssessmentInput)
+register_crud("sleep-logs", SleepInput)
+register_crud("check-ins", CheckInInput)
+register_crud("assessments", AssessmentInput)

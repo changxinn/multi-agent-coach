@@ -1,13 +1,17 @@
 """FastAPI entry point for the standalone Recovery Agent service."""
 
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+import asyncpg
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Response, status
 
 from .agent import RecoveryAgent
 from .assessment import assess_recovery
+from .chat_inputs import chat_measurements
 from .config import settings
+from .records import AssessmentInput, CheckInInput, SleepInput
 from .repository import RecoveryRepository
 from .schemas import (
     RecoveryCheckInCreate,
@@ -90,6 +94,8 @@ async def get_history(user_id: int) -> RecoveryHistoryResponse:
     dependencies=[Depends(require_internal_token)],
 )
 async def evaluate(payload: RecoveryEvaluateRequest) -> RecoveryEvaluateResponse:
+    payload = chat_measurements(payload)
+    saved = []
     if payload.sleep_hours is not None and payload.sleep_quality is not None:
         await repository.create_sleep_log(
             SleepLogCreate(
@@ -99,6 +105,7 @@ async def evaluate(payload: RecoveryEvaluateRequest) -> RecoveryEvaluateResponse
                 notes="Logged during recovery assessment",
             )
         )
+        saved.append("sleep log")
     if all(
         value is not None
         for value in (payload.energy, payload.soreness, payload.stress)
@@ -113,8 +120,82 @@ async def evaluate(payload: RecoveryEvaluateRequest) -> RecoveryEvaluateResponse
             )
         )
 
+        saved.append("recovery check-in")
+
     history = await repository.get_history(payload.user_id)
     assessment = assess_recovery(payload, history)
     assessment = agent.present(assessment, payload.message)
+    if saved:
+        assessment.message += "\nSaved to Recovery Table: " + " and ".join(saved) + "."
+    if payload.sleep_hours is not None and payload.sleep_quality is None:
+        assessment.message += "\nTo log sleep, send duration and quality (1-5)."
+    if any(
+        v is not None for v in (payload.energy, payload.soreness, payload.stress)
+    ) and not all(
+        v is not None for v in (payload.energy, payload.soreness, payload.stress)
+    ):
+        assessment.message += (
+            "\nTo log a check-in, send energy, soreness and stress (1-10)."
+        )
     await repository.save_assessment(payload.user_id, assessment)
     return assessment
+
+
+@app.get(
+    "/v1/recovery/dashboard/{user_id}", dependencies=[Depends(require_internal_token)]
+)
+async def dashboard(user_id: int, start_date: date, end_date: date):
+    if user_id <= 0 or not 0 <= (end_date - start_date).days <= 30:
+        raise HTTPException(422, "Invalid user or date range")
+    return await repository.dashboard_data(user_id, start_date, end_date)
+
+
+def register_records(resource, schema):
+    async def listing(
+        page: int = Query(1, ge=1),
+        page_size: int = Query(10, ge=1, le=100),
+        user_id: int | None = Query(None, gt=0),
+    ):
+        return await repository.list_records(resource, page, page_size, user_id)
+
+    async def write(payload, record_id=None):
+        try:
+            row = await repository.write_record(
+                resource, payload.model_dump(), record_id
+            )
+        except asyncpg.IntegrityConstraintViolationError as exc:
+            raise HTTPException(409, "Invalid recovery record") from exc
+        if row is None:
+            raise HTTPException(404, "Recovery record not found")
+        return row
+
+    async def create(payload: schema):
+        return await write(payload)
+
+    async def update(record_id: int, payload: schema):
+        return await write(payload, record_id)
+
+    async def delete(record_id: int):
+        if not await repository.delete_record(resource, record_id):
+            raise HTTPException(404, "Recovery record not found")
+        return Response(status_code=204)
+
+    path = "/v1/recovery/records/" + resource
+    for suffix, endpoint, method, code in (
+        ("", listing, "GET", 200),
+        ("", create, "POST", 201),
+        ("/{record_id}", update, "PUT", 200),
+        ("/{record_id}", delete, "DELETE", 204),
+    ):
+        app.add_api_route(
+            path + suffix,
+            endpoint,
+            methods=[method],
+            status_code=code,
+            dependencies=[Depends(require_internal_token)],
+        )
+
+
+register_records("sleep-logs", SleepInput)
+register_records("check-ins", CheckInInput)
+register_records("assessments", AssessmentInput)
