@@ -4,9 +4,9 @@
 # Services:
 # - api: FastAPI backend
 # - main-db: shared PostgreSQL database
-# - nutrition-db: Nutrition Agent-private PostgreSQL database
+# - nutrition-db, training-db: agent-private PostgreSQL databases
 # - redis: Redis cache (optional, for session testing)
-# - recovery-agent, head-coach, summarizer, nutrition-agent: one image per agent
+# - recovery-agent, head-coach, summarizer, nutrition-agent, training-agent: one image per agent
 #
 # Usage:
 #   docker-compose up -d           # Start all services
@@ -43,6 +43,9 @@ services:
       - SUMMARIZER_URL=http://summarizer:8003
       - USE_NUTRITION_AGENT_SERVICE=true
       - NUTRITION_AGENT_URL=http://nutrition-agent:8004
+      - USE_TRAINING_AGENT_SERVICE=true
+      - TRAINING_AGENT_URL=http://training-agent:8005
+      - TRAINING_AGENT_TIMEOUT_SECONDS=${TRAINING_AGENT_TIMEOUT_SECONDS:-20}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
       - NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS=${NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS:-120}
@@ -68,6 +71,8 @@ services:
       recovery-agent:
         condition: service_started
       nutrition-agent:
+        condition: service_started
+      training-agent:
         condition: service_started
     restart: unless-stopped
     healthcheck:
@@ -216,6 +221,32 @@ services:
     networks:
       - app-network
 
+  # ===========================================
+  # Training Agent Microservice
+  # ===========================================
+  training-agent:
+    build:
+      context: .
+      dockerfile: services/training_agent/Dockerfile
+    ports:
+      - "127.0.0.1:8005:8005"
+    environment:
+      - TRAINING_DATABASE_URL=postgresql://${TRAINING_DB_USER:-training_agent}:${TRAINING_DB_PASSWORD:-training_agent}@training-db:5432/trainingdb
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-5-nano}
+    volumes:
+      - ./services/training_agent/app:/service/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005", "--reload"]
+    user: "0:0"
+    restart: unless-stopped
+    depends_on:
+      training-db:
+        condition: service_healthy
+    networks:
+      - app-network
+
   recovery-db:
     image: postgres:16-alpine
     environment:
@@ -243,6 +274,23 @@ services:
       - nutrition_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nutrition_agent -d nutritiondb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  training-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${TRAINING_DB_PASSWORD:-training_agent}
+      - POSTGRES_DB=trainingdb
+      - POSTGRES_USER=${TRAINING_DB_USER:-training_agent}
+    volumes:
+      - training_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U training_agent -d trainingdb"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -281,6 +329,8 @@ volumes:
   recovery_postgres_data:
     driver: local
   nutrition_postgres_data:
+    driver: local
+  training_postgres_data:
     driver: local
   redis_data:
     driver: local
