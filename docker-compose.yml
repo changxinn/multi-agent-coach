@@ -65,6 +65,8 @@ services:
         condition: service_started
       summarizer:
         condition: service_started
+      recovery-agent:
+        condition: service_started
       nutrition-agent:
         condition: service_started
     restart: unless-stopped
@@ -122,13 +124,11 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     environment:
-      - DATABASE_URL=postgresql://${MAIN_DB_USER:-main_app}:${MAIN_DB_PASSWORD:-main_app}@main-db:5432/systemdb
-      - DATABASE_SCHEMA=systemdb
+      - RECOVERY_DATABASE_URL=postgresql://${RECOVERY_DB_USER:-recovery_agent}:${RECOVERY_DB_PASSWORD:-recovery_agent}@recovery-db:5432/recoverydb
+      - RECOVERY_DATABASE_SCHEMA=recovery
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
     depends_on:
-      main-db:
-        condition: service_healthy
-      api:
+      recovery-db:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -216,6 +216,23 @@ services:
     networks:
       - app-network
 
+  recovery-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${RECOVERY_DB_PASSWORD:-recovery_agent}
+      - POSTGRES_DB=recoverydb
+      - POSTGRES_USER=${RECOVERY_DB_USER:-recovery_agent}
+    volumes:
+      - recovery_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d recoverydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
   nutrition-db:
     image: postgres:16-alpine
     environment:
@@ -260,6 +277,8 @@ services:
 
 volumes:
   main_postgres_data:
+    driver: local
+  recovery_postgres_data:
     driver: local
   nutrition_postgres_data:
     driver: local
