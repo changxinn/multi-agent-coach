@@ -164,6 +164,37 @@ def specialist_node_api(state: "State") -> dict[str, Any]:
 
     logger.info("Calling specialist agent: %s", next_agent)
 
+    if next_agent == "training_planner" and settings.USE_TRAINING_AGENT_SERVICE:
+        try:
+            from app.services.training_agent_client import training_agent_client
+
+            profile = state.get("user_profile", {})
+            response = training_agent_client.respond(
+                user_id=int(profile["user_id"]),
+                messages=state.get("messages", []),
+                user_profile=profile,
+            )
+            message_text = response["message"]
+            messages = _guard_specialist_messages(
+                state,
+                [
+                    {
+                        "role": "assistant",
+                        "name": "Alex (Training Planner)",
+                        "content": f"Alex (Training Planner): {message_text}",
+                        "metadata": {"tool_trace": response.get("tool_trace", [])},
+                    }
+                ],
+            )
+            return {
+                "messages": messages,
+                "volley_msg_left": max(0, volley_left - 1),
+            }
+        except Exception:
+            logger.exception(
+                "Training Agent service failed; using local training fallback"
+            )
+
     if next_agent == "nutrition_advisor" and settings.USE_NUTRITION_AGENT_SERVICE:
         try:
             from app.services.nutrition_agent_client import nutrition_agent_client

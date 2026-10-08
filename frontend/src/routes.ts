@@ -1,5 +1,5 @@
 import { PageIds, Routes, Sections, type PageId, type RoutePath, type Section } from '@/lib/constants'
-import { Bot, CircleUser, ClipboardList, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
+import { Bot, CircleUser, ClipboardList, Dumbbell, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
 
 export const DEFAULT_ICON_SIZE = 20
 
@@ -39,6 +39,13 @@ export const routePages: RoutePage[] = [
     path: Routes.Nutrition,
     section: Sections.Coaching,
     icon: Salad,
+  },
+  {
+    id: PageIds.Training,
+    label: 'Training',
+    path: Routes.Training,
+    section: Sections.Coaching,
+    icon: Dumbbell,
   },
   { 
     id: PageIds.CoachData, 

@@ -1,0 +1,12 @@
+.training-page { display: grid; gap: 24px; }
+.training-hero { max-width: 780px; }
+.training-hero .ant-typography { margin-bottom: 8px; }
+.training-live-content { margin-top: 20px; }
+.training-workout-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.training-workout-text { white-space: pre-wrap; margin-bottom: 0 !important; }
+.training-generated-at { display: block; }
+@media (max-width: 575px) {
+  .training-workout-heading { flex-direction: column; }
+  .training-page .ant-card-head { min-height: auto; }
+  .training-page .ant-card-extra { padding-top: 0; padding-bottom: 12px; }
+}

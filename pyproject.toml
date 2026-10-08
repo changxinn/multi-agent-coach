@@ -54,7 +54,7 @@ ignore = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-testpaths = ["tests"]
+testpaths = ["tests", "services/training_agent/tests"]
 markers = [
     "integration: tests requiring a live PostgreSQL integration database",
 ]

@@ -11,6 +11,7 @@ from langchain_openai import ChatOpenAI
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.schemas.dashboard import RecoveryDashboardSnapshot, TrainingWorkoutResponse
+from app.config import get_settings
 from app.db.repositories.daily_training_workout_repo import (
     DailyTrainingWorkoutRepository,
     PersistedDailyTrainingWorkout,
@@ -33,6 +34,13 @@ class DailyTrainingWorkoutService:
         self, user_id: int, *, refresh: bool = False
     ) -> TrainingWorkoutResponse:
         workout_date = datetime.now(UTC).date()
+        if get_settings().USE_TRAINING_AGENT_SERVICE:
+            return await self._get_from_training_agent(user_id, workout_date, refresh)
+        return await self._get_local(user_id, workout_date, refresh)
+
+    async def _get_local(
+        self, user_id: int, workout_date: date, refresh: bool
+    ) -> TrainingWorkoutResponse:
         if not refresh:
             existing = await self.repo.get(user_id, workout_date)
             if existing:
@@ -60,6 +68,28 @@ class DailyTrainingWorkoutService:
             },
         )
         return self._response(saved, reused=False)
+
+    async def _get_from_training_agent(
+        self, user_id: int, workout_date: date, refresh: bool
+    ) -> TrainingWorkoutResponse:
+        """Use the service-owned recommendation store; local persistence remains fallback-only."""
+        from app.services.training_agent_client import training_agent_client
+
+        recovery = await self._recovery_snapshot(user_id, workout_date)
+        try:
+            result = await training_agent_client.daily_workout(
+                user_id=user_id,
+                workout_date=workout_date,
+                refresh=refresh,
+                recovery_status=recovery.status,
+            )
+            return TrainingWorkoutResponse(**result)
+        except Exception:
+            logger.exception(
+                "Training Agent unavailable; using local dashboard fallback"
+            )
+            # Deliberately retain the existing controlled fallback during cutover.
+            return await self._get_local(user_id, workout_date, refresh)
 
     async def _recovery_snapshot(
         self, user_id: int, workout_date: date

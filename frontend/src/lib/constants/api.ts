@@ -32,6 +32,18 @@ export const ApiEndpoints = {
     DailyCommandCenter: '/dashboard/daily-command-center',
     DailyTrainingWorkout: '/dashboard/training/today',
   },
+  Training: {
+    PreferencesGet: '/training/preferences/get',
+    PreferencesUpdate: '/training/preferences/update',
+    ExercisesSearch: '/training/exercises/search',
+    ExercisesLookup: '/training/exercises/lookup',
+    ProgramsGenerate: '/training/programs/generate',
+    ProgramsList: '/training/programs/list',
+    ProgramsAdapt: '/training/programs/adapt',
+    WorkoutsLog: '/training/workouts/log',
+    WorkoutsList: '/training/workouts/list',
+    Progress: '/training/progress',
+  },
   Session: {
     Create: '/session',
     Get: '/session',
