@@ -22,7 +22,7 @@ type MealPlanGenerateInput = { start_date: string; end_date: string; meal_types:
 
 const date = () => dayjs().format('YYYY-MM-DD')
 const nutritionKey = ['nutrition'] as const
-const idempotencyKey = (): string => {
+export const idempotencyKey = (): string => {
   if (!globalThis.crypto?.randomUUID) throw new Error('Secure random UUID generation is unavailable in this browser.')
   return globalThis.crypto.randomUUID()
 }

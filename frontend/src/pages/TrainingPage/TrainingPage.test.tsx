@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { TrainingPage } from './TrainingPage'
+import { idempotencyKey, TrainingPage } from './TrainingPage'
 import { useDailyTrainingWorkout } from '@/pages/DashboardPage/useDailyTrainingWorkout'
 import { api } from '@/lib/api'
 
@@ -23,6 +23,15 @@ describe('TrainingPage', () => {
       if (endpoint === '/training/progress') return { workout_count: 0, average_rpe: null, total_duration_minutes: 0, last_workout_at: null, plateau_detected: false }
       return { items: [] }
     })
+  })
+
+  it('uses secure UUIDs for workout idempotency keys and rejects unavailable crypto', () => {
+    const originalCrypto = globalThis.crypto
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => 'secure-id' } })
+    expect(idempotencyKey()).toBe('secure-id')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined })
+    expect(() => idempotencyKey()).toThrow('Secure random UUID generation is unavailable')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: originalCrypto })
   })
 
   it('renders the live recommendation in Manage your training and omits removed informational sections', () => {

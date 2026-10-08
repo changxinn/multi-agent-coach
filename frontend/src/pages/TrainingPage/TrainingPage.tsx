@@ -10,7 +10,7 @@ import './TrainingPage.css'
 const { Paragraph, Text, Title } = Typography
 const trainingKey = ['training']
 
-function idempotencyKey(): string {
+export function idempotencyKey(): string {
   if (!globalThis.crypto?.randomUUID) {
     throw new Error('Secure random UUID generation is unavailable in this browser.')
   }

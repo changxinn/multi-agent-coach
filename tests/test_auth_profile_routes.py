@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.auth import get_current_user, get_training_agent, router
 from app.db.database import get_db
+from app.services.training_agent_client import TrainingAgentUnavailableError
 
 
 @pytest.fixture
@@ -111,3 +112,30 @@ def test_update_profile_forwards_only_the_training_goal_that_changed(
     training_agent.update_profile.assert_awaited_once_with(
         9, {"fitness_goal": "build strength"}
     )
+
+
+@pytest.mark.parametrize(
+    ("method", "payload", "agent_method"),
+    [
+        ("get", None, "profile"),
+        ("put", {"age": 31}, "profile"),
+        ("put", {"fitness_goal": "strength"}, "update_profile"),
+    ],
+)
+def test_profile_routes_map_training_agent_unavailability_to_503(
+    auth_profile_client, method, payload, agent_method
+):
+    client, service, training_agent = auth_profile_client
+    service.get_user_profile.return_value = {}
+    service.update_fitness_profile.return_value = {}
+    getattr(training_agent, agent_method).side_effect = TrainingAgentUnavailableError(
+        "down"
+    )
+
+    response = (
+        getattr(client, method)("/api/auth/profile", json=payload)
+        if payload
+        else client.get("/api/auth/profile")
+    )
+
+    assert response.status_code == 503

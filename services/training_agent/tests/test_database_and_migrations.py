@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from services.training_agent.app import database, migrations
+from services.training_agent.app import config, database, migrations
 
 
 def test_session_factory_requires_database_url(monkeypatch):
@@ -98,3 +98,25 @@ async def test_run_migrations_executes_non_empty_statements(monkeypatch, tmp_pat
         "SELECT 1",
         "SELECT 2",
     ]
+
+
+def test_repository_root_falls_back_to_current_directory(monkeypatch, tmp_path):
+    class CandidatePath:
+        def resolve(self):
+            return self
+
+        @property
+        def parents(self):
+            return [tmp_path]
+
+    class FakePath:
+        def __new__(cls, *_):
+            return CandidatePath()
+
+        @staticmethod
+        def cwd():
+            return tmp_path
+
+    monkeypatch.setattr(config, "Path", FakePath)
+
+    assert config._repository_root() == tmp_path

@@ -7,6 +7,8 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.auth import get_current_user
 from app.api.routes.training import get_training_agent, router
+from app.db.database import get_db
+from app.services.training_agent_client import TrainingAgentUnavailableError
 
 
 @pytest.fixture
@@ -16,6 +18,7 @@ def training_client():
     agent = AsyncMock()
     app.dependency_overrides[get_current_user] = lambda: {"id": 9, "role": "user"}
     app.dependency_overrides[get_training_agent] = lambda: agent
+    app.dependency_overrides[get_db] = lambda: AsyncMock()
     with TestClient(app) as client:
         yield client, agent
 
@@ -69,3 +72,82 @@ def test_exercise_search_uses_authenticated_identity(training_client):
 
     assert response.status_code == 200
     agent.exercises_search.assert_awaited_once_with(9, "squat")
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "method"),
+    [
+        ("preferences/update", {"equipment": ["barbell"]}, "update_preferences"),
+        ("exercises/lookup", {"query": "squat"}, "exercise_lookup"),
+        ("programs/list", {}, "list_programs"),
+        ("workouts/list", {}, "list_workouts"),
+        ("progress", {}, "progress"),
+    ],
+)
+def test_training_routes_forward_authenticated_data(
+    training_client, path, payload, method
+):
+    client, agent = training_client
+    getattr(agent, method).return_value = {"items": []}
+
+    response = client.post(f"/api/training/{path}", json=payload)
+
+    assert response.status_code == 200
+    assert getattr(agent, method).await_count == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "payload", "method"),
+    [
+        ("preferences/get", {}, "preferences"),
+        ("preferences/update", {"equipment": []}, "update_preferences"),
+        ("exercises/search", {"query": "squat"}, "exercises_search"),
+        ("exercises/lookup", {"query": "squat"}, "exercise_lookup"),
+        ("programs/list", {}, "list_programs"),
+        (
+            "workouts/log",
+            {"occurred_at": "2026-01-01T00:00:00Z", "description": "lift"},
+            "log_workout",
+        ),
+        ("workouts/list", {}, "list_workouts"),
+        ("progress", {}, "progress"),
+    ],
+)
+def test_training_routes_map_agent_unavailability_to_503(
+    training_client, path, payload, method
+):
+    client, agent = training_client
+    getattr(agent, method).side_effect = TrainingAgentUnavailableError("down")
+
+    assert client.post(f"/api/training/{path}", json=payload).status_code == 503
+
+
+def test_program_routes_forward_recovery_status_and_map_errors(
+    training_client, monkeypatch
+):
+    client, agent = training_client
+    monkeypatch.setattr(
+        "app.api.routes.training.recovery_status", AsyncMock(return_value="amber")
+    )
+    agent.generate_program.return_value = {"id": 1}
+    agent.adapt_program.return_value = {"id": 2}
+
+    assert client.post("/api/training/programs/generate", json={}).status_code == 200
+    assert (
+        client.post(
+            "/api/training/programs/adapt", json={"reason": "fatigue"}
+        ).status_code
+        == 200
+    )
+    agent.generate_program.assert_awaited_once_with(9, "amber")
+    agent.adapt_program.assert_awaited_once_with(9, "fatigue", "amber")
+
+    agent.generate_program.side_effect = TrainingAgentUnavailableError("down")
+    agent.adapt_program.side_effect = TrainingAgentUnavailableError("down")
+    assert client.post("/api/training/programs/generate", json={}).status_code == 503
+    assert (
+        client.post(
+            "/api/training/programs/adapt", json={"reason": "fatigue"}
+        ).status_code
+        == 503
+    )

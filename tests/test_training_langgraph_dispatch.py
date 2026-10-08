@@ -31,3 +31,20 @@ def test_training_specialist_uses_service_and_preserves_alex_identity(monkeypatc
     )
     assert result["messages"][0]["name"] == "Alex (Training Planner)"
     assert result["messages"][0]["metadata"]["tool_trace"] == ["exercise_lookup"]
+
+
+def test_training_specialist_falls_back_locally_when_service_fails(monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "USE_TRAINING_AGENT_SERVICE", True)
+    monkeypatch.setattr(
+        "app.services.training_agent_client.training_agent_client.respond",
+        Mock(side_effect=RuntimeError("down")),
+    )
+    local = Mock(return_value={"messages": [{"role": "assistant", "content": "Local"}]})
+    monkeypatch.setattr("agents.specialist.specialist", local)
+    state = {"next_agent": "training_planner", "volley_msg_left": 1, "messages": []}
+
+    result = specialist_node_api(state)
+
+    local.assert_called_once_with("training_planner", state)
+    assert result["volley_msg_left"] == 0

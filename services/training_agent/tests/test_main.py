@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from services.training_agent.app import main
@@ -157,5 +158,51 @@ def test_training_api_routes_require_token_and_delegate(monkeypatch):
                 json={"user_id": 1, "messages": [{"role": "user", "content": "help"}]},
             ).json()["tool_trace"]
             == []
+        )
+    main.app.dependency_overrides.clear()
+
+
+@pytest.mark.asyncio
+async def test_training_agent_lifecycle_and_validation_errors(monkeypatch):
+    monkeypatch.setattr(main.settings, "RUN_MIGRATIONS", True)
+    monkeypatch.setattr(main, "init_db", AsyncMock())
+    monkeypatch.setattr(main, "close_db", AsyncMock())
+    await main.startup()
+    await main.shutdown()
+    main.init_db.assert_awaited_once()
+    main.close_db.assert_awaited_once()
+
+    monkeypatch.setattr(main.settings, "RUN_MIGRATIONS", False)
+    main.init_db.reset_mock()
+    await main.startup()
+    main.init_db.assert_not_awaited()
+
+
+def test_private_api_maps_service_validation_errors(monkeypatch):
+    monkeypatch.setattr(main.settings, "RUN_MIGRATIONS", False)
+    monkeypatch.setattr(main.settings, "INTERNAL_SERVICE_TOKEN", "token")
+    service = AsyncMock()
+    service.generate_program.side_effect = ValueError("blocked")
+    service.log_workout.side_effect = ValueError("missing key")
+    main.app.dependency_overrides[main.get_service] = lambda: service
+    headers = {"X-Internal-Service-Token": "token"}
+    with TestClient(main.app) as client:
+        assert (
+            client.post(
+                "/v1/training/programs/generate", headers=headers, json={"user_id": 1}
+            ).status_code
+            == 422
+        )
+        assert (
+            client.post(
+                "/v1/training/workouts/log",
+                headers=headers,
+                json={
+                    "user_id": 1,
+                    "occurred_at": "2026-01-01T00:00:00Z",
+                    "description": "lift",
+                },
+            ).status_code
+            == 422
         )
     main.app.dependency_overrides.clear()
