@@ -47,9 +47,7 @@ jobs:
 
       - name: Scan frontend and API documentation
         run: |
-          mkdir -p zap-reports
-          sudo chown 1000:1000 zap-reports
-          chmod 700 zap-reports
+          sudo install -d -m 700 -o 1000 -g 1000 zap-reports
           for target in frontend api; do
             if [ "$target" = frontend ]; then
               url=http://frontend:5174/
