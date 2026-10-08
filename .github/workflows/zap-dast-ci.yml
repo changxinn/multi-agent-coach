@@ -60,6 +60,14 @@ jobs:
               ghcr.io/zaproxy/zaproxy:stable \
               zap-baseline.py -t "$url" -m 1 -T 5 -I \
                 -r "$target.html" -J "$target.json"
+          done
+
+      - name: Verify ZAP reports
+        if: always()
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" zap-reports
+          sudo chmod -R u+rwX,go-rwx zap-reports
+          for target in frontend api; do
             test -s "zap-reports/$target.html"
             test -s "zap-reports/$target.json"
           done

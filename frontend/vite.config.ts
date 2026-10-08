@@ -14,6 +14,16 @@ export default defineConfig(() => {
     envDir,
     server: {
       allowedHosts: ['frontend'],
+      headers: {
+        'Cache-Control': 'no-store',
+        'Content-Security-Policy': "default-src 'self'; base-uri 'self'; connect-src 'self' http://localhost:8000 ws://localhost:5174 ws://frontend:5174; font-src 'self'; frame-ancestors 'none'; img-src 'self' data:; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'",
+        'Cross-Origin-Embedder-Policy': 'require-corp',
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Resource-Policy': 'same-origin',
+        'Permissions-Policy': 'accelerometer=(), camera=(), geolocation=(), gyroscope=(), microphone=(), payment=(), usb=()',
+        'X-Content-Type-Options': 'nosniff',
+        'X-Frame-Options': 'DENY',
+      },
     },
     build: {
       chunkSizeWarningLimit: 2000, // in KiB (default is 500)
