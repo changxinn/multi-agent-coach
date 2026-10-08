@@ -38,7 +38,8 @@ def test_get_profile_returns_only_authenticated_users_profile(auth_profile_clien
         "age": 30,
     }
     training_agent.profile.return_value = {
-        "fitness_goal": "build strength", "fitness_level": "intermediate"
+        "fitness_goal": "build strength",
+        "fitness_level": "intermediate",
     }
 
     response = client.get("/api/auth/profile")
@@ -61,7 +62,8 @@ def test_update_profile_scopes_update_to_authenticated_user(auth_profile_client)
         "age": 31,
     }
     training_agent.profile.return_value = {
-        "fitness_goal": "general fitness", "fitness_level": "beginner"
+        "fitness_goal": "general fitness",
+        "fitness_level": "beginner",
     }
 
     response = client.put(
@@ -86,17 +88,26 @@ def test_update_profile_rejects_invalid_measurements(auth_profile_client):
     service.update_fitness_profile.assert_not_awaited()
 
 
-def test_update_profile_forwards_only_the_training_goal_that_changed(auth_profile_client):
+def test_update_profile_forwards_only_the_training_goal_that_changed(
+    auth_profile_client,
+):
     client, service, training_agent = auth_profile_client
     service.update_fitness_profile.return_value = {
-        "user_id": 9, "fitness_goal": "legacy", "fitness_level": "beginner",
-        "weight_kg": 70.0, "height_cm": 175.0, "age": 30,
+        "user_id": 9,
+        "fitness_goal": "legacy",
+        "fitness_level": "beginner",
+        "weight_kg": 70.0,
+        "height_cm": 175.0,
+        "age": 30,
     }
     training_agent.update_profile.return_value = {
-        "fitness_goal": "build strength", "fitness_level": "intermediate"
+        "fitness_goal": "build strength",
+        "fitness_level": "intermediate",
     }
 
     response = client.put("/api/auth/profile", json={"fitness_goal": "build strength"})
 
     assert response.status_code == 200
-    training_agent.update_profile.assert_awaited_once_with(9, {"fitness_goal": "build strength"})
+    training_agent.update_profile.assert_awaited_once_with(
+        9, {"fitness_goal": "build strength"}
+    )

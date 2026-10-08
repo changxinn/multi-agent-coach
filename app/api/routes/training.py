@@ -38,12 +38,18 @@ def unavailable(error: TrainingAgentUnavailableError) -> HTTPException:
 
 
 async def recovery_status(user_id: int, db: AsyncSession) -> str:
-    recovery = await DailyTrainingWorkoutService(db)._recovery_snapshot(user_id, datetime.now(UTC).date())
+    recovery = await DailyTrainingWorkoutService(db)._recovery_snapshot(
+        user_id, datetime.now(UTC).date()
+    )
     return recovery.status
 
 
 @router.post("/preferences/get")
-async def get_preferences(payload: EmptyTrainingRequest, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def get_preferences(
+    payload: EmptyTrainingRequest,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     del payload
     try:
         return await agent.preferences(user["id"])
@@ -52,7 +58,11 @@ async def get_preferences(payload: EmptyTrainingRequest, user: dict = Depends(ge
 
 
 @router.post("/preferences/update")
-async def update_preferences(payload: TrainingPreferencesInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def update_preferences(
+    payload: TrainingPreferencesInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     try:
         return await agent.update_preferences(user["id"], payload.model_dump())
     except TrainingAgentUnavailableError as error:
@@ -60,7 +70,11 @@ async def update_preferences(payload: TrainingPreferencesInput, user: dict = Dep
 
 
 @router.post("/exercises/search")
-async def search_exercises(payload: ExerciseSearchInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def search_exercises(
+    payload: ExerciseSearchInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     try:
         return await agent.exercises_search(user["id"], payload.query)
     except TrainingAgentUnavailableError as error:
@@ -68,7 +82,11 @@ async def search_exercises(payload: ExerciseSearchInput, user: dict = Depends(ge
 
 
 @router.post("/exercises/lookup")
-async def lookup_exercise(payload: ExerciseSearchInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def lookup_exercise(
+    payload: ExerciseSearchInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     try:
         return await agent.exercise_lookup(user["id"], payload.query)
     except TrainingAgentUnavailableError as error:
@@ -76,16 +94,27 @@ async def lookup_exercise(payload: ExerciseSearchInput, user: dict = Depends(get
 
 
 @router.post("/programs/generate")
-async def generate_program(payload: EmptyTrainingRequest, user: dict = Depends(get_current_user), agent: TrainingAgent = None, db: AsyncSession = Depends(get_db)):
+async def generate_program(
+    payload: EmptyTrainingRequest,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+    db: AsyncSession = Depends(get_db),
+):
     del payload
     try:
-        return await agent.generate_program(user["id"], await recovery_status(user["id"], db))
+        return await agent.generate_program(
+            user["id"], await recovery_status(user["id"], db)
+        )
     except TrainingAgentUnavailableError as error:
         raise unavailable(error) from error
 
 
 @router.post("/programs/list")
-async def list_programs(payload: EmptyTrainingRequest, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def list_programs(
+    payload: EmptyTrainingRequest,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     del payload
     try:
         return await agent.list_programs(user["id"])
@@ -94,23 +123,41 @@ async def list_programs(payload: EmptyTrainingRequest, user: dict = Depends(get_
 
 
 @router.post("/programs/adapt")
-async def adapt_program(payload: ProgramAdaptInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None, db: AsyncSession = Depends(get_db)):
+async def adapt_program(
+    payload: ProgramAdaptInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+    db: AsyncSession = Depends(get_db),
+):
     try:
-        return await agent.adapt_program(user["id"], payload.reason, await recovery_status(user["id"], db))
+        return await agent.adapt_program(
+            user["id"], payload.reason, await recovery_status(user["id"], db)
+        )
     except TrainingAgentUnavailableError as error:
         raise unavailable(error) from error
 
 
 @router.post("/workouts/log")
-async def log_workout(payload: WorkoutLogInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None, idempotency_key: str | None = Header(default=None)):
+async def log_workout(
+    payload: WorkoutLogInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+    idempotency_key: str | None = Header(default=None),
+):
     try:
-        return await agent.log_workout(user["id"], payload.model_dump(), idempotency_key)
+        return await agent.log_workout(
+            user["id"], payload.model_dump(), idempotency_key
+        )
     except TrainingAgentUnavailableError as error:
         raise unavailable(error) from error
 
 
 @router.post("/workouts/list")
-async def list_workouts(payload: WorkoutListInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def list_workouts(
+    payload: WorkoutListInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     try:
         return await agent.list_workouts(user["id"], payload.days, payload.limit)
     except TrainingAgentUnavailableError as error:
@@ -118,7 +165,11 @@ async def list_workouts(payload: WorkoutListInput, user: dict = Depends(get_curr
 
 
 @router.post("/progress")
-async def progress(payload: ProgressInput, user: dict = Depends(get_current_user), agent: TrainingAgent = None):
+async def progress(
+    payload: ProgressInput,
+    user: dict = Depends(get_current_user),
+    agent: TrainingAgent = None,
+):
     try:
         return await agent.progress(user["id"], payload.days)
     except TrainingAgentUnavailableError as error:

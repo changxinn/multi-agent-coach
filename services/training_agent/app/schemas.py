@@ -50,7 +50,9 @@ class WorkoutLogRequest(UserRequest):
     duration_minutes: int | None = Field(default=None, ge=1, le=600)
     session_rpe: float | None = Field(default=None, ge=1, le=10)
     notes: str | None = Field(default=None, max_length=4000)
-    exercise_performance: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    exercise_performance: list[dict[str, Any]] = Field(
+        default_factory=list, max_length=100
+    )
 
 
 class ProgressRequest(UserRequest):

@@ -91,38 +91,62 @@ class TrainingAgentClient:
         )
 
     async def exercises_search(self, user_id: int, query: str) -> dict[str, Any]:
-        return await self._post("exercises/search", {"user_id": user_id, "query": query})
+        return await self._post(
+            "exercises/search", {"user_id": user_id, "query": query}
+        )
 
     async def exercise_lookup(self, user_id: int, query: str) -> dict[str, Any]:
-        return await self._post("exercises/lookup", {"user_id": user_id, "query": query})
+        return await self._post(
+            "exercises/lookup", {"user_id": user_id, "query": query}
+        )
 
-    async def generate_program(self, user_id: int, recovery_status: str) -> dict[str, Any]:
-        return await self._post("programs/generate", {"user_id": user_id, "recovery_status": recovery_status})
+    async def generate_program(
+        self, user_id: int, recovery_status: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "programs/generate",
+            {"user_id": user_id, "recovery_status": recovery_status},
+        )
 
     async def list_programs(self, user_id: int) -> dict[str, Any]:
         return await self._post("programs/list", {"user_id": user_id})
 
-    async def adapt_program(self, user_id: int, reason: str, recovery_status: str) -> dict[str, Any]:
-        return await self._post("programs/adapt", {"user_id": user_id, "reason": reason, "recovery_status": recovery_status})
+    async def adapt_program(
+        self, user_id: int, reason: str, recovery_status: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "programs/adapt",
+            {"user_id": user_id, "reason": reason, "recovery_status": recovery_status},
+        )
 
     async def profile(self, user_id: int) -> dict[str, Any]:
         return await self._post("profile/get", {"user_id": user_id})
 
-    async def update_profile(self, user_id: int, values: dict[str, Any]) -> dict[str, Any]:
+    async def update_profile(
+        self, user_id: int, values: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self._post("profile/update", {"user_id": user_id, **values})
 
     async def preferences(self, user_id: int) -> dict[str, Any]:
         return await self._post("preferences/get", {"user_id": user_id})
 
-    async def update_preferences(self, user_id: int, values: dict[str, Any]) -> dict[str, Any]:
+    async def update_preferences(
+        self, user_id: int, values: dict[str, Any]
+    ) -> dict[str, Any]:
         return await self._post("preferences/update", {"user_id": user_id, **values})
 
-    async def log_workout(self, user_id: int, values: dict[str, Any], idempotency_key: str | None) -> dict[str, Any]:
+    async def log_workout(
+        self, user_id: int, values: dict[str, Any], idempotency_key: str | None
+    ) -> dict[str, Any]:
         return await self._post(
-            "workouts/log", {"user_id": user_id, **values}, idempotency_key=idempotency_key
+            "workouts/log",
+            {"user_id": user_id, **values},
+            idempotency_key=idempotency_key,
         )
 
-    async def list_workouts(self, user_id: int, days: int, limit: int) -> dict[str, Any]:
+    async def list_workouts(
+        self, user_id: int, days: int, limit: int
+    ) -> dict[str, Any]:
         result = await self._post("workouts/list", {"user_id": user_id, "days": days})
         return {"items": result.get("items", [])[:limit]}
 

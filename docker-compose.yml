@@ -231,7 +231,7 @@ services:
     ports:
       - "127.0.0.1:8005:8005"
     environment:
-      - TRAINING_DATABASE_URL=postgresql://${TRAINING_DB_USER:-training_agent}:${TRAINING_DB_PASSWORD:-training_agent}@training-db:5432/trainingdb
+      - TRAINING_DATABASE_URL=postgresql://${TRAINING_DB_USER:-training_agent}:${TRAINING_DB_PASSWORD:?TRAINING_DB_PASSWORD must be set}@training-db:5432/trainingdb
       - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -284,7 +284,7 @@ services:
   training-db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_PASSWORD=${TRAINING_DB_PASSWORD:-training_agent}
+      - POSTGRES_PASSWORD=${TRAINING_DB_PASSWORD:?TRAINING_DB_PASSWORD must be set}
       - POSTGRES_DB=trainingdb
       - POSTGRES_USER=${TRAINING_DB_USER:-training_agent}
     volumes:

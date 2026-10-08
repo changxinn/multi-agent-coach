@@ -91,9 +91,7 @@ async def generate_program(payload: ProgramGenerateRequest, service: Service):
         raise HTTPException(422, str(error)) from error
 
 
-@app.post(
-    "/v1/training/programs/list", dependencies=[Depends(require_internal_token)]
-)
+@app.post("/v1/training/programs/list", dependencies=[Depends(require_internal_token)])
 async def list_programs(payload: ProgramListRequest, service: Service):
     return {"items": await service.list_programs(payload.user_id)}
 
@@ -112,7 +110,11 @@ async def log_workout(
 
 @app.post("/v1/training/workouts/list", dependencies=[Depends(require_internal_token)])
 async def list_workouts(payload: WorkoutListRequest, service: Service):
-    return {"items": await service.list_workouts(payload.user_id, payload.days, payload.limit)}
+    return {
+        "items": await service.list_workouts(
+            payload.user_id, payload.days, payload.limit
+        )
+    }
 
 
 @app.post("/v1/training/progress", dependencies=[Depends(require_internal_token)])
@@ -123,7 +125,9 @@ async def progress(payload: ProgressRequest, service: Service):
 @app.post("/v1/training/programs/adapt", dependencies=[Depends(require_internal_token)])
 async def adapt_program(payload: AdaptRequest, service: Service):
     try:
-        return await service.generate_program(payload.user_id, payload.recovery_status, payload.reason)
+        return await service.generate_program(
+            payload.user_id, payload.recovery_status, payload.reason
+        )
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
@@ -143,12 +147,16 @@ async def update_profile(payload: TrainingProfileRequest, service: Service):
     return await service.save_profile(payload)
 
 
-@app.post("/v1/training/preferences/get", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/training/preferences/get", dependencies=[Depends(require_internal_token)]
+)
 async def get_preferences(payload: UserRequest, service: Service):
     return await service.preferences(payload.user_id)
 
 
-@app.post("/v1/training/preferences/update", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/training/preferences/update", dependencies=[Depends(require_internal_token)]
+)
 async def update_preferences(payload: TrainingPreferencesRequest, service: Service):
     return await service.save_preferences(payload)
 

@@ -11,7 +11,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, chat, coach, dashboard, nutrition, recovery, session, training
+from app.api.routes import (
+    auth,
+    chat,
+    coach,
+    dashboard,
+    nutrition,
+    recovery,
+    session,
+    training,
+)
 from app.config import get_settings
 from app.db.database import AsyncSessionLocal, close_db, init_db
 from app.db.demo_seed import seed_demo_users

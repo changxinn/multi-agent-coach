@@ -10,6 +10,13 @@ import './TrainingPage.css'
 const { Paragraph, Text, Title } = Typography
 const trainingKey = ['training']
 
+function idempotencyKey(): string {
+  if (!globalThis.crypto?.randomUUID) {
+    throw new Error('Secure random UUID generation is unavailable in this browser.')
+  }
+  return globalThis.crypto.randomUUID()
+}
+
 type Preferences = { equipment: string[]; training_days_per_week: number | null; session_duration_minutes: number | null; preferences: Record<string, unknown> }
 type Workout = { id: number; occurred_at: string; description: string; duration_minutes: number | null; session_rpe: number | null; notes: string | null }
 type Program = { id: number; version: number; goal: string; program: { days?: { day: string; focus: string; movements: string[] }[]; target_rpe?: string }; created_at: string }
@@ -36,7 +43,7 @@ function TrainingTools() {
     onError: (error: Error) => messageApi.error(error.message),
   })
   const logWorkout = useMutation({
-    mutationFn: (values: Record<string, unknown>) => api.post(ApiEndpoints.Training.WorkoutsLog, values, { headers: { 'Idempotency-Key': globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}` } }),
+    mutationFn: (values: Record<string, unknown>) => api.post(ApiEndpoints.Training.WorkoutsLog, values, { headers: { 'Idempotency-Key': idempotencyKey() } }),
     onSuccess: async () => {
       logForm.resetFields()
       messageApi.success('Workout saved.')
