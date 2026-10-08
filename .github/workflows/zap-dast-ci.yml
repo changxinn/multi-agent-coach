@@ -19,6 +19,8 @@ jobs:
     env:
       OPENAI_API_KEY: ci-zap-placeholder
       USDA_FDC_API_KEY: ''
+      RECOVERY_DB_PASSWORD: ${{ secrets.RECOVERY_DB_PASSWORD }}
+      TRAINING_DB_PASSWORD: ${{ secrets.TRAINING_DB_PASSWORD }}
       SEED_DEMO_USERS: 'false'
       DEBUG: 'false'
     steps:

@@ -395,7 +395,8 @@ See **[README-to-be.md](README-to-be.md)** for:
 - **[docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)** - Troubleshooting guide
 
 **Deployment:**
-- **[README-to-be.md](README-to-be.md)** - AWS deployment guide
+- Deployment automation is being redesigned. No deployment workflow is currently configured.
+- **[README-to-be.md](README-to-be.md)** - AWS deployment architecture guide
 - **[docs/PHASE-6-AWS.md](docs/PHASE-6-AWS.md)** - Detailed AWS guide
 - **[docs/DEPLOYMENT-CHECKLIST.md](docs/DEPLOYMENT-CHECKLIST.md)** - Production checklist
 

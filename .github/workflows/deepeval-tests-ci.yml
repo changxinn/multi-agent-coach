@@ -21,6 +21,8 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       INTERNAL_SERVICE_TOKEN: ci-deepeval-local-token
+      RECOVERY_DB_PASSWORD: ${{ secrets.RECOVERY_DB_PASSWORD }}
+      TRAINING_DB_PASSWORD: ${{ secrets.TRAINING_DB_PASSWORD }}
       DEEPEVAL_JUDGE_MODEL: ${{ vars.DEEPEVAL_JUDGE_MODEL || 'gpt-4.1-mini' }}
       DEEPEVAL_TELEMETRY_OPT_OUT: 'YES'
 

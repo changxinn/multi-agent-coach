@@ -129,7 +129,7 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     environment:
-      - RECOVERY_DATABASE_URL=postgresql://${RECOVERY_DB_USER:-recovery_agent}:${RECOVERY_DB_PASSWORD:-recovery_agent}@recovery-db:5432/recoverydb
+      - RECOVERY_DATABASE_URL=postgresql://${RECOVERY_DB_USER:-recovery_agent}:${RECOVERY_DB_PASSWORD:?RECOVERY_DB_PASSWORD must be set}@recovery-db:5432/recoverydb
       - RECOVERY_DATABASE_SCHEMA=recovery
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
     depends_on:
@@ -250,7 +250,7 @@ services:
   recovery-db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_PASSWORD=${RECOVERY_DB_PASSWORD:-recovery_agent}
+      - POSTGRES_PASSWORD=${RECOVERY_DB_PASSWORD:?RECOVERY_DB_PASSWORD must be set}
       - POSTGRES_DB=recoverydb
       - POSTGRES_USER=${RECOVERY_DB_USER:-recovery_agent}
     volumes:

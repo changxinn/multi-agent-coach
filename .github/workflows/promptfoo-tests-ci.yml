@@ -20,6 +20,8 @@ jobs:
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       INTERNAL_SERVICE_TOKEN: ci-promptfoo-local-token
+      RECOVERY_DB_PASSWORD: ${{ secrets.RECOVERY_DB_PASSWORD }}
+      TRAINING_DB_PASSWORD: ${{ secrets.TRAINING_DB_PASSWORD }}
       PROMPTFOO_DISABLE_TELEMETRY: '1'
       PROMPTFOO_DISABLE_UPDATE: '1'
       REQUEST_TIMEOUT_MS: '180000'
