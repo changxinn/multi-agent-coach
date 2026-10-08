@@ -40,7 +40,6 @@ async def test_daily_workout_uses_private_authenticated_contract(monkeypatch):
         user_id=7,
         workout_date=date(2026, 10, 7),
         refresh=False,
-        profile={"fitness_goal": "strength"},
         recovery_status="green",
     )
 

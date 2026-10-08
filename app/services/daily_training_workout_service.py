@@ -75,17 +75,12 @@ class DailyTrainingWorkoutService:
         """Use the service-owned recommendation store; local persistence remains fallback-only."""
         from app.services.training_agent_client import training_agent_client
 
-        profile = await UserProfileService(self.db).get_user_profile(user_id)
         recovery = await self._recovery_snapshot(user_id, workout_date)
         try:
             result = await training_agent_client.daily_workout(
                 user_id=user_id,
                 workout_date=workout_date,
                 refresh=refresh,
-                profile={
-                    "fitness_goal": profile["fitness_goal"],
-                    "fitness_level": profile["fitness_level"],
-                },
                 recovery_status=recovery.status,
             )
             return TrainingWorkoutResponse(**result)

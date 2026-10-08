@@ -15,6 +15,10 @@ from .schemas import (
     ProgramGenerateRequest,
     ProgramListRequest,
     ProgressRequest,
+    TrainingPreferencesRequest,
+    TrainingProfileRequest,
+    UserRequest,
+    WorkoutListRequest,
     WorkoutLogRequest,
 )
 from .service import TrainingService
@@ -82,9 +86,7 @@ async def exercise_lookup(payload: ExerciseLookupRequest, service: Service):
 )
 async def generate_program(payload: ProgramGenerateRequest, service: Service):
     try:
-        return await service.generate_program(
-            payload.user_id, payload.profile, payload.recovery_status
-        )
+        return await service.generate_program(payload.user_id, payload.recovery_status)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
@@ -108,6 +110,11 @@ async def log_workout(
         raise HTTPException(422, str(error)) from error
 
 
+@app.post("/v1/training/workouts/list", dependencies=[Depends(require_internal_token)])
+async def list_workouts(payload: WorkoutListRequest, service: Service):
+    return {"items": await service.list_workouts(payload.user_id, payload.days, payload.limit)}
+
+
 @app.post("/v1/training/progress", dependencies=[Depends(require_internal_token)])
 async def progress(payload: ProgressRequest, service: Service):
     return await service.progress(payload.user_id, payload.days)
@@ -116,9 +123,7 @@ async def progress(payload: ProgressRequest, service: Service):
 @app.post("/v1/training/programs/adapt", dependencies=[Depends(require_internal_token)])
 async def adapt_program(payload: AdaptRequest, service: Service):
     try:
-        return await service.generate_program(
-            payload.user_id, payload.profile, payload.recovery_status, payload.reason
-        )
+        return await service.generate_program(payload.user_id, payload.recovery_status, payload.reason)
     except ValueError as error:
         raise HTTPException(422, str(error)) from error
 
@@ -126,6 +131,31 @@ async def adapt_program(payload: AdaptRequest, service: Service):
 @app.post("/v1/training/daily-workout", dependencies=[Depends(require_internal_token)])
 async def daily_workout(payload: DailyWorkoutRequest, service: Service):
     return await service.daily_workout(payload)
+
+
+@app.post("/v1/training/profile/get", dependencies=[Depends(require_internal_token)])
+async def get_profile(payload: UserRequest, service: Service):
+    return await service.profile(payload.user_id)
+
+
+@app.post("/v1/training/profile/update", dependencies=[Depends(require_internal_token)])
+async def update_profile(payload: TrainingProfileRequest, service: Service):
+    return await service.save_profile(payload)
+
+
+@app.post("/v1/training/preferences/get", dependencies=[Depends(require_internal_token)])
+async def get_preferences(payload: UserRequest, service: Service):
+    return await service.preferences(payload.user_id)
+
+
+@app.post("/v1/training/preferences/update", dependencies=[Depends(require_internal_token)])
+async def update_preferences(payload: TrainingPreferencesRequest, service: Service):
+    return await service.save_preferences(payload)
+
+
+@app.post("/v1/training/context", dependencies=[Depends(require_internal_token)])
+async def training_context(payload: UserRequest, service: Service):
+    return await service.context(payload.user_id)
 
 
 @app.post(

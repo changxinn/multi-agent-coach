@@ -1,4 +1,5 @@
--- Main API owns athlete preferences and completed-workout history.
+-- Legacy Main API training state retained for existing installations only.
+-- The Training Agent owns canonical goals, preferences, and workout progress.
 CREATE TABLE IF NOT EXISTS systemdb.training_preferences (
     user_id BIGINT PRIMARY KEY REFERENCES systemdb.users(id) ON DELETE CASCADE,
     equipment JSONB NOT NULL DEFAULT '[]'::jsonb,

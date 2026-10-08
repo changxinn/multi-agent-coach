@@ -14,7 +14,9 @@ class TrainingAgentUnavailableError(RuntimeError):
 
 
 class TrainingAgentClient:
-    async def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _post(
+        self, path: str, payload: dict[str, Any], *, idempotency_key: str | None = None
+    ) -> dict[str, Any]:
         settings = get_settings()
         if not settings.INTERNAL_SERVICE_TOKEN:
             raise TrainingAgentUnavailableError("Training service is not configured")
@@ -27,7 +29,12 @@ class TrainingAgentClient:
                 response = await client.post(
                     f"{settings.TRAINING_AGENT_URL.rstrip('/')}/v1/training/{path}",
                     headers={
-                        "X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN
+                        "X-Internal-Service-Token": settings.INTERNAL_SERVICE_TOKEN,
+                        **(
+                            {"Idempotency-Key": idempotency_key}
+                            if idempotency_key
+                            else {}
+                        ),
                     },
                     json=jsonable_encoder(payload),
                 )
@@ -71,7 +78,6 @@ class TrainingAgentClient:
         user_id: int,
         workout_date: date,
         refresh: bool,
-        profile: dict[str, Any],
         recovery_status: str,
     ) -> dict[str, Any]:
         return await self._post(
@@ -80,7 +86,6 @@ class TrainingAgentClient:
                 "user_id": user_id,
                 "date": workout_date.isoformat(),
                 "refresh": refresh,
-                "profile": profile,
                 "recovery_status": recovery_status,
             },
         )
@@ -91,14 +96,41 @@ class TrainingAgentClient:
     async def exercise_lookup(self, user_id: int, query: str) -> dict[str, Any]:
         return await self._post("exercises/lookup", {"user_id": user_id, "query": query})
 
-    async def generate_program(self, user_id: int, profile: dict[str, Any], recovery_status: str, workout_history_summary: dict[str, Any]) -> dict[str, Any]:
-        return await self._post("programs/generate", {"user_id": user_id, "profile": profile, "recovery_status": recovery_status, "workout_history_summary": workout_history_summary})
+    async def generate_program(self, user_id: int, recovery_status: str) -> dict[str, Any]:
+        return await self._post("programs/generate", {"user_id": user_id, "recovery_status": recovery_status})
 
     async def list_programs(self, user_id: int) -> dict[str, Any]:
         return await self._post("programs/list", {"user_id": user_id})
 
-    async def adapt_program(self, user_id: int, reason: str, profile: dict[str, Any], recovery_status: str, workout_history_summary: dict[str, Any]) -> dict[str, Any]:
-        return await self._post("programs/adapt", {"user_id": user_id, "reason": reason, "profile": profile, "recovery_status": recovery_status, "workout_history_summary": workout_history_summary})
+    async def adapt_program(self, user_id: int, reason: str, recovery_status: str) -> dict[str, Any]:
+        return await self._post("programs/adapt", {"user_id": user_id, "reason": reason, "recovery_status": recovery_status})
+
+    async def profile(self, user_id: int) -> dict[str, Any]:
+        return await self._post("profile/get", {"user_id": user_id})
+
+    async def update_profile(self, user_id: int, values: dict[str, Any]) -> dict[str, Any]:
+        return await self._post("profile/update", {"user_id": user_id, **values})
+
+    async def preferences(self, user_id: int) -> dict[str, Any]:
+        return await self._post("preferences/get", {"user_id": user_id})
+
+    async def update_preferences(self, user_id: int, values: dict[str, Any]) -> dict[str, Any]:
+        return await self._post("preferences/update", {"user_id": user_id, **values})
+
+    async def log_workout(self, user_id: int, values: dict[str, Any], idempotency_key: str | None) -> dict[str, Any]:
+        return await self._post(
+            "workouts/log", {"user_id": user_id, **values}, idempotency_key=idempotency_key
+        )
+
+    async def list_workouts(self, user_id: int, days: int, limit: int) -> dict[str, Any]:
+        result = await self._post("workouts/list", {"user_id": user_id, "days": days})
+        return {"items": result.get("items", [])[:limit]}
+
+    async def progress(self, user_id: int, days: int) -> dict[str, Any]:
+        return await self._post("progress", {"user_id": user_id, "days": days})
+
+    async def context(self, user_id: int) -> dict[str, Any]:
+        return await self._post("context", {"user_id": user_id})
 
 
 training_agent_client = TrainingAgentClient()

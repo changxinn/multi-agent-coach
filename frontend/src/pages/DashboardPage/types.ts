@@ -31,6 +31,7 @@ export interface DailyTrainingWorkout {
   recovery_status: RecoveryStatus
   generated_at: string
   reused: boolean
+  generation_source: 'llm' | 'deterministic_fallback' | 'recovery_safety_gate' | 'persisted'
 }
 
 export interface NutritionSnapshot {

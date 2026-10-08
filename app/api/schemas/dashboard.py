@@ -27,6 +27,9 @@ class TrainingWorkoutResponse(BaseModel):
     ]
     generated_at: datetime
     reused: bool = False
+    generation_source: Literal[
+        "llm", "deterministic_fallback", "recovery_safety_gate", "persisted"
+    ] = "persisted"
 
 
 class NutritionTrendPoint(BaseModel):

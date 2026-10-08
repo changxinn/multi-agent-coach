@@ -17,6 +17,7 @@ const workout = {
   recovery_status: 'green' as const,
   generated_at: '2026-09-30T10:00:00Z',
   reused: false,
+  generation_source: 'llm' as const,
 }
 
 function wrapper({ children }: PropsWithChildren) {

@@ -28,7 +28,7 @@ describe('TrainingPage', () => {
   it('renders the live recommendation in Manage your training and omits removed informational sections', () => {
     useWorkout.mockReturnValue({ workout: { isLoading: false, isError: false, data: {
       status: 'ready', title: 'Today’s personalized workout', workout_text: 'Warm-up: easy mobility.', recovery_note: null,
-      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: true,
+      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: true, generation_source: 'llm',
     } }, refresh } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
 
     renderPage()
@@ -48,7 +48,7 @@ describe('TrainingPage', () => {
   it('refreshes the live recommendation', () => {
     useWorkout.mockReturnValue({ workout: { isLoading: false, isError: false, data: {
       status: 'ready', title: 'Workout', workout_text: 'Move.', recovery_note: null,
-      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: false,
+      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: false, generation_source: 'llm',
     } }, refresh } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
 
     renderPage()
@@ -72,7 +72,7 @@ describe('TrainingPage', () => {
   it('hydrates saved preferences after the query resolves', async () => {
     useWorkout.mockReturnValue({ workout: { isLoading: false, isError: false, data: {
       status: 'ready', title: 'Workout', workout_text: 'Move.', recovery_note: null,
-      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: false,
+      recovery_status: 'green', generated_at: '2026-10-07T10:00:00Z', reused: false, generation_source: 'llm',
     } }, refresh } as unknown as ReturnType<typeof useDailyTrainingWorkout>)
 
     renderPage()
