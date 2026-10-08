@@ -17,7 +17,7 @@ from .app.repository import RECORD_COLUMNS, RecoveryRepository, record_dict
 
 async def copy_records(source, destination, source_schema: str, target_schema: str):
     for schema in (source_schema, target_schema):
-        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", schema):
+        if not re.fullmatch(r"[A-Za-z_]\w*", schema):
             raise ValueError("Invalid recovery schema")
     counts = {}
     async with (

@@ -142,7 +142,9 @@ async def evaluate(payload: RecoveryEvaluateRequest) -> RecoveryEvaluateResponse
 
 
 @app.get(
-    "/v1/recovery/dashboard/{user_id}", dependencies=[Depends(require_internal_token)]
+    "/v1/recovery/dashboard/{user_id}",
+    dependencies=[Depends(require_internal_token)],
+    responses={422: {"description": "Invalid user or date range"}},
 )
 async def dashboard(user_id: int, start_date: date, end_date: date):
     if user_id <= 0 or not 0 <= (end_date - start_date).days <= 30:

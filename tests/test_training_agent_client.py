@@ -124,5 +124,6 @@ def test_respond_maps_http_failures(monkeypatch):
         "app.services.training_agent_client.httpx.post",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(httpx.ConnectError("down")),
     )
+    client = TrainingAgentClient()
     with pytest.raises(TrainingAgentUnavailableError, match="temporarily unavailable"):
-        TrainingAgentClient().respond(1, [], {})
+        client.respond(1, [], {})

@@ -26,7 +26,7 @@ from .service import TrainingService
 app = FastAPI(title=settings.APP_NAME, version="1.0.0")
 
 
-async def require_internal_token(
+def require_internal_token(
     x_internal_service_token: Annotated[str | None, Header()] = None,
 ) -> None:
     if (
@@ -82,7 +82,9 @@ async def exercise_lookup(payload: ExerciseLookupRequest, service: Service):
 
 
 @app.post(
-    "/v1/training/programs/generate", dependencies=[Depends(require_internal_token)]
+    "/v1/training/programs/generate",
+    dependencies=[Depends(require_internal_token)],
+    responses={422: {"description": "Training program cannot be generated"}},
 )
 async def generate_program(payload: ProgramGenerateRequest, service: Service):
     try:
@@ -96,7 +98,11 @@ async def list_programs(payload: ProgramListRequest, service: Service):
     return {"items": await service.list_programs(payload.user_id)}
 
 
-@app.post("/v1/training/workouts/log", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/training/workouts/log",
+    dependencies=[Depends(require_internal_token)],
+    responses={422: {"description": "Workout cannot be logged"}},
+)
 async def log_workout(
     payload: WorkoutLogRequest,
     service: Service,
@@ -122,7 +128,11 @@ async def progress(payload: ProgressRequest, service: Service):
     return await service.progress(payload.user_id, payload.days)
 
 
-@app.post("/v1/training/programs/adapt", dependencies=[Depends(require_internal_token)])
+@app.post(
+    "/v1/training/programs/adapt",
+    dependencies=[Depends(require_internal_token)],
+    responses={422: {"description": "Training program cannot be adapted"}},
+)
 async def adapt_program(payload: AdaptRequest, service: Service):
     try:
         return await service.generate_program(
