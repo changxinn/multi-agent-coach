@@ -48,6 +48,7 @@ jobs:
       - name: Scan frontend and API documentation
         run: |
           mkdir -p zap-reports
+          sudo chown 1000:1000 zap-reports
           chmod 700 zap-reports
           for target in frontend api; do
             if [ "$target" = frontend ]; then
@@ -56,8 +57,6 @@ jobs:
               url=http://api:8000/docs
             fi
             docker run --rm \
-              --user "$(id -u):$(id -g)" \
-              --env HOME=/zap/wrk \
               --network zap-dast_app-network \
               --volume "$PWD/zap-reports:/zap/wrk/:rw" \
               ghcr.io/zaproxy/zaproxy:stable \
