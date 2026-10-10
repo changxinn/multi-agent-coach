@@ -177,7 +177,6 @@ function ProfileTab() {
     </Card>
   </>
 }
-const idempotencyKey = () => globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
 const statusColor: Record<MealPlan['status'], string> = { draft: 'gold', active: 'green', archived: 'default', superseded: 'blue' }
 const safetyColor: Record<NonNullable<PlannedMeal['safety_status']>, string> = { safe: 'green', review_required: 'gold', blocked: 'red' }
 

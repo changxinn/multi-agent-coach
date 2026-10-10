@@ -122,6 +122,35 @@ def test_food_triage_migration_applies_ordered_approved_system_policy():
     assert "INSERT INTO nutrition_food_compatibility_review_history" in migration
 
 
+def test_food_compatibility_queue_backfill_enrolls_only_missing_cache_foods():
+    migration_dir = (
+        Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"
+    )
+    migration = (
+        migration_dir / "009_backfill_food_compatibility_review_queue.sql"
+    ).read_text()
+
+    assert "INSERT INTO nutrition_food_compatibility" in migration
+    assert "FROM nutrition_food_cache f" in migration
+    assert "'review_required'" in migration
+    assert "'compatibility_queue_backfill_v1'" in migration
+    assert "ON CONFLICT (food_cache_id) DO NOTHING" in migration
+
+
+def test_backfilled_food_triage_is_limited_to_newly_enrolled_records():
+    migration_dir = (
+        Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"
+    )
+    migration = (
+        migration_dir / "010_auto_triage_backfilled_food_compatibility.sql"
+    ).read_text()
+
+    assert "c.review_status = 'review_required'" in migration
+    assert "c.classifier_version = 'compatibility_queue_backfill_v1'" in migration
+    assert "review_status = 'approved'" in migration
+    assert "INSERT INTO nutrition_food_compatibility_review_history" in migration
+
+
 def test_split_sql_statements_preserves_semicolons_in_sql_string_literals():
     statements = split_sql_statements(
         "INSERT INTO nutrition_food_cache (description, raw_response) "
