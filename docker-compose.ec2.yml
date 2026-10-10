@@ -1,0 +1,46 @@
+services:
+  api:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    user: "appuser"
+
+  recovery-agent:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8001"]
+    user: "appuser"
+
+  head-coach:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]
+    user: "appuser"
+
+  summarizer:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8003"]
+    user: "appuser"
+
+  nutrition-agent:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004"]
+    user: "appuser"
+
+  training-agent:
+    volumes: !reset []
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+    user: "appuser"
+
+  frontend:
+    image: !reset null
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api}
+    command: ["nginx", "-g", "daemon off;"]
+    volumes: !reset []
+    environment: []
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://127.0.0.1:5174/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

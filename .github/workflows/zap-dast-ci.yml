@@ -1,0 +1,91 @@
+name: OWASP ZAP Baseline
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zap-dast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENAI_API_KEY: ci-zap-placeholder
+      USDA_FDC_API_KEY: ''
+      RECOVERY_DB_PASSWORD: ${{ secrets.RECOVERY_DB_PASSWORD }}
+      TRAINING_DB_PASSWORD: ${{ secrets.TRAINING_DB_PASSWORD }}
+      SEED_DEMO_USERS: 'false'
+      DEBUG: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Start the application
+        run: docker compose -p zap-dast up --build -d --wait --wait-timeout 240 api frontend
+
+      - name: Verify scan targets
+        run: |
+          curl --fail --silent --show-error http://localhost:8000/health
+          curl --fail --silent --show-error --output /dev/null \
+            --resolve api:8000:127.0.0.1 http://api:8000/docs
+          # The frontend installs dependencies before Vite starts listening.
+          for attempt in {1..60}; do
+            if curl --fail --silent --output /dev/null \
+              --resolve frontend:5174:127.0.0.1 http://frontend:5174/; then
+              exit 0
+            fi
+            sleep 5
+          done
+          curl --fail --silent --show-error --output /dev/null \
+            --resolve frontend:5174:127.0.0.1 http://frontend:5174/
+
+      - name: Scan frontend and API documentation
+        run: |
+          sudo install -d -m 700 -o 1000 -g 1000 zap-reports
+          for target in frontend api; do
+            if [ "$target" = frontend ]; then
+              url=http://frontend:5174/
+            else
+              url=http://api:8000/docs
+            fi
+            docker run --rm \
+              --network zap-dast_app-network \
+              --volume "$PWD/zap-reports:/zap/wrk/:rw" \
+              ghcr.io/zaproxy/zaproxy:stable \
+              zap-baseline.py -t "$url" -m 1 -T 5 -I \
+                -r "$target.html" -J "$target.json"
+          done
+
+      - name: Verify ZAP reports
+        if: always()
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" zap-reports
+          sudo chmod -R u+rwX,go-rwx zap-reports
+          for target in frontend api; do
+            test -s "zap-reports/$target.html"
+            test -s "zap-reports/$target.json"
+          done
+
+      - name: Upload ZAP reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zap-baseline-reports
+          path: zap-reports/
+          if-no-files-found: ignore
+
+      - name: Show application logs on failure
+        if: failure()
+        run: >-
+          docker compose -p zap-dast logs --no-color --tail 100
+          api frontend nutrition-agent head-coach summarizer main-db nutrition-db
+
+      - name: Stop the application
+        if: always()
+        run: docker compose -p zap-dast down

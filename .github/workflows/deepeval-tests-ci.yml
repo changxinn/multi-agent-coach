@@ -1,9 +1,8 @@
 name: DeepEval Tests
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -15,17 +14,15 @@ concurrency:
 
 jobs:
   deepeval:
-    # Fork PRs and Dependabot cannot access the required paid API secret.
-    if: >-
-      github.actor != 'dependabot[bot]' &&
-      (github.event_name == 'workflow_dispatch' ||
-       (github.event.pull_request.merged == true &&
-        github.event.pull_request.head.repo.full_name == github.repository))
+    # Dependabot cannot access the required paid API secret.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       INTERNAL_SERVICE_TOKEN: ci-deepeval-local-token
+      RECOVERY_DB_PASSWORD: ${{ secrets.RECOVERY_DB_PASSWORD }}
+      TRAINING_DB_PASSWORD: ${{ secrets.TRAINING_DB_PASSWORD }}
       DEEPEVAL_JUDGE_MODEL: ${{ vars.DEEPEVAL_JUDGE_MODEL || 'gpt-4.1-mini' }}
       DEEPEVAL_TELEMETRY_OPT_OUT: 'YES'
 

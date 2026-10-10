@@ -14,6 +14,7 @@ export const PageIds = {
   Timeline: 'timeline',
   Chat: 'chat',
   Nutrition: 'nutrition',
+  Training: 'training',
   MyProfile: 'my-profile',
   CompatibilityReviews: 'compatibility-reviews',
 } as const

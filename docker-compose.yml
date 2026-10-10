@@ -4,9 +4,9 @@
 # Services:
 # - api: FastAPI backend
 # - main-db: shared PostgreSQL database
-# - nutrition-db: Nutrition Agent-private PostgreSQL database
+# - nutrition-db, training-db: agent-private PostgreSQL databases
 # - redis: Redis cache (optional, for session testing)
-# - recovery-agent, head-coach, summarizer, nutrition-agent: one image per agent
+# - recovery-agent, head-coach, summarizer, nutrition-agent, training-agent: one image per agent
 #
 # Usage:
 #   docker-compose up -d           # Start all services
@@ -25,14 +25,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+asyncpg://main_app:main_app@main-db:5432/systemdb
+      - DATABASE_URL=postgresql+asyncpg://${MAIN_DB_USER:-main_app}:${MAIN_DB_PASSWORD:-main_app}@main-db:5432/systemdb
       - DATABASE_SCHEMA=systemdb
-      - JWT_SECRET_KEY=dev-secret-key-change-in-production
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-dev-secret-key-change-in-production}
       - JWT_ALGORITHM=HS256
       - JWT_EXPIRY_HOURS=24
       - SESSION_EXPIRY_HOURS=24
-      - FRONTEND_URL=http://localhost:5174
-      - ALLOWED_ORIGINS=http://localhost:5174,http://localhost:3000
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:5174}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5174,http://localhost:3000}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - LLM_MODEL=gpt-5-nano
       - USE_RECOVERY_AGENT_SERVICE=true
@@ -43,11 +43,14 @@ services:
       - SUMMARIZER_URL=http://summarizer:8003
       - USE_NUTRITION_AGENT_SERVICE=true
       - NUTRITION_AGENT_URL=http://nutrition-agent:8004
+      - USE_TRAINING_AGENT_SERVICE=true
+      - TRAINING_AGENT_URL=http://training-agent:8005
+      - TRAINING_AGENT_TIMEOUT_SECONDS=${TRAINING_AGENT_TIMEOUT_SECONDS:-20}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - USDA_FDC_API_KEY=${USDA_FDC_API_KEY}
       - NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS=${NUTRITION_MEAL_PLAN_GENERATION_TIMEOUT_SECONDS:-120}
-      - SEED_DEMO_USERS=true
-      - DEBUG=true
+      - SEED_DEMO_USERS=${SEED_DEMO_USERS:-true}
+      - DEBUG=${DEBUG:-true}
     volumes:
       - ./app:/app/app
       - ./agents:/app/agents
@@ -65,7 +68,11 @@ services:
         condition: service_started
       summarizer:
         condition: service_started
+      recovery-agent:
+        condition: service_started
       nutrition-agent:
+        condition: service_started
+      training-agent:
         condition: service_started
     restart: unless-stopped
     healthcheck:
@@ -83,9 +90,9 @@ services:
   main-db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_PASSWORD=main_app
+      - POSTGRES_PASSWORD=${MAIN_DB_PASSWORD:-main_app}
       - POSTGRES_DB=systemdb
-      - POSTGRES_USER=main_app
+      - POSTGRES_USER=${MAIN_DB_USER:-main_app}
     # ports:
     #   - "5432:5432"
     volumes:
@@ -122,13 +129,11 @@ services:
     ports:
       - "127.0.0.1:8001:8001"
     environment:
-      - DATABASE_URL=postgresql://main_app:main_app@main-db:5432/systemdb
-      - DATABASE_SCHEMA=systemdb
+      - RECOVERY_DATABASE_URL=postgresql://${RECOVERY_DB_USER:-recovery_agent}:${RECOVERY_DB_PASSWORD:?RECOVERY_DB_PASSWORD must be set}@recovery-db:5432/recoverydb
+      - RECOVERY_DATABASE_SCHEMA=recovery
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
     depends_on:
-      main-db:
-        condition: service_healthy
-      api:
+      recovery-db:
         condition: service_healthy
     restart: unless-stopped
     networks:
@@ -194,8 +199,8 @@ services:
     ports:
       - "127.0.0.1:8004:8004"
     environment:
-      - NUTRITION_DATABASE_URL=postgresql://nutrition_agent:nutrition_agent@nutrition-db:5432/nutritiondb
-      - RUN_MIGRATIONS=true
+      - NUTRITION_DATABASE_URL=postgresql://${NUTRITION_DB_USER:-nutrition_agent}:${NUTRITION_DB_PASSWORD:-nutrition_agent}@nutrition-db:5432/nutritiondb
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
@@ -216,16 +221,76 @@ services:
     networks:
       - app-network
 
+  # ===========================================
+  # Training Agent Microservice
+  # ===========================================
+  training-agent:
+    build:
+      context: .
+      dockerfile: services/training_agent/Dockerfile
+    ports:
+      - "127.0.0.1:8005:8005"
+    environment:
+      - TRAINING_DATABASE_URL=postgresql://${TRAINING_DB_USER:-training_agent}:${TRAINING_DB_PASSWORD:?TRAINING_DB_PASSWORD must be set}@training-db:5432/trainingdb
+      - RUN_MIGRATIONS=${RUN_MIGRATIONS:-true}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - LLM_MODEL=${LLM_MODEL:-gpt-5-nano}
+    volumes:
+      - ./services/training_agent/app:/service/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005", "--reload"]
+    user: "0:0"
+    restart: unless-stopped
+    depends_on:
+      training-db:
+        condition: service_healthy
+    networks:
+      - app-network
+
+  recovery-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${RECOVERY_DB_PASSWORD:?RECOVERY_DB_PASSWORD must be set}
+      - POSTGRES_DB=recoverydb
+      - POSTGRES_USER=${RECOVERY_DB_USER:-recovery_agent}
+    volumes:
+      - recovery_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d recoverydb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
   nutrition-db:
     image: postgres:16-alpine
     environment:
-      - POSTGRES_PASSWORD=nutrition_agent
+      - POSTGRES_PASSWORD=${NUTRITION_DB_PASSWORD:-nutrition_agent}
       - POSTGRES_DB=nutritiondb
-      - POSTGRES_USER=nutrition_agent
+      - POSTGRES_USER=${NUTRITION_DB_USER:-nutrition_agent}
     volumes:
       - nutrition_postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nutrition_agent -d nutritiondb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  training-db:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_PASSWORD=${TRAINING_DB_PASSWORD:?TRAINING_DB_PASSWORD must be set}
+      - POSTGRES_DB=trainingdb
+      - POSTGRES_USER=${TRAINING_DB_USER:-training_agent}
+    volumes:
+      - training_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U training_agent -d trainingdb"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -246,7 +311,7 @@ services:
     ports:
       - "5174:5174"
     environment:
-      - VITE_API_BASE_URL=http://localhost:8000/api
+      - VITE_API_BASE_URL=${VITE_API_BASE_URL:-http://localhost:8000/api}
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
     volumes:
@@ -261,7 +326,11 @@ services:
 volumes:
   main_postgres_data:
     driver: local
+  recovery_postgres_data:
+    driver: local
   nutrition_postgres_data:
+    driver: local
+  training_postgres_data:
     driver: local
   redis_data:
     driver: local

@@ -16,5 +16,16 @@ deepeval-tests/results/
 .deepeval/
 deepeval-tests/.deepeval/
 promptfoo-tests/results/
+zap-reports/
 .promptfoo/
 .npm-cache/
+
+# Coverage reports
+coverage/
+frontend/coverage/
+*.coverage
+.coverage
+htmlcov/
+
+# Build output
+frontend/dist/

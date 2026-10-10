@@ -3,10 +3,8 @@
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.recovery import assessments, checkins, sleep_logs
 from app.api.schemas.dashboard import (
     DailyCommandCenterResponse,
     DashboardAction,
@@ -18,6 +16,7 @@ from app.api.schemas.dashboard import (
     TrainingDashboardSnapshot,
 )
 from app.services.nutrition_service import NutritionService
+from app.services.recovery_agent_client import recovery_agent_client
 
 TRAINING_MESSAGE = "Your workout log is not yet connected to the daily dashboard."
 NUTRITION_UNAVAILABLE_MESSAGE = "Nutrition status is temporarily unavailable."
@@ -183,16 +182,13 @@ class DailyCommandCenterService:
     async def _recovery_data(
         self, user_id: int, dashboard_date: date, start_date: date
     ):
-        start_at = datetime.combine(start_date, datetime.min.time(), tzinfo=UTC)
-        end_at = datetime.combine(
-            dashboard_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC
+        data = await recovery_agent_client.dashboard_data(
+            user_id, start_date, dashboard_date
         )
-        (
-            latest_assessment,
-            latest_sleep,
-            latest_checkin,
-        ) = await self._latest_recovery_records(user_id)
-        rows = await self._recovery_trend_rows(user_id, start_at, end_at)
+        latest_assessment = data["latest_assessment"]
+        latest_sleep = data["latest_sleep"]
+        latest_checkin = data["latest_checkin"]
+        rows = (data["sleep_trend"], data["assessment_trend"])
         sleep_by_day = self._latest_by_day(rows[0])
         assessments_by_day = self._latest_by_day(rows[1])
         trend = [
@@ -210,36 +206,6 @@ class DailyCommandCenterService:
             for current in self._date_range(start_date, dashboard_date)
         ]
         return latest_assessment, latest_sleep, latest_checkin, trend
-
-    async def _latest_recovery_records(self, user_id: int):
-        records = []
-        for table in (assessments, sleep_logs, checkins):
-            result = await self.db.execute(
-                select(table)
-                .where(table.c.user_id == user_id)
-                .order_by(table.c.created_at.desc(), table.c.id.desc())
-                .limit(1)
-            )
-            row = result.mappings().first()
-            records.append(dict(row) if row else None)
-        return tuple(records)
-
-    async def _recovery_trend_rows(
-        self, user_id: int, start_at: datetime, end_at: datetime
-    ):
-        rows = []
-        for table in (sleep_logs, assessments):
-            result = await self.db.execute(
-                select(table)
-                .where(
-                    table.c.user_id == user_id,
-                    table.c.created_at >= start_at,
-                    table.c.created_at < end_at,
-                )
-                .order_by(table.c.created_at.desc(), table.c.id.desc())
-            )
-            rows.append([dict(row) for row in result.mappings()])
-        return tuple(rows)
 
     @staticmethod
     def _latest_by_day(rows: list[dict[str, Any]]) -> dict[date, dict[str, Any]]:

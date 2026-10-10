@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { NutritionPage } from './NutritionPage'
+import { idempotencyKey, NutritionPage } from './NutritionPage'
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }))
 
@@ -40,6 +40,15 @@ describe('NutritionPage', () => {
   beforeEach(() => {
     post.mockClear()
     post.mockImplementation(defaultPost)
+  })
+
+  it('uses secure UUIDs for meal-plan idempotency keys and rejects unavailable crypto', () => {
+    const originalCrypto = globalThis.crypto
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => 'secure-id' } })
+    expect(idempotencyKey()).toBe('secure-id')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined })
+    expect(() => idempotencyKey()).toThrow('Secure random UUID generation is unavailable')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: originalCrypto })
   })
 
   it('renders the nutrition overview and loads today’s summary', async () => {

@@ -3,8 +3,16 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-CONFIG_PATH = Path(__file__).resolve()
-REPOSITORY_ROOT = CONFIG_PATH.parents[3] if len(CONFIG_PATH.parents) > 3 else None
+
+def _find_repository_root(config_file: Path) -> Path:
+    """Find the repository root in source checkouts or use the container workdir."""
+    for parent in (config_file.resolve().parent, *config_file.resolve().parents):
+        if (parent / "docker-compose.yml").is_file():
+            return parent
+    return Path.cwd()
+
+
+REPOSITORY_ROOT = _find_repository_root(Path(__file__))
 
 
 class Settings(BaseSettings):

@@ -3,7 +3,7 @@
 # ===========================================
 # Stage 1: Builder
 # ===========================================
-FROM python:3.12-slim as builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -17,12 +17,12 @@ RUN pip install --no-cache-dir uv
 
 # Copy and install dependencies
 COPY pyproject.toml .
-RUN uv pip install --system -e .
+RUN uv pip install --system --no-cache -e .
 
 # ===========================================
 # Stage 2: Runtime
 # ===========================================
-FROM python:3.12-slim as runtime
+FROM python:3.12-slim AS runtime
 
 WORKDIR /app
 

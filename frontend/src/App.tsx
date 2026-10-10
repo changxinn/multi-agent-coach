@@ -8,6 +8,7 @@ import { CoachDataPage } from '@/pages/CoachDataPage'
 import { RecoveryTablePage } from '@/pages/RecoveryTablePage'
 import { ChatPage } from '@/pages/ChatPage'
 import { NutritionPage } from '@/pages/NutritionPage'
+import { TrainingPage } from '@/pages/TrainingPage'
 import { MyProfilePage } from '@/pages/MyProfilePage'
 import { CompatibilityReviewsPage } from '@/pages/CompatibilityReviewsPage'
 import { ProtectedRoute } from '@/common/ProtectedRoute'
@@ -101,6 +102,16 @@ function App() {
             <ProtectedRoute>
               <MainLayout>
                 <NutritionPage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path={Routes.Training}
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <TrainingPage />
               </MainLayout>
             </ProtectedRoute>
           }

@@ -23,6 +23,10 @@ from app.services.jwt_service import create_access_token, refresh_token, validat
 from app.services.nutrition_compatibility_authorization import (
     is_nutrition_compatibility_admin,
 )
+from app.services.training_agent_client import (
+    TrainingAgentClient,
+    TrainingAgentUnavailableError,
+)
 from app.services.user_profile_service import UserProfileService
 
 logger = logging.getLogger(__name__)
@@ -42,6 +46,10 @@ def authenticated_user_response(user, settings: Settings) -> dict:
             user.email, settings
         ),
     }
+
+
+def get_training_agent() -> TrainingAgentClient:
+    return TrainingAgentClient()
 
 
 @router.post("/auth/login", response_model=TokenResponse)
@@ -242,9 +250,18 @@ async def get_current_user(
 async def get_profile(
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    training_agent: TrainingAgentClient = Depends(get_training_agent),
 ):
-    """Return the authenticated user's account and fitness profile."""
+    """Compose global measurements with Training Agent-owned goal and level."""
     profile = await UserProfileService(db).get_user_profile(current_user["id"])
+    try:
+        training_profile = await training_agent.profile(current_user["id"])
+    except TrainingAgentUnavailableError as error:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+    profile.update(
+        fitness_goal=training_profile["fitness_goal"],
+        fitness_level=training_profile["fitness_level"],
+    )
     return {
         "id": current_user["id"],
         "email": current_user["email"],
@@ -261,10 +278,29 @@ async def update_profile(
     request: FitnessProfileUpdateRequest,
     current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    training_agent: TrainingAgentClient = Depends(get_training_agent),
 ):
-    """Update only the authenticated user's supplied fitness profile fields."""
+    """Update global measurements locally and training goal/level in Training Agent."""
+    values = request.model_dump(exclude_unset=True)
+    training_values = {
+        key: values.pop(key)
+        for key in ("fitness_goal", "fitness_level")
+        if key in values
+    }
     profile = await UserProfileService(db).update_fitness_profile(
-        current_user["id"], **request.model_dump(exclude_unset=True)
+        current_user["id"], **values
+    )
+    try:
+        training_profile = (
+            await training_agent.update_profile(current_user["id"], training_values)
+            if training_values
+            else await training_agent.profile(current_user["id"])
+        )
+    except TrainingAgentUnavailableError as error:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+    profile.update(
+        fitness_goal=training_profile["fitness_goal"],
+        fitness_level=training_profile["fitness_level"],
     )
     return {
         "id": current_user["id"],

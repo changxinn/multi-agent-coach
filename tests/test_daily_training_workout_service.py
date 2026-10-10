@@ -74,6 +74,48 @@ async def test_recovery_snapshot_delegates_to_the_daily_command_center(monkeypat
 
 
 @pytest.mark.asyncio
+async def test_uses_training_agent_and_falls_back_to_local_when_unavailable(
+    monkeypatch,
+):
+    service = DailyTrainingWorkoutService(AsyncMock())
+    from app.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "USE_TRAINING_AGENT_SERVICE", True)
+    service._recovery_snapshot = AsyncMock(
+        return_value=RecoveryDashboardSnapshot(status="green")
+    )
+    from app.services.training_agent_client import training_agent_client
+
+    monkeypatch.setattr(
+        training_agent_client,
+        "daily_workout",
+        AsyncMock(
+            return_value={
+                "status": "ready",
+                "title": "Agent",
+                "workout_text": "Move.",
+                "recovery_note": None,
+                "recovery_status": "green",
+                "generated_at": datetime(2026, 1, 1, tzinfo=UTC),
+                "reused": False,
+            }
+        ),
+    )
+    result = await service.get(7, refresh=True)
+    assert result.title == "Agent"
+
+    monkeypatch.setattr(
+        training_agent_client,
+        "daily_workout",
+        AsyncMock(side_effect=RuntimeError("down")),
+    )
+    fallback = Mock(status="ready")
+    service._get_local = AsyncMock(return_value=fallback)
+    assert await service.get(7) is fallback
+    service._get_local.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_red_recovery_returns_deterministic_recovery_workout_without_llm(
     monkeypatch,
 ):
