@@ -18,11 +18,14 @@ COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=builder /frontend/dist /usr/share/nginx/html
 
 RUN mkdir -p /var/cache/nginx /var/run \
+    && sed -i 's!^pid .*;!pid /tmp/nginx.pid;!' /etc/nginx/nginx.conf \
     && chown -R nginx:nginx /var/cache/nginx /var/run
 
 USER nginx
 
 EXPOSE 5174
+
+CMD ["nginx", "-g", "daemon off;"]
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD wget --spider --quiet http://127.0.0.1:5174/ || exit 1
