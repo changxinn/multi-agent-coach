@@ -1,6 +1,8 @@
 -- Apply ordered system policy only to rows enrolled by the compatibility queue backfill.
 -- Animal-protein rules take precedence over subsequent food-category rules.
-WITH classified AS (
+WITH constants AS (
+    SELECT 'system@nutrition-agent.local'::TEXT AS system_reviewer_email
+), classified AS (
     SELECT c.food_cache_id, c.review_status AS prior_review_status,
            CASE
                WHEN f.description ILIKE '%pork%' THEN 'usda_description_contains_pork_v2'
@@ -62,12 +64,14 @@ WITH classified AS (
             'confidence_basis', 'policy-assigned confidence; description match is case-insensitive')),
         confidence = 0.500, classifier_version = 'system_food_compatibility_policy_v1',
         review_note = 'System compatibility policy: ordered USDA food description rule.',
-        reviewer_user_id = 0, reviewer_email = 'system@nutrition-agent.local',
-        reviewed_by = 'system@nutrition-agent.local', reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-    FROM candidates WHERE c.food_cache_id = candidates.food_cache_id
+        reviewer_user_id = 0, reviewer_email = constants.system_reviewer_email,
+        reviewed_by = constants.system_reviewer_email, reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    FROM candidates
+    CROSS JOIN constants
+    WHERE c.food_cache_id = candidates.food_cache_id
     RETURNING c.food_cache_id, candidates.prior_review_status, c.review_status, c.allergen_status,
               c.known_allergens, c.strict_suitability, c.evidence, c.confidence,
-              c.classifier_version, c.policy_version, c.review_note
+               c.classifier_version, c.policy_version, c.review_note, c.reviewer_email
 )
 INSERT INTO nutrition_food_compatibility_review_history (
     food_cache_id, prior_review_status, result_review_status, metadata_snapshot,
@@ -77,5 +81,5 @@ SELECT food_cache_id, prior_review_status, review_status,
        jsonb_build_object('allergen_status', allergen_status, 'known_allergens', known_allergens,
            'strict_suitability', strict_suitability, 'evidence', evidence, 'confidence', confidence,
            'classifier_version', classifier_version, 'policy_version', policy_version),
-       0, 'system@nutrition-agent.local', review_note
+       0, reviewer_email, review_note
 FROM updated;

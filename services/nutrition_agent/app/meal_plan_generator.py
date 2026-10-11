@@ -20,6 +20,8 @@ MEAL_PLAN_MAX_PAGE_SIZE = 50
 MEAL_PLAN_MAX_GRAMS = Decimal(2000)
 MEAL_PLAN_MAX_SUBMISSION_CORRECTIONS = 2
 MEAL_PLAN_MAX_CORRECTIONS_PER_CATEGORY = 1
+DUPLICATE_MEAL_COMPOSITIONS_ERROR = "Meal-plan LLM submitted duplicate meal compositions"
+INSUFFICIENT_PRIMARY_VARIETY_ERROR = "Meal-plan LLM submitted insufficiently varied primary foods"
 
 SYSTEM_PROMPT = """
 You are Sam, a practical, non-judgmental sports nutrition advisor.
@@ -452,9 +454,7 @@ class MealPlanLLMGenerator:
             primary_food_ids.append(meal_food_ids[0])
             composition = tuple(sorted(set(meal_food_ids)))
             if composition in compositions and len(selection_tokens) >= len(required):
-                raise MealPlanGenerationError(
-                    "Meal-plan LLM submitted duplicate meal compositions"
-                )
+                raise MealPlanGenerationError(DUPLICATE_MEAL_COMPOSITIONS_ERROR)
             compositions.add(composition)
         if submitted != required:
             raise MealPlanGenerationError(
@@ -462,9 +462,7 @@ class MealPlanLLMGenerator:
             )
         required_primary_foods = min(len(required), len(selection_tokens))
         if len(set(primary_food_ids)) < required_primary_foods:
-            raise MealPlanGenerationError(
-                "Meal-plan LLM submitted insufficiently varied primary foods"
-            )
+            raise MealPlanGenerationError(INSUFFICIENT_PRIMARY_VARIETY_ERROR)
         return [
             {
                 **meal,
@@ -496,9 +494,9 @@ def _submission_correction_reason(error: MealPlanGenerationError) -> str:
         return "unknown_selection_token"
     if str(error) == "Meal-plan LLM submitted invalid grams":
         return "invalid_grams"
-    if str(error) == "Meal-plan LLM submitted duplicate meal compositions":
+    if str(error) == DUPLICATE_MEAL_COMPOSITIONS_ERROR:
         return "duplicate_meal_composition"
-    if str(error) == "Meal-plan LLM submitted insufficiently varied primary foods":
+    if str(error) == INSUFFICIENT_PRIMARY_VARIETY_ERROR:
         return "insufficient_primary_variety"
     return "invalid_submission"
 
@@ -506,8 +504,8 @@ def _submission_correction_reason(error: MealPlanGenerationError) -> str:
 def _submission_correction_category(error: MealPlanGenerationError) -> str:
     """Group retry budgets by actionable correction type."""
     if str(error) in {
-        "Meal-plan LLM submitted duplicate meal compositions",
-        "Meal-plan LLM submitted insufficiently varied primary foods",
+        DUPLICATE_MEAL_COMPOSITIONS_ERROR,
+        INSUFFICIENT_PRIMARY_VARIETY_ERROR,
     }:
         return "variety"
     return "validity"

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 # Permit direct invocation from the repository root on Windows and Unix shells.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPORT_OUTPUT_DIRECTORY = REPOSITORY_ROOT / "reports" / "nutrition-compatibility"
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
@@ -24,12 +25,32 @@ from services.nutrition_agent.app.food_compatibility_enrichment import (
 )
 
 
+def report_path(value: str) -> Path:
+    """Resolve a report name beneath the repository-owned report directory."""
+    requested_path = Path(value)
+    if (
+        requested_path == Path(".")
+        or requested_path.is_absolute()
+        or ".." in requested_path.parts
+    ):
+        raise argparse.ArgumentTypeError(
+            "--report must be a relative path beneath reports/nutrition-compatibility"
+        )
+    output_directory = REPORT_OUTPUT_DIRECTORY.resolve()
+    resolved_path = (output_directory / requested_path).resolve()
+    if not resolved_path.is_relative_to(output_directory):
+        raise argparse.ArgumentTypeError(
+            "--report must be a relative path beneath reports/nutrition-compatibility"
+        )
+    return resolved_path
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default="usda")
     parser.add_argument("--batch-size", type=int, default=25)
     parser.add_argument("--resume-after-id", type=int, default=0)
-    parser.add_argument("--report", type=Path)
+    parser.add_argument("--report", type=report_path)
     parser.add_argument(
         "--apply", action="store_true", help="write preliminary review entries"
     )
@@ -168,6 +189,7 @@ def main(argv: list[str] | None = None) -> int:
     report = asyncio.run(main_async(args))
     encoded_report = json.dumps(report, indent=2, sort_keys=True, default=str)
     if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(encoded_report + "\n", encoding="utf-8")
     print(encoded_report)
     return 0

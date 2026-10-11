@@ -101,3 +101,33 @@ def test_argument_validation_rejects_invalid_batch_size():
 
     with pytest.raises(SystemExit):
         command.parse_args(["--batch-size", "0"])
+
+
+def test_report_path_is_resolved_beneath_repository_owned_directory():
+    command = load_command_module()
+
+    parsed = command.parse_args(["--report", "daily/run.json"])
+
+    assert parsed.report == command.REPORT_OUTPUT_DIRECTORY / "daily/run.json"
+
+
+@pytest.mark.parametrize("report", ["", ".", "../report.json", "/tmp/report.json"])
+def test_report_path_rejects_absolute_and_traversal_paths(report):
+    command = load_command_module()
+
+    with pytest.raises(SystemExit):
+        command.parse_args(["--report", report])
+
+
+def test_main_creates_only_the_validated_report_parent(monkeypatch, tmp_path, capsys):
+    command = load_command_module()
+    report_directory = tmp_path / "reports"
+    report_path = report_directory / "nested/report.json"
+    monkeypatch.setattr(command, "REPORT_OUTPUT_DIRECTORY", report_directory)
+    monkeypatch.setattr(command, "main_async", AsyncMock(return_value={"summary": {}}))
+
+    assert command.main(["--report", "nested/report.json"]) == 0
+
+    assert report_path.exists()
+    assert report_path.read_text(encoding="utf-8") == '{\n  "summary": {}\n}\n'
+    assert '"summary": {}' in capsys.readouterr().out

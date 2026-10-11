@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table'
 import { ReloadOutlined, SafetyCertificateOutlined } from '@ant-design/icons'
 import { api } from '@/lib/api'
 import { formatTableDateTime } from '@/lib/constants'
+import { compatibilityStatusColor } from './compatibilityStatus'
 import {
   allergenStatuses,
   compatibilityReviewsApi,
@@ -39,8 +40,7 @@ type AuthProfile = { is_nutrition_compatibility_admin: boolean }
 type ReviewFormValues = Omit<ReviewSubmission, 'food_cache_id' | 'evidence'> & { evidence_source?: string }
 
 function statusTag(status: string) {
-  const color = status === 'approved' ? 'green' : status === 'rejected' ? 'red' : status === 'review_required' ? 'gold' : 'blue'
-  return <Tag color={color}>{humanize(status)}</Tag>
+  return <Tag color={compatibilityStatusColor(status)}>{humanize(status)}</Tag>
 }
 
 function selectedSuitability(detail: CompatibilityReviewDetail | undefined) {
@@ -217,7 +217,7 @@ function ReviewWorkspace({ foodCacheId }: { foodCacheId: number }) {
     <Card title="Read-only audit history" loading={history.isLoading}>
       {history.isError ? <Alert type="error" showIcon title="Unable to load history" description={(history.error as Error).message} /> : (
         <Timeline items={(history.data?.items ?? []).map((item: CompatibilityReviewHistoryItem) => ({
-          color: item.result_review_status === 'approved' ? 'green' : item.result_review_status === 'rejected' ? 'red' : 'blue',
+          color: compatibilityStatusColor(item.result_review_status),
           children: <div><Space wrap><Text strong>{item.prior_review_status ?? 'No prior status'} → {item.result_review_status}</Text>{statusTag(item.result_review_status)}</Space><br /><Text type="secondary">{item.reviewer_email} · {formatTableDateTime(item.reviewed_at)}</Text>{item.review_note && <><br /><Text>{item.review_note}</Text></>}<pre style={{ maxHeight: 140, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{JSON.stringify(item.metadata_snapshot, null, 2)}</pre></div>,
         }))} />
       )}
