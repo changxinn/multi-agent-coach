@@ -44,7 +44,7 @@ build_and_push() {
 
 build_and_push frontend frontend frontend/Dockerfile --build-arg VITE_API_BASE_URL=/api
 build_and_push api . Dockerfile
-build_and_push recovery-agent . services/recovery_agent/Dockerfile
+build_and_push recovery-agent services/recovery_agent services/recovery_agent/Dockerfile
 build_and_push head-coach . services/head_coach/Dockerfile
 build_and_push summarizer . services/summarizer/Dockerfile
 build_and_push nutrition-agent . services/nutrition_agent/Dockerfile

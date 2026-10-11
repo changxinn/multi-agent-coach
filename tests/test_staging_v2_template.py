@@ -105,6 +105,37 @@ def test_v2_injects_redis_url_only_into_api_and_scales_api_by_parameter():
     }
 
 
+def test_v2_configures_the_compatibility_reviewer_only_for_the_api():
+    resources = _template()["Resources"]
+    api_environment = _environment(resources["ApiTask"])
+
+    assert next(
+        item
+        for item in api_environment
+        if item["Name"] == "NUTRITION_COMPATIBILITY_ADMIN_EMAIL"
+    ) == {
+        "Name": "NUTRITION_COMPATIBILITY_ADMIN_EMAIL",
+        "Value": "nutrition.admin@example.com",
+    }
+
+    for task_name in [
+        "BootstrapTask",
+        "ApiMigration",
+        "RecoveryMigration",
+        "NutritionMigration",
+        "TrainingMigration",
+        "RecoveryTask",
+        "NutritionTask",
+        "TrainingTask",
+        "HeadCoachTask",
+        "SummarizerTask",
+    ]:
+        assert all(
+            item["Name"] != "NUTRITION_COMPATIBILITY_ADMIN_EMAIL"
+            for item in _environment(resources[task_name])
+        )
+
+
 def test_v2_api_migration_injects_required_application_settings():
     api_migration_secrets = _secrets(_template()["Resources"]["ApiMigration"])
 

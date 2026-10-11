@@ -104,6 +104,11 @@ def test_builds_and_pushes_only_when_ecr_tag_does_not_exist(tmp_path: Path):
     assert calls.count("push ") == len(SERVICES)
     assert output.count("@sha256:created") == len(SERVICES)
     assert "--build-arg VITE_API_BASE_URL=/api" in calls
+    assert (
+        "--file services/recovery_agent/Dockerfile "
+        "--tag 758248541054.dkr.ecr.ap-southeast-1.amazonaws.com/"
+        "macoach-staging/recovery-agent:commit-sha services/recovery_agent"
+    ) in calls
 
 
 def test_stops_on_ecr_lookup_errors_other_than_missing_image(tmp_path: Path):
