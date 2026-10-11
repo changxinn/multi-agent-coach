@@ -96,6 +96,32 @@ async def test_apply_reports_protected_approved_row_when_upsert_loses_race(monke
     assert report["summary"]["written"] == 0
 
 
+@pytest.mark.asyncio
+async def test_fetch_foods_and_upsert_candidate_use_stable_query_parameters():
+    command = load_command_module()
+    connection = AsyncMock()
+    rows = MagicMock()
+    rows.mappings.return_value.all.return_value = [food()]
+    connection.execute.side_effect = [rows, MagicMock(rowcount=1)]
+
+    assert await command.fetch_foods(
+        connection, args(provider="usda", resume_after_id=12, batch_size=5)
+    ) == [food()]
+    candidate = command.classify_food_for_review(food())
+    assert await command.upsert_candidate(connection, candidate) is True
+
+    _, fetch_parameters = connection.execute.await_args_list[0].args
+    _, upsert_parameters = connection.execute.await_args_list[1].args
+    assert fetch_parameters == {
+        "provider": "usda",
+        "resume_after_id": 12,
+        "batch_size": 5,
+    }
+    assert upsert_parameters["food_cache_id"] == 12
+    assert upsert_parameters["known_allergens"] == "[]"
+    assert upsert_parameters["strict_suitability"] == "{}"
+
+
 def test_argument_validation_rejects_invalid_batch_size():
     command = load_command_module()
 

@@ -10,8 +10,19 @@ from app.api.routes.nutrition import (
     require_compatibility_reviewer,
     router,
 )
+from app.services.nutrition_agent_client import (
+    NutritionAgentUnavailableError,
+    NutritionCompatibilityReviewError,
+)
+from app.services.nutrition_service import (
+    NutritionNotFoundError as MainNutritionNotFoundError,
+)
 from services.nutrition_agent.app.food_compatibility_policy import validate_human_review
 from services.nutrition_agent.app.repository import NutritionRepository
+from services.nutrition_agent.app.service import (
+    NutritionNotFoundError,
+    NutritionService,
+)
 
 
 @pytest.fixture
@@ -110,6 +121,54 @@ def test_gateway_returns_queue_pagination_metadata(compatibility_client):
     assert service.get_compatibility_review_queue.await_args.args[0].query == "oats"
 
 
+@pytest.mark.parametrize(
+    ("path", "method", "error", "expected_status"),
+    [
+        (
+            "/api/nutrition/compatibility/review-queue",
+            "get_compatibility_review_queue",
+            NutritionAgentUnavailableError("offline"),
+            503,
+        ),
+        (
+            "/api/nutrition/compatibility/review-detail",
+            "get_compatibility_review_detail",
+            MainNutritionNotFoundError("missing"),
+            404,
+        ),
+        (
+            "/api/nutrition/compatibility/review-history",
+            "get_compatibility_review_history",
+            NutritionAgentUnavailableError("offline"),
+            503,
+        ),
+        (
+            "/api/nutrition/compatibility/review",
+            "review_food_compatibility",
+            NutritionCompatibilityReviewError("invalid review"),
+            422,
+        ),
+    ],
+)
+def test_gateway_maps_compatibility_review_service_errors(
+    compatibility_client, path, method, error, expected_status
+):
+    client, service = compatibility_client
+    getattr(service, method).side_effect = error
+    payload = (
+        review_payload()
+        if path.endswith("/review")
+        else {}
+        if path.endswith("review-queue")
+        else {"food_cache_id": 12}
+    )
+
+    response = client.post(path, json=payload)
+
+    assert response.status_code == expected_status
+    assert response.json()["detail"] == str(error)
+
+
 @pytest.mark.asyncio
 async def test_review_queue_orders_food_names_case_insensitively_ascending():
     db = AsyncMock()
@@ -145,6 +204,91 @@ async def test_review_queue_orders_food_names_case_insensitively_ascending():
         "offset": 25,
         "limit": 25,
     }
+
+
+@pytest.mark.asyncio
+async def test_review_queue_omits_search_parameter_for_blank_query():
+    db = AsyncMock()
+    count_result = MagicMock()
+    count_result.scalar_one.return_value = 0
+    rows_result = MagicMock()
+    rows_result.mappings.return_value.all.return_value = []
+    db.execute.side_effect = [count_result, rows_result]
+
+    assert await NutritionRepository(db).list_compatibility_review_queue(
+        statuses=["pending"], query="   ", offset=0, limit=25
+    ) == {"items": [], "total": 0, "offset": 0, "limit": 25}
+    assert db.execute.await_args.args[1] == {
+        "statuses": ["pending"],
+        "offset": 0,
+        "limit": 25,
+    }
+
+
+@pytest.mark.asyncio
+async def test_repository_returns_detail_history_and_persists_review_audit_record():
+    db = AsyncMock()
+    existing_result = MagicMock()
+    existing_result.mappings.return_value.first.return_value = {
+        "food_cache_id": 12,
+        "review_status": "pending",
+    }
+    updated_result = MagicMock()
+    updated_result.mappings.return_value.first.return_value = {
+        "food_cache_id": 12,
+        "review_status": "approved",
+    }
+    db.execute.side_effect = [existing_result, MagicMock(), MagicMock(), updated_result]
+    payload = {
+        **review_payload(),
+        "classifier_version": None,
+        "review_note": None,
+        "reviewer_user_id": 44,
+        "reviewer_email": "admin@example.com",
+    }
+
+    result = await NutritionRepository(db).review_food_compatibility(payload)
+
+    assert result == {"food_cache_id": 12, "review_status": "approved"}
+    update_parameters = db.execute.await_args_list[1].args[1]
+    history_parameters = db.execute.await_args_list[2].args[1]
+    assert update_parameters["known_allergens"] == '["Milk protein"]'
+    assert history_parameters["prior_review_status"] == "pending"
+    assert '"allergen_status": "known"' in history_parameters["metadata"]
+
+
+@pytest.mark.asyncio
+async def test_service_compatibility_review_operations_delegate_and_map_missing_records():
+    repo = AsyncMock()
+    service = NutritionService(AsyncMock())
+    service.repo = repo
+    queue_payload = MagicMock(statuses=["pending"], query=None, offset=0, limit=25)
+    detail = {"food_cache_id": 12}
+    repo.list_compatibility_review_queue.return_value = {"items": []}
+    repo.get_compatibility_review_detail.return_value = detail
+    repo.list_compatibility_review_history.return_value = [{"id": 1}]
+    payload = MagicMock()
+    payload.model_dump.return_value = {
+        **review_payload(),
+        "classifier_version": None,
+        "review_note": None,
+    }
+    repo.review_food_compatibility.return_value = detail
+
+    assert await service.get_compatibility_review_queue(queue_payload) == {"items": []}
+    assert await service.get_compatibility_review_detail(12) == detail
+    assert await service.get_compatibility_review_history(12) == [{"id": 1}]
+    assert await service.review_food_compatibility(payload) == detail
+    assert repo.review_food_compatibility.await_args.args[0]["known_allergens"] == [
+        "milk_protein"
+    ]
+
+    repo.get_compatibility_review_detail.return_value = None
+    with pytest.raises(NutritionNotFoundError, match="Food compatibility record"):
+        await service.get_compatibility_review_detail(99)
+    repo.review_food_compatibility.return_value = None
+    with pytest.raises(NutritionNotFoundError, match="Food compatibility record"):
+        await service.review_food_compatibility(payload)
 
 
 def test_gateway_review_routes_require_reviewer_dependency():

@@ -19,6 +19,7 @@ from services.nutrition_agent.app.config import (
     settings,
 )
 from services.nutrition_agent.app.main import app, get_service, startup
+from services.nutrition_agent.app.service import NutritionNotFoundError
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +82,70 @@ def test_health_is_public_and_private_operations_require_token(monkeypatch):
         assert missing_token_response.status_code == 401
         assert wrong_token_response.status_code == 401
         assert ready_response.json()["status"] == "ready"
+
+
+def test_private_compatibility_review_endpoints_delegate_and_translate_errors(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "INTERNAL_SERVICE_TOKEN", "test-token")
+    service = AsyncMock()
+    service.get_compatibility_review_queue.return_value = {
+        "items": [{"food_cache_id": 12}]
+    }
+    service.get_compatibility_review_detail.return_value = {"food_cache_id": 12}
+    service.get_compatibility_review_history.return_value = [{"id": 1}]
+    service.review_food_compatibility.return_value = {"review_status": "approved"}
+    app.dependency_overrides[get_service] = lambda: service
+    review = {
+        "food_cache_id": 12,
+        "review_status": "approved",
+        "allergen_status": "known",
+        "known_allergens": [],
+        "strict_suitability": {},
+        "evidence": {"source": "label"},
+        "confidence": "0.9",
+        "policy_version": "compatibility_review_v1",
+        "reviewer_user_id": 44,
+        "reviewer_email": "admin@example.com",
+    }
+    headers = {"X-Internal-Service-Token": "test-token"}
+    try:
+        with TestClient(app) as client:
+            assert client.post(
+                "/v1/nutrition/compatibility/review-queue", json={}, headers=headers
+            ).json() == {"items": [{"food_cache_id": 12}]}
+            assert client.post(
+                "/v1/nutrition/compatibility/review-detail",
+                json={"food_cache_id": 12},
+                headers=headers,
+            ).json() == {"food_cache_id": 12}
+            assert client.post(
+                "/v1/nutrition/compatibility/review-history",
+                json={"food_cache_id": 12},
+                headers=headers,
+            ).json() == {"items": [{"id": 1}]}
+            assert client.post(
+                "/v1/nutrition/compatibility/review", json=review, headers=headers
+            ).json() == {"review_status": "approved"}
+
+            service.get_compatibility_review_detail.side_effect = (
+                NutritionNotFoundError("missing")
+            )
+            missing = client.post(
+                "/v1/nutrition/compatibility/review-detail",
+                json={"food_cache_id": 12},
+                headers=headers,
+            )
+            assert missing.status_code == 404
+
+            service.review_food_compatibility.side_effect = ValueError("invalid review")
+            invalid = client.post(
+                "/v1/nutrition/compatibility/review", json=review, headers=headers
+            )
+            assert invalid.status_code == 422
+            assert invalid.json()["detail"] == "invalid review"
+    finally:
+        app.dependency_overrides.pop(get_service, None)
 
 
 def test_private_agent_calculation_matches_phase_one_contract(monkeypatch):

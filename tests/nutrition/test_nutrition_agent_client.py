@@ -66,6 +66,12 @@ class MealPlanPayload:
         }
 
 
+class CompatibilityPayload:
+    def model_dump(self, *, mode: str):
+        assert mode == "json"
+        return {"food_cache_id": 12, "review_status": "approved"}
+
+
 @pytest.mark.asyncio
 async def test_food_catalogue_client_requests_all_cached_foods(monkeypatch):
     captured = {}
@@ -94,6 +100,50 @@ async def test_food_catalogue_client_requests_all_cached_foods(monkeypatch):
     ]
     assert captured["url"].endswith("/v1/nutrition/foods/catalogue")
     assert captured["json"] == {"user_id": 7}
+
+
+@pytest.mark.asyncio
+async def test_compatibility_review_client_operations_send_expected_payloads(
+    monkeypatch,
+):
+    client = NutritionAgentClient()
+    calls = []
+
+    async def _post(path, payload, **_):
+        calls.append((path, payload))
+        return (
+            {"items": ["history"]}
+            if path.endswith("history")
+            else {"food_cache_id": 12}
+        )
+
+    monkeypatch.setattr(client, "_post", _post)
+    queue_payload = CompatibilityPayload()
+    assert await client.get_compatibility_review_queue(queue_payload) == {
+        "food_cache_id": 12
+    }
+    assert await client.get_compatibility_review_detail(12) == {"food_cache_id": 12}
+    assert await client.get_compatibility_review_history(12) == ["history"]
+    assert await client.review_food_compatibility(
+        queue_payload, reviewer_user_id=44, reviewer_email="admin@example.com"
+    ) == {"food_cache_id": 12}
+    assert calls == [
+        (
+            "compatibility/review-queue",
+            {"food_cache_id": 12, "review_status": "approved"},
+        ),
+        ("compatibility/review-detail", {"food_cache_id": 12}),
+        ("compatibility/review-history", {"food_cache_id": 12}),
+        (
+            "compatibility/review",
+            {
+                "food_cache_id": 12,
+                "review_status": "approved",
+                "reviewer_user_id": 44,
+                "reviewer_email": "admin@example.com",
+            },
+        ),
+    ]
 
 
 @pytest.mark.asyncio
