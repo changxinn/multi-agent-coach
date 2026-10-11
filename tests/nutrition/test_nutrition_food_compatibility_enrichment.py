@@ -16,7 +16,10 @@ def food(**overrides):
 
 
 def test_input_fingerprint_is_repeatable_and_tracks_source_changes():
-    assert food_input_fingerprint(food()) == food_input_fingerprint(food())
+    original = food()
+    expected_fingerprint = food_input_fingerprint(original)
+
+    assert expected_fingerprint == food_input_fingerprint({**original})
     assert food_input_fingerprint(
         food(description="Tomatoes, cooked")
     ) != food_input_fingerprint(food())

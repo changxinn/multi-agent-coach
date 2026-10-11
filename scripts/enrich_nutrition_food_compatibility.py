@@ -45,6 +45,17 @@ def report_path(value: str) -> Path:
     return resolved_path
 
 
+def validated_report_path(report: Path) -> Path:
+    """Ensure a report path still resolves within the allowed output directory."""
+    output_directory = REPORT_OUTPUT_DIRECTORY.resolve()
+    resolved_path = report.resolve()
+    if not resolved_path.is_relative_to(output_directory):
+        raise ValueError(
+            "--report must be a relative path beneath reports/nutrition-compatibility"
+        )
+    return resolved_path
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default="usda")
@@ -189,8 +200,10 @@ def main(argv: list[str] | None = None) -> int:
     report = asyncio.run(main_async(args))
     encoded_report = json.dumps(report, indent=2, sort_keys=True, default=str)
     if args.report:
-        args.report.parent.mkdir(parents=True, exist_ok=True)
-        args.report.write_text(encoded_report + "\n", encoding="utf-8")
+        output_path = validated_report_path(args.report)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path = validated_report_path(output_path)
+        output_path.write_text(encoded_report + "\n", encoding="utf-8")
     print(encoded_report)
     return 0
 

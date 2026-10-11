@@ -131,3 +131,17 @@ def test_main_creates_only_the_validated_report_parent(monkeypatch, tmp_path, ca
     assert report_path.exists()
     assert report_path.read_text(encoding="utf-8") == '{\n  "summary": {}\n}\n'
     assert '"summary": {}' in capsys.readouterr().out
+
+
+def test_main_revalidates_a_report_path_before_writing(monkeypatch, tmp_path):
+    command = load_command_module()
+    monkeypatch.setattr(command, "REPORT_OUTPUT_DIRECTORY", tmp_path / "reports")
+    monkeypatch.setattr(
+        command,
+        "parse_args",
+        lambda _: args(report=tmp_path / "outside-report.json"),
+    )
+    monkeypatch.setattr(command, "main_async", AsyncMock(return_value={"summary": {}}))
+
+    with pytest.raises(ValueError, match="relative path"):
+        command.main([])

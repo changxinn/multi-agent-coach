@@ -20,8 +20,12 @@ MEAL_PLAN_MAX_PAGE_SIZE = 50
 MEAL_PLAN_MAX_GRAMS = Decimal(2000)
 MEAL_PLAN_MAX_SUBMISSION_CORRECTIONS = 2
 MEAL_PLAN_MAX_CORRECTIONS_PER_CATEGORY = 1
-DUPLICATE_MEAL_COMPOSITIONS_ERROR = "Meal-plan LLM submitted duplicate meal compositions"
-INSUFFICIENT_PRIMARY_VARIETY_ERROR = "Meal-plan LLM submitted insufficiently varied primary foods"
+DUPLICATE_MEAL_COMPOSITIONS_ERROR = (
+    "Meal-plan LLM submitted duplicate meal compositions"
+)
+INSUFFICIENT_PRIMARY_VARIETY_ERROR = (
+    "Meal-plan LLM submitted insufficiently varied primary foods"
+)
 
 SYSTEM_PROMPT = """
 You are Sam, a practical, non-judgmental sports nutrition advisor.

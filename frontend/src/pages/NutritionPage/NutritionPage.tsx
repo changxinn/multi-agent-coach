@@ -75,21 +75,28 @@ function TodayTab() {
   const loggedMealTypes = new Set(meals.data?.items.map(meal => meal.meal_type) || [])
   const loggedPlannedMealCount = plannedMealTypes.filter(mealType => loggedMealTypes.has(mealType)).length
   const mealLoggingAdherence = plannedMealTypes.length ? loggedPlannedMealCount / plannedMealTypes.length * 100 : 0
+  let mealLoggingContent: ReactNode
+  if (activePlan.isError || meals.isError) {
+    mealLoggingContent = <Alert type="warning" showIcon title="Meal logging adherence is unavailable" description="We could not load today’s active plan or meal log." />
+  } else if (!activePlan.data?.meal_plan) {
+    mealLoggingContent = <Text type="secondary">No active meal plan covers today, so meal logging adherence is unavailable.</Text>
+  } else if (!plannedMealTypes.length) {
+    mealLoggingContent = <Text type="secondary">Your active meal plan has no planned meal slots for today.</Text>
+  } else {
+    mealLoggingContent = <Space orientation="vertical" style={{ width: '100%' }}>
+      <Text>{loggedPlannedMealCount} of {plannedMealTypes.length} planned meal types logged</Text>
+      <Progress percent={mealLoggingAdherence} format={percent => `${Math.round(percent || 0)}%`} />
+      <Space size={[4, 4]} wrap>{plannedMealTypes.map(mealType => {
+        const logged = loggedMealTypes.has(mealType)
+        return <Tag color={logged ? 'green' : 'default'} key={mealType}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)} — {logged ? 'Logged' : 'Not logged'}</Tag>
+      })}</Space>
+    </Space>
+  }
   return <Space orientation="vertical" size="large" style={{ width: '100%' }}>
     <Row gutter={[16, 16]}>{cards.map(card => <Col xs={24} sm={12} lg={6} key={card.label}><Card loading={summary.isLoading}><Statistic title={card.label} value={card.value ?? 0} suffix={card.target ? ` / ${card.target}` : ''} /><Text type="secondary">Remaining: {card.remaining ?? 'Set targets'}</Text></Card></Col>)}</Row>
     <Card title="Today’s adherence" loading={summary.isLoading}><Row gutter={24}><Col span={12}><Text>Calories</Text><Progress percent={Math.min(Number(data?.calorie_adherence_pct ?? 0), 100)} /></Col><Col span={12}><Text>Protein</Text><Progress percent={Math.min(Number(data?.protein_adherence_pct ?? 0), 100)} /></Col></Row><Divider /><Text type="secondary">{data?.meal_count ?? 0} meal(s) logged today. Values above 100% mean the target was exceeded.</Text></Card>
     <Card title="Meal logging adherence" loading={activePlan.isLoading || meals.isLoading}>
-      {activePlan.isError || meals.isError ? <Alert type="warning" showIcon title="Meal logging adherence is unavailable" description="We could not load today’s active plan or meal log." />
-        : !activePlan.data?.meal_plan ? <Text type="secondary">No active meal plan covers today, so meal logging adherence is unavailable.</Text>
-          : !plannedMealTypes.length ? <Text type="secondary">Your active meal plan has no planned meal slots for today.</Text>
-            : <Space orientation="vertical" style={{ width: '100%' }}>
-              <Text>{loggedPlannedMealCount} of {plannedMealTypes.length} planned meal types logged</Text>
-              <Progress percent={mealLoggingAdherence} format={percent => `${Math.round(percent || 0)}%`} />
-              <Space size={[4, 4]} wrap>{plannedMealTypes.map(mealType => {
-                const logged = loggedMealTypes.has(mealType)
-                return <Tag color={logged ? 'green' : 'default'} key={mealType}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)} — {logged ? 'Logged' : 'Not logged'}</Tag>
-              })}</Space>
-            </Space>}
+      {mealLoggingContent}
     </Card>
   </Space>
 }
