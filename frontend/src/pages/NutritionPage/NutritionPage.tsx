@@ -142,7 +142,12 @@ function ProfileTab() {
   const hasActiveTarget = Boolean(targets.data && Object.keys(targets.data).length)
 
   useEffect(() => {
-    if (profile.data) form.setFieldsValue({ dietary_preferences: [], dietary_restrictions: [], allergies: [], ...profile.data })
+    if (profile.data) form.setFieldsValue({
+      ...profile.data,
+      dietary_preferences: profile.data.dietary_preferences ?? [],
+      dietary_restrictions: profile.data.dietary_restrictions ?? [],
+      allergies: profile.data.allergies ?? [],
+    })
   }, [form, profile.data])
 
   return <>
@@ -155,7 +160,7 @@ function ProfileTab() {
         const value = targets.data?.[key as keyof ActiveTarget]
         return value == null ? [] : [{ key, label: targetLabels[key], children: String(value) }]
       })} />
-      <Divider orientation="left">Saved dietary profile</Divider>
+      <Divider>Saved dietary profile</Divider>
       <Descriptions column={1} items={[
         { key: 'dietary_preferences', label: 'Dietary Preferences', children: <ProfileTags values={profile.data?.dietary_preferences} /> },
         { key: 'dietary_restrictions', label: 'Dietary Restrictions', children: <ProfileTags values={profile.data?.dietary_restrictions} /> },

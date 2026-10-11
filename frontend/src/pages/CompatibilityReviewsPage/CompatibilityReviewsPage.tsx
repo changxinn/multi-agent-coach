@@ -24,6 +24,7 @@ import {
 
 const { Title, Text } = Typography
 const pageSize = 25
+const humanize = (value: string) => value.replace(/_/g, ' ')
 
 const suitabilityLabels: Record<StrictSuitabilityKey, string> = {
   vegetarian: 'Vegetarian', vegan: 'Vegan', pescatarian: 'Pescatarian', halal: 'Halal', kosher: 'Kosher',
@@ -32,14 +33,14 @@ const suitabilityLabels: Record<StrictSuitabilityKey, string> = {
 }
 const commonAllergenOptions = [
   'milk', 'egg', 'peanut', 'tree_nuts', 'soy', 'wheat', 'fish', 'shellfish', 'sesame',
-].map((value) => ({ value, label: value.replaceAll('_', ' ') }))
+].map((value) => ({ value, label: humanize(value) }))
 
 type AuthProfile = { is_nutrition_compatibility_admin: boolean }
 type ReviewFormValues = Omit<ReviewSubmission, 'food_cache_id' | 'evidence'> & { evidence_source?: string }
 
 function statusTag(status: string) {
   const color = status === 'approved' ? 'green' : status === 'rejected' ? 'red' : status === 'review_required' ? 'gold' : 'blue'
-  return <Tag color={color}>{status.replaceAll('_', ' ')}</Tag>
+  return <Tag color={color}>{humanize(status)}</Tag>
 }
 
 function selectedSuitability(detail: CompatibilityReviewDetail | undefined) {
@@ -183,7 +184,7 @@ function ReviewWorkspace({ foodCacheId }: { foodCacheId: number }) {
           {saveFeedback && <Alert type={saveFeedback.type} showIcon title={saveFeedback.message} closable onClose={() => setSaveFeedback(null)} style={{ marginBottom: 16 }} />}
           <Form form={form} layout="vertical" onFinish={submit} disabled={detail.isLoading}>
             <Row gutter={16}>
-              <Col xs={24} md={12}><Form.Item name="review_status" label="Decision" rules={[{ required: true }]}><Select options={reviewDecisions.map((value) => ({ value, label: value.replaceAll('_', ' ') }))} /></Form.Item></Col>
+              <Col xs={24} md={12}><Form.Item name="review_status" label="Decision" rules={[{ required: true }]}><Select options={reviewDecisions.map((value) => ({ value, label: humanize(value) }))} /></Form.Item></Col>
               <Col xs={24} md={12}><Form.Item name="allergen_status" label="Allergen metadata" rules={[{ required: true }]}><Select options={allergenStatuses.map((value) => ({ value, label: value }))} /></Form.Item></Col>
             </Row>
             <Form.Item name="known_allergens" label="Known allergens" extra="Select a common allergen or type a normalized allergen name."><Select mode="tags" options={commonAllergenOptions} placeholder="For example: milk protein" /></Form.Item>
@@ -193,7 +194,7 @@ function ReviewWorkspace({ foodCacheId }: { foodCacheId: number }) {
               <Col xs={24} md={6}><Form.Item name="policy_version" label="Policy version" rules={[{ required: true, message: 'Enter the policy version.' }]}><Input /></Form.Item></Col>
             </Row>
             <Form.Item name="classifier_version" label="Classifier version"><Input placeholder="Optional" /></Form.Item>
-            <Divider orientation="left">Strict suitability <Space size="small"><Button size="small" onClick={() => form.setFieldValue('strict_suitability', allSuitabilityValues('suitable'))}>Set all as suitable</Button><Button size="small" onClick={() => form.setFieldValue('strict_suitability', allSuitabilityValues('unsuitable'))}>Set all as unsuitable</Button></Space></Divider>
+            <Divider>Strict suitability <Space size="small"><Button size="small" onClick={() => form.setFieldValue('strict_suitability', allSuitabilityValues('suitable'))}>Set all as suitable</Button><Button size="small" onClick={() => form.setFieldValue('strict_suitability', allSuitabilityValues('unsuitable'))}>Set all as unsuitable</Button></Space></Divider>
             {decision === 'approved' && <Alert type="warning" showIcon title="Every suitability decision is required for approval." style={{ marginBottom: 16 }} />}
             <Row gutter={16}>{strictSuitabilityKeys.map((key) => (
               <Col xs={24} sm={12} key={key}><Form.Item name={['strict_suitability', key]} label={suitabilityLabels[key]}><Select allowClear options={[{ value: 'suitable', label: 'Suitable' }, { value: 'unsuitable', label: 'Unsuitable' }]} /></Form.Item></Col>
@@ -253,7 +254,7 @@ export function CompatibilityReviewsPage() {
   return <div className="flex flex-col gap-4">
     <div><Title level={2}><SafetyCertificateOutlined className="mr-2" />Compatibility Reviews</Title><Text type="secondary">Review food compatibility evidence and record auditable safety decisions.</Text></div>
     <Card title="Review queue" extra={<Button icon={<ReloadOutlined />} onClick={() => queue.refetch()} loading={queue.isFetching}>Refresh</Button>}>
-      <Form layout="vertical"><Row gutter={16}><Col xs={24} md={12}><Form.Item label="Search food name"><Input allowClear value={query} placeholder="Search food descriptions" onChange={(event) => { setQuery(event.target.value); setOffset(0) }} /></Form.Item></Col><Col xs={24} md={12}><Form.Item label="Queue statuses"><Select mode="multiple" value={statuses} options={compatibilityReviewStatuses.map((value) => ({ value, label: value.replaceAll('_', ' ') }))} onChange={(next) => { setStatuses(next); setOffset(0) }} /></Form.Item></Col></Row></Form>
+      <Form layout="vertical"><Row gutter={16}><Col xs={24} md={12}><Form.Item label="Search food name"><Input allowClear value={query} placeholder="Search food descriptions" onChange={(event) => { setQuery(event.target.value); setOffset(0) }} /></Form.Item></Col><Col xs={24} md={12}><Form.Item label="Queue statuses"><Select mode="multiple" value={statuses} options={compatibilityReviewStatuses.map((value) => ({ value, label: humanize(value) }))} onChange={(next) => { setStatuses(next); setOffset(0) }} /></Form.Item></Col></Row></Form>
       {queue.isError ? <Alert type="error" showIcon title="Unable to load the review queue" description={(queue.error as Error).message} /> : <Table rowKey="food_cache_id" loading={queue.isLoading} dataSource={items} columns={columns} scroll={{ x: 850 }} pagination={false} locale={{ emptyText: 'No foods match the selected review statuses.' }} />}
       <Pagination style={{ marginTop: 16 }} current={currentPage} pageSize={pageSize} total={total} showSizeChanger={false} disabled={queue.isFetching} onChange={(page) => setOffset((page - 1) * pageSize)} showTotal={(recordTotal, range) => `${range[0]}–${range[1]} of ${recordTotal} records`} />
     </Card>
