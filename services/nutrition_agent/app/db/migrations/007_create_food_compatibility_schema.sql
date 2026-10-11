@@ -6,10 +6,16 @@ IMMUTABLE
 LANGUAGE sql
 AS $$ SELECT 'pending'::TEXT $$;
 
+CREATE OR REPLACE FUNCTION nutrition_approved_review_status()
+RETURNS TEXT
+IMMUTABLE
+LANGUAGE sql
+AS $$ SELECT 'approved'::TEXT $$;
+
 CREATE TABLE IF NOT EXISTS nutrition_food_compatibility (
     food_cache_id BIGINT PRIMARY KEY REFERENCES nutrition_food_cache(id) ON DELETE CASCADE,
     review_status TEXT NOT NULL DEFAULT nutrition_pending_review_status()
-        CHECK (review_status IN (nutrition_pending_review_status(), 'approved', 'rejected', 'needs_review')),
+        CHECK (review_status IN (nutrition_pending_review_status(), nutrition_approved_review_status(), 'rejected', 'needs_review')),
     allergen_status TEXT NOT NULL DEFAULT 'unknown'
         CHECK (allergen_status IN ('unknown', 'known', 'conflicting')),
     known_allergens JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -30,14 +36,14 @@ CREATE TABLE IF NOT EXISTS nutrition_food_compatibility (
 
 CREATE INDEX IF NOT EXISTS ix_nutrition_food_compatibility_approved
     ON nutrition_food_compatibility (review_status)
-    WHERE review_status = 'approved'; -- NOSONAR: required partial-index predicate.
+    WHERE review_status = nutrition_approved_review_status();
 
 INSERT INTO nutrition_food_compatibility (
     food_cache_id, review_status, allergen_status, known_allergens,
     strict_suitability, evidence, confidence, classifier_version, policy_version,
     reviewed_by, reviewed_at
 )
-SELECT id, 'approved', 'known', '[]'::jsonb, -- NOSONAR: seed values must be SQL literals.
+SELECT id, nutrition_approved_review_status(), 'known', '[]'::jsonb,
        '{"vegetarian":"suitable","vegan":"suitable","pescatarian":"suitable","halal":"suitable","kosher":"suitable","gluten_free":"suitable","dairy_free":"suitable","egg_free":"suitable","soy_free":"suitable","nut_free":"suitable","no_pork":"suitable","no_beef":"suitable","alcohol_free":"suitable"}'::jsonb,
        '{"source":"USDA FoodData Central description","scope":"reviewed raw unambiguous single-ingredient plant food","certification":"not a halal or kosher certification"}'::jsonb,
        1.000, 'manual_seed_v1', 'unprocessed_whole_food_v1', 'system_seed', CURRENT_TIMESTAMP
@@ -61,7 +67,7 @@ ALTER TABLE nutrition_food_compatibility
     ADD CONSTRAINT nutrition_food_compatibility_review_status_check
     CHECK (
         review_status IN (
-            nutrition_pending_review_status(), 'auto_classified', 'approved', 'rejected',
+            nutrition_pending_review_status(), 'auto_classified', nutrition_approved_review_status(), 'rejected',
             'needs_review', 'review_required'
         )
     );

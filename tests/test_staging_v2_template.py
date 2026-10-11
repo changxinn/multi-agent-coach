@@ -30,6 +30,11 @@ def _frontend_template():
     return yaml.load(path.read_text(), Loader=CloudFormationLoader)
 
 
+def _legacy_staging_template():
+    path = Path(__file__).parents[1] / "infrastructure/cloudformation/staging.yaml"
+    return yaml.load(path.read_text(), Loader=CloudFormationLoader)
+
+
 def _environment(task):
     return task["Properties"]["ContainerDefinitions"][0].get("Environment", [])
 
@@ -160,6 +165,75 @@ def test_frontend_forwards_api_query_strings_without_caching_them():
     assert no_cache_parameters["EnableAcceptEncodingGzip"] is False
     assert no_cache_query_strings == {"QueryStringBehavior": "none"}
     assert origin_query_strings == {"QueryStringBehavior": "all"}
+
+
+def test_frontend_and_cloudfront_access_logs_are_private_and_retained():
+    resources = _frontend_template()["Resources"]
+
+    frontend_bucket = resources["FrontendBucket"]["Properties"]
+    log_bucket = resources["AccessLogBucket"]["Properties"]
+    distribution = resources["Distribution"]["Properties"]["DistributionConfig"]
+
+    assert frontend_bucket["VersioningConfiguration"] == {"Status": "Enabled"}
+    assert frontend_bucket["LoggingConfiguration"] == {
+        "DestinationBucketName": {"Ref": "AccessLogBucket"},
+        "LogFilePrefix": "frontend-s3/",
+    }
+    assert log_bucket["PublicAccessBlockConfiguration"]["RestrictPublicBuckets"] is True
+    assert log_bucket["LifecycleConfiguration"]["Rules"] == [
+        {"Id": "ExpireAccessLogs", "Status": "Enabled", "ExpirationInDays": 90}
+    ]
+    assert distribution["Logging"] == {
+        "Bucket": {"GetAtt": "AccessLogBucket.DomainName"},
+        "Prefix": "cloudfront/",
+        "IncludeCookies": False,
+    }
+
+
+def test_v2_alb_writes_access_logs_to_a_private_retained_bucket():
+    resources = _template()["Resources"]
+    bucket = resources["AlbAccessLogBucket"]["Properties"]
+    attributes = resources["Alb"]["Properties"]["LoadBalancerAttributes"]
+
+    assert bucket["PublicAccessBlockConfiguration"]["RestrictPublicBuckets"] is True
+    assert bucket["LifecycleConfiguration"]["Rules"] == [
+        {"Id": "ExpireAlbAccessLogs", "Status": "Enabled", "ExpirationInDays": 90}
+    ]
+    assert attributes == [
+        {"Key": "access_logs.s3.enabled", "Value": "true"},
+        {"Key": "access_logs.s3.bucket", "Value": {"Ref": "AlbAccessLogBucket"}},
+        {"Key": "access_logs.s3.prefix", "Value": "alb"},
+    ]
+    statement = resources["AlbAccessLogBucketPolicy"]["Properties"]["PolicyDocument"][
+        "Statement"
+    ][0]
+    assert statement["Principal"] == {
+        "Service": "logdelivery.elasticloadbalancing.amazonaws.com"
+    }
+    assert statement["Action"] == "s3:PutObject"
+
+
+def test_legacy_staging_alb_writes_access_logs_to_a_private_retained_bucket():
+    resources = _legacy_staging_template()["Resources"]
+    bucket = resources["AlbAccessLogBucket"]["Properties"]
+    attributes = resources["LoadBalancer"]["Properties"]["LoadBalancerAttributes"]
+
+    assert bucket["PublicAccessBlockConfiguration"]["RestrictPublicBuckets"] is True
+    assert bucket["LifecycleConfiguration"]["Rules"] == [
+        {"Id": "ExpireAlbAccessLogs", "Status": "Enabled", "ExpirationInDays": 90}
+    ]
+    assert attributes == [
+        {"Key": "access_logs.s3.enabled", "Value": "true"},
+        {"Key": "access_logs.s3.bucket", "Value": {"Ref": "AlbAccessLogBucket"}},
+        {"Key": "access_logs.s3.prefix", "Value": "alb"},
+    ]
+    statement = resources["AlbAccessLogBucketPolicy"]["Properties"]["PolicyDocument"][
+        "Statement"
+    ][0]
+    assert statement["Principal"] == {
+        "Service": "logdelivery.elasticloadbalancing.amazonaws.com"
+    }
+    assert statement["Action"] == "s3:PutObject"
 
 
 def test_v2_frontend_is_an_ecs_service_and_alb_routes_api_by_path():

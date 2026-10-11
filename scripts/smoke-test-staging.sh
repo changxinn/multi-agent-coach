@@ -6,11 +6,11 @@ set -euo pipefail
 
 frontend_url=$(aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue | [0]" --output text)
 health_url=$(aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiHealthUrl'].OutputValue | [0]" --output text)
-if [ -z "$frontend_url" ] || [ "$frontend_url" = "None" ]; then
+if [[ -z $frontend_url || $frontend_url == "None" ]]; then
   echo "FrontendUrl was not returned by $STACK_NAME" >&2
   exit 1
 fi
-if [ -z "$health_url" ] || [ "$health_url" = "None" ]; then
+if [[ -z $health_url || $health_url == "None" ]]; then
   echo "ApiHealthUrl was not returned by $STACK_NAME" >&2
   exit 1
 fi

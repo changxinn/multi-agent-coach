@@ -27,20 +27,25 @@ jobs:
     name: Deploy staging infrastructure and services
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success'
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.head_repository.full_name == github.repository
+      )
     runs-on: ubuntu-latest
     env:
       DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
     steps:
       - name: Check out source
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           ref: ${{ env.DEPLOY_REF }}
 
       - name: Verify deployment role variable is available
         shell: bash
         run: |
-          if [ -z "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ]; then
+          if [[ -z "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ]]; then
             echo "::error::AWS_DEPLOY_ROLE_ARN is empty or unavailable to this workflow."
             exit 1
           fi

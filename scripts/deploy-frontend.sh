@@ -9,7 +9,7 @@ set -euo pipefail
 : "${ENVIRONMENT:=staging}"
 
 api_alb_dns=$(aws cloudformation describe-stacks --region "$APPLICATION_AWS_REGION" --stack-name "$APPLICATION_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='LoadBalancerDnsName'].OutputValue | [0]" --output text)
-if [ -z "$api_alb_dns" ] || [ "$api_alb_dns" = "None" ]; then
+if [[ -z $api_alb_dns || $api_alb_dns == "None" ]]; then
   echo "LoadBalancerDnsName was not returned by $APPLICATION_STACK_NAME" >&2
   exit 1
 fi
@@ -22,7 +22,7 @@ AWS_REGION="$FRONTEND_AWS_REGION" bash scripts/deploy-cloudformation.sh
 bucket=$(aws cloudformation describe-stacks --region "$FRONTEND_AWS_REGION" --stack-name "$FRONTEND_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='FrontendBucketName'].OutputValue | [0]" --output text)
 distribution=$(aws cloudformation describe-stacks --region "$FRONTEND_AWS_REGION" --stack-name "$FRONTEND_STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontDistributionId'].OutputValue | [0]" --output text)
 
-npm --prefix frontend ci
+npm --prefix frontend ci --ignore-scripts --registry=https://registry.npmjs.org/
 VITE_API_BASE_URL=/api npm --prefix frontend run build
 aws s3 sync frontend/dist/ "s3://${bucket}/" --delete --region "$FRONTEND_AWS_REGION"
 aws cloudfront create-invalidation --region "$FRONTEND_AWS_REGION" --distribution-id "$distribution" --paths '/*' >/dev/null

@@ -51,7 +51,7 @@ set +e
 aws cloudformation wait change-set-create-complete --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name"
 wait_status=$?
 set -e
-if [ "$wait_status" -ne 0 ]; then
+if [[ $wait_status -ne 0 ]]; then
   change_set_details=$(aws cloudformation describe-change-set \
     --region "$AWS_REGION" \
     --stack-name "$STACK_NAME" \

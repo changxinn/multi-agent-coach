@@ -47,5 +47,11 @@ def test_workflow_deploys_only_after_ci_succeeds_on_the_tested_revision():
     )
     assert "push:" not in workflow
     assert "github.event.workflow_run.conclusion == 'success'" in workflow
+    assert "github.event.workflow_run.event == 'push'" in workflow
+    assert "github.event.workflow_run.head_branch == 'main'" in workflow
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        in workflow
+    )
     assert "github.event.workflow_run.head_sha" in workflow
     assert "ref: ${{ env.DEPLOY_REF }}" in workflow
