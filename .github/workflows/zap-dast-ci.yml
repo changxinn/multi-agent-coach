@@ -30,7 +30,13 @@ jobs:
         run: sudo install -d -m 700 -o 1000 -g 1000 zap-reports
 
       - name: Start the application
-        run: docker compose -p zap-dast up --build -d --wait --wait-timeout 240 api frontend
+        run: |
+          if ! docker compose -p zap-dast up --build -d --wait --wait-timeout 240 api frontend; then
+            docker compose -p zap-dast ps
+            docker compose -p zap-dast logs --no-color --tail 200 \
+              api frontend nutrition-agent nutrition-db
+            exit 1
+          fi
 
       - name: Verify scan targets
         run: |
@@ -67,15 +73,17 @@ jobs:
       - name: Verify ZAP reports
         if: always()
         run: |
-          if [ ! -d zap-reports ]; then
-            echo "ZAP did not create the report directory; inspect the earlier startup or scan step."
-            exit 1
-          fi
+          sudo install -d -m 700 -o 1000 -g 1000 zap-reports
           sudo chown -R "$(id -u):$(id -g)" zap-reports
           sudo chmod -R u+rwX,go-rwx zap-reports
           for target in frontend api; do
-            test -s "zap-reports/$target.html"
-            test -s "zap-reports/$target.json"
+            for extension in html json; do
+              report="zap-reports/$target.$extension"
+              if [ ! -s "$report" ]; then
+                echo "Missing or empty ZAP report: $report"
+                exit 1
+              fi
+            done
           done
 
       - name: Upload ZAP reports
