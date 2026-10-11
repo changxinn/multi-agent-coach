@@ -97,6 +97,24 @@ describe('CompatibilityReviewsPage', () => {
     ))
   })
 
+  it('refreshes the queue and changes pages using the selected filters', async () => {
+    get.mockResolvedValue({ is_nutrition_compatibility_admin: true })
+    post.mockImplementation((endpoint: string, payload: { offset?: number }) => endpoint === '/nutrition/compatibility/review-queue'
+      ? Promise.resolve({ items: [review], total: 60, offset: payload.offset ?? 0, limit: 25 })
+      : Promise.resolve({ items: [] }))
+    renderPage()
+
+    await screen.findByText('Tomatoes, raw')
+    fireEvent.click(screen.getByRole('button', { name: /Refresh/ }))
+    await waitFor(() => expect(post.mock.calls.filter(([endpoint]) => endpoint === '/nutrition/compatibility/review-queue').length).toBeGreaterThan(1))
+
+    fireEvent.click(screen.getByTitle('2'))
+    await waitFor(() => expect(post).toHaveBeenLastCalledWith(
+      '/nutrition/compatibility/review-queue',
+      expect.objectContaining({ offset: 25, limit: 25 }),
+    ))
+  })
+
   it('shows reviewer-profile and queue failures', async () => {
     get.mockRejectedValueOnce(new Error('Profile unavailable'))
     const { unmount } = renderPage()
@@ -156,5 +174,43 @@ describe('CompatibilityReviewsPage', () => {
 
     expect(await screen.findByText('Unable to load history')).toBeTruthy()
     expect(screen.getByText('History unavailable')).toBeTruthy()
+  })
+
+  it('submits a review decision and displays persisted feedback', async () => {
+    get.mockResolvedValue({ is_nutrition_compatibility_admin: true })
+    mockReviewEndpoints()
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    await screen.findByText('Current metadata')
+    fireEvent.click(await screen.findByRole('button', { name: 'Save review decision' }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/compatibility/review', expect.objectContaining({
+      food_cache_id: 7,
+      review_status: 'review_required',
+      allergen_status: 'unknown',
+      evidence: { source: 'USDA ingredient data' },
+    })))
+    expect((await screen.findAllByText('Compatibility decision saved and added to the audit history.')).length).toBeGreaterThan(0)
+  })
+
+  it('displays review submission failures without closing the workspace', async () => {
+    get.mockResolvedValue({ is_nutrition_compatibility_admin: true })
+    mockReviewEndpoints()
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/compatibility/review'
+      ? Promise.reject(new Error('Review save unavailable'))
+      : endpoint === '/nutrition/compatibility/review-queue'
+        ? Promise.resolve({ items: [review], total: 1, offset: 0, limit: 25 })
+        : endpoint === '/nutrition/compatibility/review-detail'
+          ? Promise.resolve(review)
+          : Promise.resolve({ items: [] }))
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Review' }))
+    await screen.findByText('Current metadata')
+    fireEvent.click(await screen.findByRole('button', { name: 'Save review decision' }))
+
+    expect(await screen.findByText('Review save unavailable')).toBeTruthy()
+    expect(screen.getByText('Current metadata')).toBeTruthy()
   })
 })

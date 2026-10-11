@@ -160,3 +160,11 @@ def test_main_revalidates_a_report_path_before_writing(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="relative path"):
         command.main([])
+
+
+def test_write_report_rejects_a_path_outside_the_owned_directory(monkeypatch, tmp_path):
+    command = load_command_module()
+    monkeypatch.setattr(command, "REPORT_OUTPUT_DIRECTORY", tmp_path / "reports")
+
+    with pytest.raises(ValueError, match="relative path"):
+        command.write_report(tmp_path / "outside-report.json", "{}")

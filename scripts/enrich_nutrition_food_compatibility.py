@@ -52,6 +52,14 @@ def validated_report_path(report: Path) -> Path:
     return resolved_path
 
 
+def write_report(report_path: Path, encoded_report: str) -> None:
+    """Write a report only after resolving it beneath the owned directory."""
+    output_path = validated_report_path(report_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = validated_report_path(output_path)
+    output_path.write_text(encoded_report + "\n", encoding="utf-8")  # NOSONAR
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--provider", default="usda")
@@ -196,11 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     report = asyncio.run(main_async(args))
     encoded_report = json.dumps(report, indent=2, sort_keys=True, default=str)
     if args.report:
-        output_path = validated_report_path(args.report)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path = validated_report_path(output_path)
-        # NOSONAR: validated_report_path constrains and revalidates this CLI path.
-        output_path.write_text(encoded_report + "\n", encoding="utf-8")
+        write_report(args.report, encoded_report)
     print(encoded_report)
     return 0
 

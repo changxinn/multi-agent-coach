@@ -1,10 +1,15 @@
 -- Application-owned compatibility metadata, initial reviewed seed, enrichment support, and review audit history.
 -- USDA cache data remains unchanged. Every statement is safe to rerun at Nutrition Agent startup.
+CREATE OR REPLACE FUNCTION nutrition_pending_review_status()
+RETURNS TEXT
+IMMUTABLE
+LANGUAGE sql
+AS $$ SELECT 'pending'::TEXT $$;
+
 CREATE TABLE IF NOT EXISTS nutrition_food_compatibility (
     food_cache_id BIGINT PRIMARY KEY REFERENCES nutrition_food_cache(id) ON DELETE CASCADE,
-    -- NOSONAR: declarative PostgreSQL defaults and constraints cannot share runtime constants.
-    review_status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (review_status IN ('pending', 'approved', 'rejected', 'needs_review')), -- NOSONAR
+    review_status TEXT NOT NULL DEFAULT nutrition_pending_review_status()
+        CHECK (review_status IN (nutrition_pending_review_status(), 'approved', 'rejected', 'needs_review')),
     allergen_status TEXT NOT NULL DEFAULT 'unknown'
         CHECK (allergen_status IN ('unknown', 'known', 'conflicting')),
     known_allergens JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -56,7 +61,7 @@ ALTER TABLE nutrition_food_compatibility
     ADD CONSTRAINT nutrition_food_compatibility_review_status_check
     CHECK (
         review_status IN (
-            'pending', 'auto_classified', 'approved', 'rejected', -- NOSONAR
+            nutrition_pending_review_status(), 'auto_classified', 'approved', 'rejected',
             'needs_review', 'review_required'
         )
     );
