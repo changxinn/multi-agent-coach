@@ -175,6 +175,57 @@ def test_split_sql_statements_preserves_escaped_sql_quotes():
     assert statements == ["INSERT INTO foods VALUES ('Farmer''s; market');"]
 
 
+def test_split_sql_statements_ignores_inline_comments_without_consuming_sql():
+    statements = split_sql_statements(
+        "CREATE TABLE foods (\n"
+        "  name TEXT, -- required by the API\n"
+        "  calories INTEGER\n"
+        "); -- table schema\n"
+        "INSERT INTO foods VALUES ('Beans'); -- seed row\n"
+    )
+
+    assert statements == [
+        "CREATE TABLE foods (\n  name TEXT, \n  calories INTEGER\n);",
+        "INSERT INTO foods VALUES ('Beans');",
+    ]
+
+
+def test_split_sql_statements_preserves_semicolons_in_dollar_quoted_bodies():
+    statements = split_sql_statements(
+        "CREATE FUNCTION nutrition_status() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+        "BEGIN\n"
+        "  PERFORM 1;\n"
+        "  RETURN 'pending';\n"
+        "END;\n"
+        "$$;\n"
+        "SELECT nutrition_status();"
+    )
+
+    assert statements == [
+        (
+            "CREATE FUNCTION nutrition_status() RETURNS TEXT LANGUAGE plpgsql AS $$\n"
+            "BEGIN\n"
+            "  PERFORM 1;\n"
+            "  RETURN 'pending';\n"
+            "END;\n"
+            "$$;"
+        ),
+        "SELECT nutrition_status();",
+    ]
+
+
+def test_all_nutrition_migrations_split_into_executable_statements():
+    migration_dir = (
+        Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"
+    )
+
+    for migration_file in sorted(migration_dir.glob("*.sql")):
+        statements = split_sql_statements(migration_file.read_text(encoding="utf-8-sig"))
+
+        assert statements, migration_file.name
+        assert all(not statement.lstrip().startswith("--") for statement in statements)
+
+
 @pytest.mark.asyncio
 async def test_imported_food_cache_seed_exists_when_sentinel_is_present():
     connection = AsyncMock()

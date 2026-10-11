@@ -54,13 +54,7 @@ async def postgres_session_factory() -> AsyncIterator[async_sessionmaker[AsyncSe
                 content = (migration_dir / migration_name).read_text(
                     encoding="utf-8-sig"
                 )
-                statements = split_sql_statements(
-                    " ".join(
-                        line.strip()
-                        for line in content.splitlines()
-                        if line.strip() and not line.strip().startswith("--")
-                    )
-                )
+                statements = split_sql_statements(content)
                 for statement in statements:
                     await connection.execute(text(statement))
     except (SQLAlchemyError, asyncpg.PostgresError) as error:
