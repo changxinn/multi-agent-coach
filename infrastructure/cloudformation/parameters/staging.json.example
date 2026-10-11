@@ -1,0 +1,11 @@
+[
+  { "ParameterKey": "ProjectName", "ParameterValue": "macoach" },
+  { "ParameterKey": "Environment", "ParameterValue": "staging" },
+  { "ParameterKey": "VpcCidr", "ParameterValue": "10.40.0.0/16" },
+  { "ParameterKey": "ApiMinTasks", "ParameterValue": "2" },
+  { "ParameterKey": "ApiMaxTasks", "ParameterValue": "3" },
+  { "ParameterKey": "EnableDeletionProtection", "ParameterValue": "true" },
+  { "ParameterKey": "AlertEmail", "ParameterValue": "platform-alerts@example.com" },
+  { "ParameterKey": "ApplicationSecretArn", "ParameterValue": "arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:macoach/staging/application-EXAMPLE" },
+  { "ParameterKey": "NutritionSecretArn", "ParameterValue": "arn:aws:secretsmanager:ap-southeast-2:123456789012:secret:macoach/staging/nutrition-EXAMPLE" }
+]

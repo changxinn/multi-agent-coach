@@ -1,0 +1,416 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Staging foundation for Multi-Agent Coach. Deploy registry.yaml before this stack.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: macoach
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging]
+  VpcCidr:
+    Type: String
+    Default: 10.40.0.0/16
+  ApiImage:
+    Type: String
+    Description: Immutable ECR API image URI, including image digest.
+  RecoveryAgentImage:
+    Type: String
+  HeadCoachImage:
+    Type: String
+  SummarizerImage:
+    Type: String
+  NutritionAgentImage:
+    Type: String
+  ApplicationSecretArn:
+    Type: String
+    Description: Secrets Manager ARN containing DATABASE_URL, REDIS_URL, JWT_SECRET_KEY, OPENAI_API_KEY, INTERNAL_SERVICE_TOKEN, and USDA_FDC_API_KEY.
+  NutritionSecretArn:
+    Type: String
+    Description: Secrets Manager ARN containing NUTRITION_INTEGRATION_DATABASE_URL.
+  ApiMinTasks:
+    Type: Number
+    Default: 2
+    MinValue: 2
+    MaxValue: 3
+  ApiMaxTasks:
+    Type: Number
+    Default: 3
+    MinValue: 2
+    MaxValue: 3
+  AlertEmail:
+    Type: String
+    Default: ''
+  EnableDeletionProtection:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+  DeployServices:
+    Type: String
+    Default: 'false'
+    AllowedValues: ['true', 'false']
+    Description: Create ECS services only after runtime database URLs have been populated in Secrets Manager.
+
+Conditions:
+  HasAlertEmail: !Not [!Equals [!Ref AlertEmail, '']]
+  ShouldDeployServices: !Equals [!Ref DeployServices, 'true']
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags: [{ Key: Name, Value: !Sub '${ProjectName}-${Environment}' }]
+  InternetGateway: { Type: AWS::EC2::InternetGateway }
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties: { InternetGatewayId: !Ref InternetGateway, VpcId: !Ref Vpc }
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref Vpc, CidrBlock: 10.40.0.0/24, AvailabilityZone: !Select [0, !GetAZs ''], MapPublicIpOnLaunch: false }
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref Vpc, CidrBlock: 10.40.1.0/24, AvailabilityZone: !Select [1, !GetAZs ''], MapPublicIpOnLaunch: false }
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref Vpc, CidrBlock: 10.40.10.0/24, AvailabilityZone: !Select [0, !GetAZs ''] }
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties: { VpcId: !Ref Vpc, CidrBlock: 10.40.11.0/24, AvailabilityZone: !Select [1, !GetAZs ''] }
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties: { RouteTableId: !Ref PublicRouteTable, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref InternetGateway }
+  PublicAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetA }
+  PublicAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PublicRouteTable, SubnetId: !Ref PublicSubnetB }
+  NatEip: { Type: AWS::EC2::EIP, Properties: { Domain: vpc } }
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    DependsOn: GatewayAttachment
+    Properties: { AllocationId: !GetAtt NatEip.AllocationId, SubnetId: !Ref PublicSubnetA }
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties: { VpcId: !Ref Vpc }
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties: { RouteTableId: !Ref PrivateRouteTable, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref NatGateway }
+  PrivateAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PrivateRouteTable, SubnetId: !Ref PrivateSubnetA }
+  PrivateAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties: { RouteTableId: !Ref PrivateRouteTable, SubnetId: !Ref PrivateSubnetB }
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Public staging API ingress. Restrict to CloudFront before production.
+      VpcId: !Ref Vpc
+      SecurityGroupIngress: [{ IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0 }]
+  ApiSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: API tasks
+      VpcId: !Ref Vpc
+      SecurityGroupIngress: [{ IpProtocol: tcp, FromPort: 8000, ToPort: 8000, SourceSecurityGroupId: !Ref AlbSecurityGroup }]
+  AgentSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Internal agent services callable only by API tasks
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 8001, ToPort: 8001, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 8002, ToPort: 8002, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 8003, ToPort: 8003, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 8004, ToPort: 8004, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+  DataSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS and Redis from ECS tasks
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref AgentSecurityGroup }
+        - { IpProtocol: tcp, FromPort: 6379, ToPort: 6379, SourceSecurityGroupId: !Ref ApiSecurityGroup }
+  DatabaseSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties: { DBSubnetGroupDescription: Staging databases, SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] }
+  CacheSubnetGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties: { Description: Staging cache, SubnetIds: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] }
+  MainDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: '16'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      StorageEncrypted: true
+      DBName: systemdb
+      MasterUsername: main_app
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 7
+      DeletionProtection: !Ref EnableDeletionProtection
+      VPCSecurityGroups: [!GetAtt DataSecurityGroup.GroupId]
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      PubliclyAccessible: false
+  NutritionDatabase:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties:
+      Engine: postgres
+      EngineVersion: '16'
+      DBInstanceClass: db.t4g.micro
+      AllocatedStorage: 20
+      StorageEncrypted: true
+      DBName: nutritiondb
+      MasterUsername: nutrition_agent
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 7
+      DeletionProtection: !Ref EnableDeletionProtection
+      VPCSecurityGroups: [!GetAtt DataSecurityGroup.GroupId]
+      DBSubnetGroupName: !Ref DatabaseSubnetGroup
+      PubliclyAccessible: false
+  Redis:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      Engine: redis
+      CacheNodeType: cache.t4g.micro
+      NumCacheNodes: 1
+      VpcSecurityGroupIds: [!GetAtt DataSecurityGroup.GroupId]
+      CacheSubnetGroupName: !Ref CacheSubnetGroup
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties: { LogGroupName: !Sub '/ecs/${ProjectName}-${Environment}', RetentionInDays: 30 }
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+      ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy]
+      Policies:
+        - PolicyName: ReadRuntimeSecrets
+          PolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Action: ['secretsmanager:GetSecretValue'], Resource: [!Ref ApplicationSecretArn, !Ref NutritionSecretArn] }] }
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: { Version: '2012-10-17', Statement: [{ Effect: Allow, Principal: { Service: ecs-tasks.amazonaws.com }, Action: 'sts:AssumeRole' }] }
+  Cluster: { Type: AWS::ECS::Cluster, Properties: { ClusterName: !Sub '${ProjectName}-${Environment}' } }
+  ServiceNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties: { Name: local, Vpc: !Ref Vpc }
+  RecoveryAgentDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: { Name: recovery-agent, DnsConfig: { DnsRecords: [{ Type: A, TTL: 10 }], NamespaceId: !Ref ServiceNamespace } }
+  HeadCoachDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: { Name: head-coach, DnsConfig: { DnsRecords: [{ Type: A, TTL: 10 }], NamespaceId: !Ref ServiceNamespace } }
+  SummarizerDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: { Name: summarizer, DnsConfig: { DnsRecords: [{ Type: A, TTL: 10 }], NamespaceId: !Ref ServiceNamespace } }
+  NutritionAgentDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties: { Name: nutrition-agent, DnsConfig: { DnsRecords: [{ Type: A, TTL: 10 }], NamespaceId: !Ref ServiceNamespace } }
+  ApiTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-${Environment}-api'
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '1024'
+      Memory: '2048'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ApiImage
+          Essential: true
+          PortMappings: [{ ContainerPort: 8000 }]
+          Environment:
+            - { Name: DEBUG, Value: 'false' }
+            - { Name: SEED_DEMO_USERS, Value: 'false' }
+            - { Name: USE_RECOVERY_AGENT_SERVICE, Value: 'true' }
+            - { Name: RECOVERY_AGENT_URL, Value: 'http://recovery-agent.local:8001' }
+            - { Name: USE_HEAD_COACH_SERVICE, Value: 'true' }
+            - { Name: HEAD_COACH_URL, Value: 'http://head-coach.local:8002' }
+            - { Name: USE_SUMMARIZER_SERVICE, Value: 'true' }
+            - { Name: SUMMARIZER_URL, Value: 'http://summarizer.local:8003' }
+            - { Name: USE_NUTRITION_AGENT_SERVICE, Value: 'true' }
+            - { Name: NUTRITION_AGENT_URL, Value: 'http://nutrition-agent.local:8004' }
+          Secrets:
+            - { Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::' }
+            - { Name: REDIS_URL, ValueFrom: !Sub '${ApplicationSecretArn}:REDIS_URL::' }
+            - { Name: JWT_SECRET_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:JWT_SECRET_KEY::' }
+            - { Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::' }
+            - { Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::' }
+            - { Name: USDA_FDC_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:USDA_FDC_API_KEY::' }
+          LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: api } }
+  RecoveryAgentTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: recovery-agent
+          Image: !Ref RecoveryAgentImage
+          Essential: true
+          PortMappings: [{ ContainerPort: 8001 }]
+          Secrets:
+            - { Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::' }
+            - { Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::' }
+          LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: recovery-agent } }
+  HeadCoachTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: head-coach
+          Image: !Ref HeadCoachImage
+          Essential: true
+          PortMappings: [{ ContainerPort: 8002 }]
+          Secrets:
+            - { Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::' }
+            - { Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::' }
+          LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: head-coach } }
+  SummarizerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: summarizer
+          Image: !Ref SummarizerImage
+          Essential: true
+          PortMappings: [{ ContainerPort: 8003 }]
+          Secrets:
+            - { Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::' }
+            - { Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::' }
+          LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: summarizer } }
+  NutritionAgentTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: nutrition-agent
+          Image: !Ref NutritionAgentImage
+          Essential: true
+          PortMappings: [{ ContainerPort: 8004 }]
+          Environment: [{ Name: RUN_MIGRATIONS, Value: 'false' }]
+          Secrets:
+            - { Name: NUTRITION_DATABASE_URL, ValueFrom: !Sub '${NutritionSecretArn}:NUTRITION_DATABASE_URL::' }
+            - { Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::' }
+            - { Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::' }
+          LogConfiguration: { LogDriver: awslogs, Options: { awslogs-group: !Ref LogGroup, awslogs-region: !Ref 'AWS::Region', awslogs-stream-prefix: nutrition-agent } }
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties: { VpcId: !Ref Vpc, TargetType: ip, Port: 8000, Protocol: HTTP, HealthCheckPath: /health }
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties: { Scheme: internet-facing, Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB], SecurityGroups: [!Ref AlbSecurityGroup] }
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties: { LoadBalancerArn: !Ref LoadBalancer, Port: 80, Protocol: HTTP, DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }] }
+  ApiService:
+    Type: AWS::ECS::Service
+    Condition: ShouldDeployServices
+    DependsOn: Listener
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref ApiTaskDefinition
+      DesiredCount: !Ref ApiMinTasks
+      LaunchType: FARGATE
+      DeploymentConfiguration: { DeploymentCircuitBreaker: { Enable: true, Rollback: true }, MinimumHealthyPercent: 100, MaximumPercent: 200 }
+      NetworkConfiguration: { AwsvpcConfiguration: { AssignPublicIp: DISABLED, SecurityGroups: [!Ref ApiSecurityGroup], Subnets: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] } }
+      LoadBalancers: [{ ContainerName: api, ContainerPort: 8000, TargetGroupArn: !Ref TargetGroup }]
+  RecoveryAgentService:
+    Type: AWS::ECS::Service
+    Condition: ShouldDeployServices
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref RecoveryAgentTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      ServiceRegistries: [{ RegistryArn: !GetAtt RecoveryAgentDiscovery.Arn }]
+      NetworkConfiguration: { AwsvpcConfiguration: { AssignPublicIp: DISABLED, SecurityGroups: [!Ref AgentSecurityGroup], Subnets: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] } }
+  HeadCoachService:
+    Type: AWS::ECS::Service
+    Condition: ShouldDeployServices
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref HeadCoachTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      ServiceRegistries: [{ RegistryArn: !GetAtt HeadCoachDiscovery.Arn }]
+      NetworkConfiguration: { AwsvpcConfiguration: { AssignPublicIp: DISABLED, SecurityGroups: [!Ref AgentSecurityGroup], Subnets: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] } }
+  SummarizerService:
+    Type: AWS::ECS::Service
+    Condition: ShouldDeployServices
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref SummarizerTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      ServiceRegistries: [{ RegistryArn: !GetAtt SummarizerDiscovery.Arn }]
+      NetworkConfiguration: { AwsvpcConfiguration: { AssignPublicIp: DISABLED, SecurityGroups: [!Ref AgentSecurityGroup], Subnets: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] } }
+  NutritionAgentService:
+    Type: AWS::ECS::Service
+    Condition: ShouldDeployServices
+    Properties:
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref NutritionAgentTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      ServiceRegistries: [{ RegistryArn: !GetAtt NutritionAgentDiscovery.Arn }]
+      NetworkConfiguration: { AwsvpcConfiguration: { AssignPublicIp: DISABLED, SecurityGroups: [!Ref AgentSecurityGroup], Subnets: [!Ref PrivateSubnetA, !Ref PrivateSubnetB] } }
+  ApiScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Condition: ShouldDeployServices
+    Properties: { MaxCapacity: !Ref ApiMaxTasks, MinCapacity: !Ref ApiMinTasks, ResourceId: !Sub 'service/${Cluster}/${ApiService.Name}', RoleARN: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService', ScalableDimension: ecs:service:DesiredCount, ServiceNamespace: ecs }
+  ApiCpuScaling:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: ShouldDeployServices
+    Properties: { PolicyName: ApiCpu60Percent, PolicyType: TargetTrackingScaling, ScalingTargetId: !Ref ApiScalingTarget, TargetTrackingScalingPolicyConfiguration: { TargetValue: 60, PredefinedMetricSpecification: { PredefinedMetricType: ECSServiceAverageCPUUtilization }, ScaleInCooldown: 180, ScaleOutCooldown: 60 } }
+  ApiMemoryScaling:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: ShouldDeployServices
+    Properties: { PolicyName: ApiMemory65Percent, PolicyType: TargetTrackingScaling, ScalingTargetId: !Ref ApiScalingTarget, TargetTrackingScalingPolicyConfiguration: { TargetValue: 65, PredefinedMetricSpecification: { PredefinedMetricType: ECSServiceAverageMemoryUtilization }, ScaleInCooldown: 180, ScaleOutCooldown: 60 } }
+  Alerts:
+    Type: AWS::SNS::Topic
+    Properties:
+      Subscription: !If [HasAlertEmail, [{ Endpoint: !Ref AlertEmail, Protocol: email }], !Ref AWS::NoValue]
+
+Outputs:
+  LoadBalancerDnsName: { Value: !GetAtt LoadBalancer.DNSName }
+  ApiHealthUrl: { Value: !Sub 'http://${LoadBalancer.DNSName}/health' }
+  MainDatabaseEndpoint: { Value: !GetAtt MainDatabase.Endpoint.Address }
+  NutritionDatabaseEndpoint: { Value: !GetAtt NutritionDatabase.Endpoint.Address }
+  RedisEndpoint: { Value: !GetAtt Redis.RedisEndpoint.Address }

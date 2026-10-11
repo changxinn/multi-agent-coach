@@ -1,0 +1,85 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private S3 and CloudFront frontend hosting with API forwarding to the staging ALB.
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: macoach
+  Environment:
+    Type: String
+    Default: staging
+    AllowedValues: [staging]
+  ApiLoadBalancerDnsName:
+    Type: String
+    Description: DNS name output by the staging application stack.
+
+Resources:
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
+      PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
+      OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig: { Name: !Sub '${ProjectName}-${Environment}-frontend', OriginAccessControlOriginType: s3, SigningBehavior: always, SigningProtocol: sigv4 }
+  NoCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties:
+      CachePolicyConfig: { Name: !Sub '${ProjectName}-${Environment}-api-no-cache', DefaultTTL: 0, MaxTTL: 0, MinTTL: 0, ParametersInCacheKeyAndForwardedToOrigin: { CookiesConfig: { CookieBehavior: none }, EnableAcceptEncodingBrotli: false, EnableAcceptEncodingGzip: false, HeadersConfig: { HeaderBehavior: none }, QueryStringsConfig: { QueryStringBehavior: none } } }
+  ApiOriginRequestPolicy:
+    Type: AWS::CloudFront::OriginRequestPolicy
+    Properties:
+      OriginRequestPolicyConfig:
+        Name: !Sub '${ProjectName}-${Environment}-api'
+        CookiesConfig: { CookieBehavior: all }
+        HeadersConfig: { HeaderBehavior: whitelist, Headers: [Authorization, Content-Type, Origin] }
+        QueryStringsConfig: { QueryStringBehavior: all }
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2and3
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: frontend-s3
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
+            S3OriginConfig: {}
+          - Id: api-alb
+            DomainName: !Ref ApiLoadBalancerDnsName
+            CustomOriginConfig: { HTTPPort: 80, HTTPSPort: 443, OriginProtocolPolicy: http-only, OriginSSLProtocols: [TLSv1.2] }
+        DefaultCacheBehavior:
+          TargetOriginId: frontend-s3
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [GET, HEAD, OPTIONS]
+          CachedMethods: [GET, HEAD, OPTIONS]
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: api-alb
+            ViewerProtocolPolicy: https-only
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+            CachedMethods: [GET, HEAD, OPTIONS]
+            CachePolicyId: !Ref NoCachePolicy
+            OriginRequestPolicyId: !Ref ApiOriginRequestPolicy
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: cloudfront.amazonaws.com }
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition: { StringEquals: { 'AWS:SourceArn': !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}' } }
+
+Outputs:
+  FrontendBucketName: { Value: !Ref FrontendBucket }
+  CloudFrontDistributionId: { Value: !Ref Distribution }
+  FrontendUrl: { Value: !Sub 'https://${Distribution.DomainName}' }

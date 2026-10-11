@@ -1,0 +1,193 @@
+name: Deploy staging with CloudFormation
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: cloudformation-staging
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ap-southeast-1
+  APPLICATION_AWS_REGION: ap-southeast-1
+  PROJECT_NAME: macoach
+  ENVIRONMENT: staging
+  APPLICATION_STACK_NAME: macoach-staging-v2
+
+jobs:
+  deploy:
+    name: Deploy staging infrastructure and services
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_REF: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.workflow_run.head_sha }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.DEPLOY_REF }}
+
+      - name: Verify deployment role variable is available
+        shell: bash
+        run: |
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_ARN }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_ARN is empty or unavailable to this workflow."
+            exit 1
+          fi
+      
+          echo "AWS_DEPLOY_ROLE_ARN is configured."
+
+      - name: Display safe GitHub OIDC claims for diagnosis
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          response="$(curl --fail --silent --show-error \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sts.amazonaws.com")"
+
+          token="$(python -c 'import json, sys; print(json.load(sys.stdin)["value"])' <<< "$response")"
+
+          TOKEN="$token" python - <<'PY'
+          import base64
+          import json
+          import os
+
+          payload = os.environ["TOKEN"].split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+
+          for key in (
+              "aud",
+              "sub",
+              "repository",
+              "repository_owner",
+              "ref",
+              "ref_type",
+              "workflow",
+              "job_workflow_ref",
+              "environment",
+          ):
+              if key in claims:
+                  print(f"{key}={claims[key]}")
+          PY
+          
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          audience: sts.amazonaws.com
+
+      - name: Resolve AWS account
+        id: account
+        shell: bash
+        run: echo "id=$(aws sts get-caller-identity --query Account --output text)" >> "$GITHUB_OUTPUT"
+
+      - name: Validate staging runtime secret ARNs
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.account.outputs.id }}
+          APPLICATION_SECRET_ARN: ${{ secrets.APPLICATION_SECRET_ARN }}
+          RECOVERY_SECRET_ARN: ${{ secrets.RECOVERY_SECRET_ARN }}
+          NUTRITION_SECRET_ARN: ${{ secrets.NUTRITION_SECRET_ARN }}
+          TRAINING_SECRET_ARN: ${{ secrets.TRAINING_SECRET_ARN }}
+          REDIS_AUTH_TOKEN_SECRET_ARN: ${{ secrets.REDIS_AUTH_TOKEN_SECRET_ARN }}
+        run: bash scripts/validate-staging-secret-arns.sh
+
+      - name: Check whether the staging stack exists
+        id: stack
+        shell: bash
+        run: |
+          if aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$APPLICATION_STACK_NAME" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push service images
+        id: images
+        env:
+          AWS_ACCOUNT_ID: ${{ steps.account.outputs.id }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: bash scripts/build-and-push-images.sh
+
+      - name: Deploy staging stack
+        env:
+          STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+          TEMPLATE_FILE: infrastructure/cloudformation/staging-v2.yaml
+          PARAMETER_OVERRIDES: >-
+            ParameterKey=ProjectName,ParameterValue=${{ env.PROJECT_NAME }}
+            ParameterKey=Environment,ParameterValue=${{ env.ENVIRONMENT }}
+            ParameterKey=FrontendImage,ParameterValue=${{ steps.images.outputs.FRONTEND_IMAGE }}
+            ParameterKey=ApiImage,ParameterValue=${{ steps.images.outputs.API_IMAGE }}
+            ParameterKey=RecoveryAgentImage,ParameterValue=${{ steps.images.outputs.RECOVERY_AGENT_IMAGE }}
+            ParameterKey=HeadCoachImage,ParameterValue=${{ steps.images.outputs.HEAD_COACH_IMAGE }}
+            ParameterKey=SummarizerImage,ParameterValue=${{ steps.images.outputs.SUMMARIZER_IMAGE }}
+            ParameterKey=NutritionAgentImage,ParameterValue=${{ steps.images.outputs.NUTRITION_AGENT_IMAGE }}
+            ParameterKey=TrainingAgentImage,ParameterValue=${{ steps.images.outputs.TRAINING_AGENT_IMAGE }}
+            ParameterKey=DatabaseBootstrapImage,ParameterValue=${{ steps.images.outputs.DATABASE_BOOTSTRAP_IMAGE }}
+            ParameterKey=ApplicationSecretArn,ParameterValue=${{ secrets.APPLICATION_SECRET_ARN }}
+            ParameterKey=RecoverySecretArn,ParameterValue=${{ secrets.RECOVERY_SECRET_ARN }}
+            ParameterKey=NutritionSecretArn,ParameterValue=${{ secrets.NUTRITION_SECRET_ARN }}
+            ParameterKey=TrainingSecretArn,ParameterValue=${{ secrets.TRAINING_SECRET_ARN }}
+            ParameterKey=RedisAuthTokenSecretArn,ParameterValue=${{ secrets.REDIS_AUTH_TOKEN_SECRET_ARN }}
+            ParameterKey=DeployServices,ParameterValue=false
+        run: bash scripts/deploy-cloudformation.sh
+
+      - name: Show failed staging stack events
+        if: ${{ failure() }}
+        shell: bash
+        run: |
+          aws cloudformation describe-stack-events \
+            --region "$AWS_REGION" \
+            --stack-name "$APPLICATION_STACK_NAME" \
+            --query "StackEvents[?ResourceStatus=='CREATE_FAILED' || ResourceStatus=='DELETE_FAILED' || ResourceStatus=='ROLLBACK_FAILED'].[Timestamp,LogicalResourceId,ResourceType,ResourceStatus,ResourceStatusReason]" \
+            --output table || echo "No staging stack events are available."
+
+      - name: Bootstrap isolated runtime databases and secrets
+        env:
+          STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+        run: bash scripts/run-ecs-bootstrap.sh
+
+      - name: Run ordered ECS migrations
+        env:
+          STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+        run: bash scripts/run-ecs-migrations.sh
+
+      - name: Deploy ECS services
+        env:
+          STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+          TEMPLATE_FILE: infrastructure/cloudformation/staging-v2.yaml
+          PARAMETER_OVERRIDES: >-
+            ParameterKey=ProjectName,ParameterValue=${{ env.PROJECT_NAME }}
+            ParameterKey=Environment,ParameterValue=${{ env.ENVIRONMENT }}
+            ParameterKey=FrontendImage,ParameterValue=${{ steps.images.outputs.FRONTEND_IMAGE }}
+            ParameterKey=ApiImage,ParameterValue=${{ steps.images.outputs.API_IMAGE }}
+            ParameterKey=RecoveryAgentImage,ParameterValue=${{ steps.images.outputs.RECOVERY_AGENT_IMAGE }}
+            ParameterKey=HeadCoachImage,ParameterValue=${{ steps.images.outputs.HEAD_COACH_IMAGE }}
+            ParameterKey=SummarizerImage,ParameterValue=${{ steps.images.outputs.SUMMARIZER_IMAGE }}
+            ParameterKey=NutritionAgentImage,ParameterValue=${{ steps.images.outputs.NUTRITION_AGENT_IMAGE }}
+            ParameterKey=TrainingAgentImage,ParameterValue=${{ steps.images.outputs.TRAINING_AGENT_IMAGE }}
+            ParameterKey=DatabaseBootstrapImage,ParameterValue=${{ steps.images.outputs.DATABASE_BOOTSTRAP_IMAGE }}
+            ParameterKey=ApplicationSecretArn,ParameterValue=${{ secrets.APPLICATION_SECRET_ARN }}
+            ParameterKey=RecoverySecretArn,ParameterValue=${{ secrets.RECOVERY_SECRET_ARN }}
+            ParameterKey=NutritionSecretArn,ParameterValue=${{ secrets.NUTRITION_SECRET_ARN }}
+            ParameterKey=TrainingSecretArn,ParameterValue=${{ secrets.TRAINING_SECRET_ARN }}
+            ParameterKey=RedisAuthTokenSecretArn,ParameterValue=${{ secrets.REDIS_AUTH_TOKEN_SECRET_ARN }}
+            ParameterKey=DeployServices,ParameterValue=true
+        run: bash scripts/deploy-cloudformation.sh
+
+      - name: Smoke test frontend and API
+        env:
+          STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+        run: bash scripts/smoke-test-staging.sh

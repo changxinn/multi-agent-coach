@@ -1,0 +1,123 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Clean cost-aware staging v2. Deploy as a new stack; do not replace staging.yaml.
+Parameters:
+  ProjectName: {Type: String, Default: macoach}
+  Environment: {Type: String, Default: staging, AllowedValues: [staging]}
+  FrontendImage: {Type: String}
+  ApiImage: {Type: String}
+  RecoveryAgentImage: {Type: String}
+  HeadCoachImage: {Type: String}
+  SummarizerImage: {Type: String}
+  NutritionAgentImage: {Type: String}
+  TrainingAgentImage: {Type: String}
+  DatabaseBootstrapImage: {Type: String}
+  ApplicationSecretArn: {Type: String}
+  RecoverySecretArn: {Type: String}
+  NutritionSecretArn: {Type: String}
+  TrainingSecretArn: {Type: String}
+  RedisAuthTokenSecretArn: {Type: String, Description: ARN of an existing Secrets Manager JSON secret with a password key for the Redis AUTH token.}
+  DeployServices: {Type: String, Default: 'false', AllowedValues: ['true', 'false']}
+  DbInstanceClass: {Type: String, Default: db.t4g.micro}
+  ApiDesiredCount: {Type: Number, Default: 2, MinValue: 1, Description: API tasks to run for staging load tests.}
+Conditions: {ShouldDeployServices: !Equals [!Ref DeployServices, 'true']}
+Resources:
+  Vpc: {Type: AWS::EC2::VPC, Properties: {CidrBlock: 10.41.0.0/16, EnableDnsHostnames: true, EnableDnsSupport: true}}
+  Igw: {Type: AWS::EC2::InternetGateway}
+  IgwAttachment: {Type: AWS::EC2::VPCGatewayAttachment, Properties: {VpcId: !Ref Vpc, InternetGatewayId: !Ref Igw}}
+  PublicA: {Type: AWS::EC2::Subnet, Properties: {VpcId: !Ref Vpc, CidrBlock: 10.41.0.0/24, AvailabilityZone: !Select [0, !GetAZs '']}}
+  PublicB: {Type: AWS::EC2::Subnet, Properties: {VpcId: !Ref Vpc, CidrBlock: 10.41.1.0/24, AvailabilityZone: !Select [1, !GetAZs '']}}
+  PrivateA: {Type: AWS::EC2::Subnet, Properties: {VpcId: !Ref Vpc, CidrBlock: 10.41.10.0/24, AvailabilityZone: !Select [0, !GetAZs '']}}
+  PrivateB: {Type: AWS::EC2::Subnet, Properties: {VpcId: !Ref Vpc, CidrBlock: 10.41.11.0/24, AvailabilityZone: !Select [1, !GetAZs '']}}
+  PublicRoutes: {Type: AWS::EC2::RouteTable, Properties: {VpcId: !Ref Vpc}}
+  PublicRoute: {Type: AWS::EC2::Route, DependsOn: IgwAttachment, Properties: {RouteTableId: !Ref PublicRoutes, DestinationCidrBlock: 0.0.0.0/0, GatewayId: !Ref Igw}}
+  PublicAssociationA: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PublicA, RouteTableId: !Ref PublicRoutes}}
+  PublicAssociationB: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PublicB, RouteTableId: !Ref PublicRoutes}}
+  NatIp: {Type: AWS::EC2::EIP, Properties: {Domain: vpc}}
+  Nat: {Type: AWS::EC2::NatGateway, DependsOn: IgwAttachment, Properties: {AllocationId: !GetAtt NatIp.AllocationId, SubnetId: !Ref PublicA}}
+  PrivateRoutes: {Type: AWS::EC2::RouteTable, Properties: {VpcId: !Ref Vpc}}
+  PrivateRoute: {Type: AWS::EC2::Route, Properties: {RouteTableId: !Ref PrivateRoutes, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref Nat}}
+  PrivateAssociationA: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PrivateA, RouteTableId: !Ref PrivateRoutes}}
+  PrivateAssociationB: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PrivateB, RouteTableId: !Ref PrivateRoutes}}
+  AlbSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: public ALB, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}]}}
+  TaskSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: ECS tasks, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 8000, ToPort: 8000, SourceSecurityGroupId: !Ref AlbSg}, {IpProtocol: tcp, FromPort: 5174, ToPort: 5174, SourceSecurityGroupId: !Ref AlbSg}]}}
+  TaskSgInternalIngress: {Type: AWS::EC2::SecurityGroupIngress, Properties: {GroupId: !Ref TaskSg, IpProtocol: tcp, FromPort: 8001, ToPort: 8005, SourceSecurityGroupId: !Ref TaskSg}}
+  DbSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: PostgreSQL, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref TaskSg}]}}
+  DbSubnets: {Type: AWS::RDS::DBSubnetGroup, Properties: {DBSubnetGroupDescription: private subnets, SubnetIds: [!Ref PrivateA, !Ref PrivateB]}}
+  RedisSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: Redis sessions from ECS tasks, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 6379, ToPort: 6379, SourceSecurityGroupId: !Ref TaskSg}]}}
+  RedisSubnets: {Type: AWS::ElastiCache::SubnetGroup, Properties: {Description: private Redis subnets, SubnetIds: [!Ref PrivateA, !Ref PrivateB]}}
+  Redis:
+    Type: AWS::ElastiCache::ReplicationGroup
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties: {ReplicationGroupDescription: !Sub '${ProjectName}-${Environment}-v2 highly available shared API sessions', Engine: redis, CacheNodeType: cache.t4g.micro, NumCacheClusters: 2, AutomaticFailoverEnabled: true, MultiAZEnabled: true, CacheSubnetGroupName: !Ref RedisSubnets, SecurityGroupIds: [!Ref RedisSg], AtRestEncryptionEnabled: true, TransitEncryptionEnabled: true, AuthToken: !Sub '{{resolve:secretsmanager:${RedisAuthTokenSecretArn}:SecretString:password}}'}
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Snapshot
+    UpdateReplacePolicy: Snapshot
+    Properties: {Engine: postgres, EngineVersion: '16', DBInstanceClass: !Ref DbInstanceClass, AllocatedStorage: 20, MaxAllocatedStorage: 50, StorageType: gp3, DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}-v2', DBName: postgres, MasterUsername: macoach_admin, ManageMasterUserPassword: true, DBSubnetGroupName: !Ref DbSubnets, VPCSecurityGroups: [!Ref DbSg], PubliclyAccessible: false, MultiAZ: false, BackupRetentionPeriod: 7, StorageEncrypted: true}
+  Cluster: {Type: AWS::ECS::Cluster, Properties: {ClusterName: !Sub '${ProjectName}-${Environment}-v2'}}
+  Logs: {Type: AWS::Logs::LogGroup, Properties: {LogGroupName: !Sub '/ecs/${ProjectName}/${Environment}/v2', RetentionInDays: 30}}
+  ApplicationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy], Policies: [{PolicyName: ReadApplicationSecret, PolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: !Ref ApplicationSecretArn}]}}]}
+  RecoveryExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy], Policies: [{PolicyName: ReadRecoveryServiceSecrets, PolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref ApplicationSecretArn, !Ref RecoverySecretArn]}]}}]}
+  NutritionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy], Policies: [{PolicyName: ReadNutritionServiceSecrets, PolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref ApplicationSecretArn, !Ref NutritionSecretArn]}]}}]}
+  TrainingExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy], Policies: [{PolicyName: ReadTrainingServiceSecrets, PolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!Ref ApplicationSecretArn, !Ref TrainingSecretArn]}]}}]}
+  BootstrapExecutionRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, ManagedPolicyArns: [arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy]}
+  RuntimeRole: {Type: AWS::IAM::Role, Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}}}
+  BootstrapRole:
+    Type: AWS::IAM::Role
+    Properties: {AssumeRolePolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Principal: {Service: ecs-tasks.amazonaws.com}, Action: sts:AssumeRole}]}, Policies: [{PolicyName: BootstrapOnly, PolicyDocument: {Version: '2012-10-17', Statement: [{Effect: Allow, Action: secretsmanager:GetSecretValue, Resource: [!GetAtt Database.MasterUserSecret.SecretArn, !Ref ApplicationSecretArn, !Ref RecoverySecretArn, !Ref NutritionSecretArn, !Ref TrainingSecretArn]}, {Effect: Allow, Action: secretsmanager:PutSecretValue, Resource: [!Ref ApplicationSecretArn, !Ref RecoverySecretArn, !Ref NutritionSecretArn, !Ref TrainingSecretArn]}]}}]}
+  Namespace: {Type: AWS::ServiceDiscovery::PrivateDnsNamespace, Properties: {Name: !Sub '${Environment}.v2.macoach.local', Vpc: !Ref Vpc}}
+  RecoveryDiscovery: {Type: AWS::ServiceDiscovery::Service, Properties: {Name: recovery, DnsConfig: {NamespaceId: !Ref Namespace, DnsRecords: [{Type: A, TTL: 10}]}}}
+  NutritionDiscovery: {Type: AWS::ServiceDiscovery::Service, Properties: {Name: nutrition, DnsConfig: {NamespaceId: !Ref Namespace, DnsRecords: [{Type: A, TTL: 10}]}}}
+  TrainingDiscovery: {Type: AWS::ServiceDiscovery::Service, Properties: {Name: training, DnsConfig: {NamespaceId: !Ref Namespace, DnsRecords: [{Type: A, TTL: 10}]}}}
+  HeadCoachDiscovery: {Type: AWS::ServiceDiscovery::Service, Properties: {Name: head-coach, DnsConfig: {NamespaceId: !Ref Namespace, DnsRecords: [{Type: A, TTL: 10}]}}}
+  SummarizerDiscovery: {Type: AWS::ServiceDiscovery::Service, Properties: {Name: summarizer, DnsConfig: {NamespaceId: !Ref Namespace, DnsRecords: [{Type: A, TTL: 10}]}}}
+  Alb: {Type: AWS::ElasticLoadBalancingV2::LoadBalancer, Properties: {Scheme: internet-facing, Type: application, Subnets: [!Ref PublicA, !Ref PublicB], SecurityGroups: [!Ref AlbSg]}}
+  ApiTarget: {Type: AWS::ElasticLoadBalancingV2::TargetGroup, Properties: {VpcId: !Ref Vpc, Protocol: HTTP, Port: 8000, TargetType: ip, HealthCheckPath: /health}}
+  FrontendTarget: {Type: AWS::ElasticLoadBalancingV2::TargetGroup, Properties: {VpcId: !Ref Vpc, Protocol: HTTP, Port: 5174, TargetType: ip, HealthCheckPath: /}}
+  Listener: {Type: AWS::ElasticLoadBalancingV2::Listener, Properties: {LoadBalancerArn: !Ref Alb, Port: 80, Protocol: HTTP, DefaultActions: [{Type: forward, TargetGroupArn: !Ref FrontendTarget}]}}
+  ApiListenerRule: {Type: AWS::ElasticLoadBalancingV2::ListenerRule, Properties: {ListenerArn: !Ref Listener, Priority: 10, Conditions: [{Field: path-pattern, Values: ['/api', '/api/*']}], Actions: [{Type: forward, TargetGroupArn: !Ref ApiTarget}]}}
+  BootstrapTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt BootstrapExecutionRole.Arn, TaskRoleArn: !GetAtt BootstrapRole.Arn, ContainerDefinitions: [{Name: bootstrap, Image: !Ref DatabaseBootstrapImage, Essential: true, Environment: [{Name: AWS_REGION, Value: !Ref AWS::Region}, {Name: DATABASE_ENDPOINT, Value: !GetAtt Database.Endpoint.Address}, {Name: MASTER_SECRET_ARN, Value: !GetAtt Database.MasterUserSecret.SecretArn}, {Name: APPLICATION_SECRET_ARN, Value: !Ref ApplicationSecretArn}, {Name: RECOVERY_SECRET_ARN, Value: !Ref RecoverySecretArn}, {Name: NUTRITION_SECRET_ARN, Value: !Ref NutritionSecretArn}, {Name: TRAINING_SECRET_ARN, Value: !Ref TrainingSecretArn}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: bootstrap}}}]}}
+  ApiTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: api, Image: !Ref ApiImage, PortMappings: [{ContainerPort: 8000}], Environment: [{Name: REDIS_URL, Value: !Sub 'rediss://:{{resolve:secretsmanager:${RedisAuthTokenSecretArn}:SecretString:password}}@${Redis.PrimaryEndPoint.Address}:${Redis.PrimaryEndPoint.Port}/0'}, {Name: USE_RECOVERY_AGENT_SERVICE, Value: 'true'}, {Name: RECOVERY_AGENT_URL, Value: !Sub 'http://recovery.${Environment}.v2.macoach.local:8001'}, {Name: USE_HEAD_COACH_SERVICE, Value: 'true'}, {Name: HEAD_COACH_URL, Value: !Sub 'http://head-coach.${Environment}.v2.macoach.local:8002'}, {Name: USE_SUMMARIZER_SERVICE, Value: 'true'}, {Name: SUMMARIZER_URL, Value: !Sub 'http://summarizer.${Environment}.v2.macoach.local:8003'}, {Name: USE_NUTRITION_AGENT_SERVICE, Value: 'true'}, {Name: NUTRITION_AGENT_URL, Value: !Sub 'http://nutrition.${Environment}.v2.macoach.local:8004'}, {Name: USE_TRAINING_AGENT_SERVICE, Value: 'true'}, {Name: TRAINING_AGENT_URL, Value: !Sub 'http://training.${Environment}.v2.macoach.local:8005'}], Secrets: [{Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::'}, {Name: JWT_SECRET_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:JWT_SECRET_KEY::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}, {Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: api}}}]}}
+  ApiMigration: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: api-migrate, Image: !Ref ApiImage, Command: [python, -m, app.db.migrate], Secrets: [{Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::'}, {Name: JWT_SECRET_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:JWT_SECRET_KEY::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: migrations}}}]}}
+  RecoveryTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt RecoveryExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: recovery, Image: !Ref RecoveryAgentImage, PortMappings: [{ContainerPort: 8001}], Secrets: [{Name: RECOVERY_DATABASE_URL, ValueFrom: !Sub '${RecoverySecretArn}:RECOVERY_DATABASE_URL::'}, {Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: recovery}}}]}}
+  RecoveryMigration: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt RecoveryExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: recovery-migrate, Image: !Ref RecoveryAgentImage, Command: [python, -m, app.migrate], Secrets: [{Name: RECOVERY_DATABASE_URL, ValueFrom: !Sub '${RecoverySecretArn}:RECOVERY_DATABASE_URL::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: migrations}}}]}}
+  NutritionTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt NutritionExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: nutrition, Image: !Ref NutritionAgentImage, PortMappings: [{ContainerPort: 8004}], Secrets: [{Name: NUTRITION_DATABASE_URL, ValueFrom: !Sub '${NutritionSecretArn}:NUTRITION_DATABASE_URL::'}, {Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: nutrition}}}]}}
+  NutritionMigration: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt NutritionExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: nutrition-migrate, Image: !Ref NutritionAgentImage, Command: [python, -m, app.migrate], Secrets: [{Name: NUTRITION_DATABASE_URL, ValueFrom: !Sub '${NutritionSecretArn}:NUTRITION_DATABASE_URL::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: migrations}}}]}}
+  TrainingTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt TrainingExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: training, Image: !Ref TrainingAgentImage, PortMappings: [{ContainerPort: 8005}], Secrets: [{Name: TRAINING_DATABASE_URL, ValueFrom: !Sub '${TrainingSecretArn}:TRAINING_DATABASE_URL::'}, {Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: training}}}]}}
+  TrainingMigration: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt TrainingExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: training-migrate, Image: !Ref TrainingAgentImage, Command: [python, -m, app.migrate], Secrets: [{Name: TRAINING_DATABASE_URL, ValueFrom: !Sub '${TrainingSecretArn}:TRAINING_DATABASE_URL::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: migrations}}}]}}
+  HeadCoachTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: head-coach, Image: !Ref HeadCoachImage, PortMappings: [{ContainerPort: 8002}], Secrets: [{Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: head-coach}}}]}}
+  SummarizerTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: summarizer, Image: !Ref SummarizerImage, PortMappings: [{ContainerPort: 8003}], Secrets: [{Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: summarizer}}}]}}
+  FrontendTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt BootstrapExecutionRole.Arn, ContainerDefinitions: [{Name: frontend, Image: !Ref FrontendImage, PortMappings: [{ContainerPort: 5174}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: frontend}}}]}}
+  FrontendService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, DependsOn: Listener, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref FrontendTask, DesiredCount: 1, LaunchType: FARGATE, DeploymentConfiguration: {DeploymentCircuitBreaker: {Enable: true, Rollback: true}}, NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}, LoadBalancers: [{ContainerName: frontend, ContainerPort: 5174, TargetGroupArn: !Ref FrontendTarget}]}}
+  ApiService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, DependsOn: ApiListenerRule, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref ApiTask, DesiredCount: !Ref ApiDesiredCount, LaunchType: FARGATE, DeploymentConfiguration: {DeploymentCircuitBreaker: {Enable: true, Rollback: true}}, NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}, LoadBalancers: [{ContainerName: api, ContainerPort: 8000, TargetGroupArn: !Ref ApiTarget}]}}
+  RecoveryService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref RecoveryTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt RecoveryDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
+  NutritionService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref NutritionTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt NutritionDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
+  TrainingService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref TrainingTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt TrainingDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
+  HeadCoachService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref HeadCoachTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt HeadCoachDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
+  SummarizerService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref SummarizerTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt SummarizerDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
+Outputs:
+  LoadBalancerDnsName: {Value: !GetAtt Alb.DNSName}
+  FrontendUrl: {Value: !Sub 'http://${Alb.DNSName}'}
+  ApiHealthUrl: {Value: !Sub 'http://${Alb.DNSName}/api/health'}
+  ClusterName: {Value: !Ref Cluster}
+  PrivateSubnetIds: {Value: !Join [',', [!Ref PrivateA, !Ref PrivateB]]}
+  TaskSecurityGroupId: {Value: !Ref TaskSg}
+  RedisPrimaryEndpoint: {Value: !GetAtt Redis.PrimaryEndPoint.Address}
+  RedisReaderEndpoint: {Value: !GetAtt Redis.ReaderEndPoint.Address}
+  RedisPort: {Value: !GetAtt Redis.PrimaryEndPoint.Port}
+  DatabaseBootstrapTaskDefinitionArn: {Value: !Ref BootstrapTask}
+  ApiMigrationTaskDefinitionArn: {Value: !Ref ApiMigration}
+  RecoveryMigrationTaskDefinitionArn: {Value: !Ref RecoveryMigration}
+  NutritionMigrationTaskDefinitionArn: {Value: !Ref NutritionMigration}
+  TrainingMigrationTaskDefinitionArn: {Value: !Ref TrainingMigration}
