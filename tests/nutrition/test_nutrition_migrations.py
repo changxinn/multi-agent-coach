@@ -220,7 +220,9 @@ def test_all_nutrition_migrations_split_into_executable_statements():
     )
 
     for migration_file in sorted(migration_dir.glob("*.sql")):
-        statements = split_sql_statements(migration_file.read_text(encoding="utf-8-sig"))
+        statements = split_sql_statements(
+            migration_file.read_text(encoding="utf-8-sig")
+        )
 
         assert statements, migration_file.name
         assert all(not statement.lstrip().startswith("--") for statement in statements)
