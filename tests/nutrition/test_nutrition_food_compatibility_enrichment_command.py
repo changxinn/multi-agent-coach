@@ -180,7 +180,9 @@ def test_write_report_rejects_a_path_outside_the_owned_directory(monkeypatch, tm
 @pytest.mark.asyncio
 async def test_main_async_requires_database_url(monkeypatch):
     command = load_command_module()
-    monkeypatch.setattr(command, "Settings", lambda: type("Settings", (), {"DATABASE_URL": ""})())
+    monkeypatch.setattr(
+        command, "Settings", lambda: type("Settings", (), {"DATABASE_URL": ""})()
+    )
 
     with pytest.raises(RuntimeError, match="NUTRITION_DATABASE_URL"):
         await command.main_async(args())
