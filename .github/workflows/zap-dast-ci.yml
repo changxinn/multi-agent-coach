@@ -26,6 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      - name: Prepare ZAP report directory
+        run: sudo install -d -m 700 -o 1000 -g 1000 zap-reports
+
       - name: Start the application
         run: docker compose -p zap-dast up --build -d --wait --wait-timeout 240 api frontend
 
@@ -47,7 +50,6 @@ jobs:
 
       - name: Scan frontend and API documentation
         run: |
-          sudo install -d -m 700 -o 1000 -g 1000 zap-reports
           for target in frontend api; do
             if [ "$target" = frontend ]; then
               url=http://frontend:5174/
@@ -65,6 +67,10 @@ jobs:
       - name: Verify ZAP reports
         if: always()
         run: |
+          if [ ! -d zap-reports ]; then
+            echo "ZAP did not create the report directory; inspect the earlier startup or scan step."
+            exit 1
+          fi
           sudo chown -R "$(id -u):$(id -g)" zap-reports
           sudo chmod -R u+rwX,go-rwx zap-reports
           for target in frontend api; do
