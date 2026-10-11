@@ -64,53 +64,57 @@ def test_llm_submission_rejects_duplicate_compositions_and_primary_foods():
             {"planned_date": "2026-09-22", "meal_type": "lunch"},
         ]
     }
+    duplicate_compositions_submission = {
+        "meals": [
+            {
+                "planned_date": "2026-09-22",
+                "meal_type": "breakfast",
+                "items": [{"selection_token": "token-11", "grams": 300}],
+            },
+            {
+                "planned_date": "2026-09-22",
+                "meal_type": "lunch",
+                "items": [{"selection_token": "token-11", "grams": 250}],
+            },
+        ]
+    }
+    insufficient_variety_submission = {
+        "meals": [
+            {
+                "planned_date": "2026-09-22",
+                "meal_type": "breakfast",
+                "items": [
+                    {"selection_token": "token-11", "grams": 300},
+                    {"selection_token": "token-12", "grams": 50},
+                ],
+            },
+            {
+                "planned_date": "2026-09-22",
+                "meal_type": "lunch",
+                "items": [
+                    {"selection_token": "token-11", "grams": 250},
+                    {"selection_token": "token-13", "grams": 50},
+                ],
+            },
+        ]
+    }
+    duplicate_composition_tokens = {"token-11": 11, "token-12": 12}
+    insufficient_variety_tokens = {"token-11": 11, "token-12": 12, "token-13": 13}
 
     with pytest.raises(MealPlanGenerationError, match="duplicate meal compositions"):
         MealPlanLLMGenerator._validate_submission(
-            {
-                "meals": [
-                    {
-                        "planned_date": "2026-09-22",
-                        "meal_type": "breakfast",
-                        "items": [{"selection_token": "token-11", "grams": 300}],
-                    },
-                    {
-                        "planned_date": "2026-09-22",
-                        "meal_type": "lunch",
-                        "items": [{"selection_token": "token-11", "grams": 250}],
-                    },
-                ]
-            },
+            duplicate_compositions_submission,
             context,
-            {"token-11": 11, "token-12": 12},
+            duplicate_composition_tokens,
         )
 
     with pytest.raises(
         MealPlanGenerationError, match="insufficiently varied primary foods"
     ):
         MealPlanLLMGenerator._validate_submission(
-            {
-                "meals": [
-                    {
-                        "planned_date": "2026-09-22",
-                        "meal_type": "breakfast",
-                        "items": [
-                            {"selection_token": "token-11", "grams": 300},
-                            {"selection_token": "token-12", "grams": 50},
-                        ],
-                    },
-                    {
-                        "planned_date": "2026-09-22",
-                        "meal_type": "lunch",
-                        "items": [
-                            {"selection_token": "token-11", "grams": 250},
-                            {"selection_token": "token-13", "grams": 50},
-                        ],
-                    },
-                ]
-            },
+            insufficient_variety_submission,
             context,
-            {"token-11": 11, "token-12": 12, "token-13": 13},
+            insufficient_variety_tokens,
         )
 
 
@@ -555,15 +559,16 @@ async def test_llm_generator_rejects_a_second_variety_failure(monkeypatch):
         "services.nutrition_agent.app.meal_plan_generator.OpenAI", lambda **_: client
     )
     generator = MealPlanLLMGenerator(Settings(OPENAI_API_KEY="test"), repo)
+    generate_arguments = {
+        "target": {"id": 3},
+        "profile": {},
+        "start_date": date(2026, 9, 22),
+        "end_date": date(2026, 9, 22),
+        "meal_types": ["breakfast", "lunch"],
+    }
 
     with pytest.raises(MealPlanGenerationError, match="duplicate meal compositions"):
-        await generator.generate(
-            target={"id": 3},
-            profile={},
-            start_date=date(2026, 9, 22),
-            end_date=date(2026, 9, 22),
-            meal_types=["breakfast", "lunch"],
-        )
+        await generator.generate(**generate_arguments)
 
     assert client.chat.completions.create.call_count == 3
 
@@ -594,19 +599,20 @@ async def test_llm_generator_logs_sanitized_diagnostics_for_invalid_grams(
         "services.nutrition_agent.app.meal_plan_generator.OpenAI", lambda **_: client
     )
     generator = MealPlanLLMGenerator(Settings(OPENAI_API_KEY="test"), repo)
+    generate_arguments = {
+        "target": {"id": 3},
+        "profile": {"allergies": ["milk"]},
+        "start_date": date(2026, 9, 22),
+        "end_date": date(2026, 9, 22),
+        "meal_types": ["breakfast"],
+        "request_id": "request-456",
+    }
 
     with (
         caplog.at_level("WARNING", logger="uvicorn.error"),
         pytest.raises(MealPlanGenerationError, match="invalid grams"),
     ):
-        await generator.generate(
-            target={"id": 3},
-            profile={"allergies": ["milk"]},
-            start_date=date(2026, 9, 22),
-            end_date=date(2026, 9, 22),
-            meal_types=["breakfast"],
-            request_id="request-456",
-        )
+        await generator.generate(**generate_arguments)
 
     assert "Meal-plan LLM rejected submitted item request_id=request-456" in caplog.text
     assert "planned_date=2026-09-22 meal_type=breakfast" in caplog.text

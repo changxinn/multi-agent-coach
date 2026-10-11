@@ -55,7 +55,7 @@ const targetLabels: Record<string, string> = {
 }
 const targetFieldOrder = Object.keys(targetLabels)
 
-function ProfileTags({ values }: { values?: string[] }) {
+function ProfileTags({ values }: Readonly<{ values?: string[] }>) {
   if (!values?.length) return <Text type="secondary">None saved</Text>
   return <Space size={[4, 4]} wrap>{values.map(value => <Tag key={value}>{profileOptionLabels.get(value) ?? value}</Tag>)}</Space>
 }
@@ -110,7 +110,13 @@ function MealLogTab() {
     client.invalidateQueries({ queryKey: nutritionKey }),
     client.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
   ])
-  const save = useMutation({ mutationFn: (values: MealForm) => { const grams = values.grams; if (!grams) throw new Error('Enter a quantity in grams.'); if (!selectedValue) throw new Error('Select a catalogue food or enter a manual food name.'); const item: Item = selected ? { food_name: selected.description, quantity: grams, unit: 'g', grams, calories: (selected.calories_per_100g ?? 0) * grams / 100, protein_g: (selected.protein_g_per_100g ?? 0) * grams / 100, carbohydrate_g: (selected.carbohydrate_g_per_100g ?? 0) * grams / 100, fat_g: (selected.fat_g_per_100g ?? 0) * grams / 100, fiber_g: (selected.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: selected.id } : { food_name: selectedValue, quantity: grams, unit: 'g', grams, calories: values.calories!, protein_g: values.protein_g!, carbohydrate_g: values.carbohydrate_g!, fat_g: values.fat_g!, fiber_g: values.fiber_g ?? 0, source: 'manual_estimate' }; return api.post('/nutrition/meals', { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [item] }) }, onSuccess: async () => { messageApi.success('Meal logged'); setOpen(false); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
+  const save = useMutation({ mutationFn: (values: MealForm) => {
+    const grams = values.grams
+    if (!grams) throw new Error('Enter a quantity in grams.')
+    if (!selectedValue) throw new Error('Select a catalogue food or enter a manual food name.')
+    const item: Item = selected ? { food_name: selected.description, quantity: grams, unit: 'g', grams, calories: (selected.calories_per_100g ?? 0) * grams / 100, protein_g: (selected.protein_g_per_100g ?? 0) * grams / 100, carbohydrate_g: (selected.carbohydrate_g_per_100g ?? 0) * grams / 100, fat_g: (selected.fat_g_per_100g ?? 0) * grams / 100, fiber_g: (selected.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: selected.id } : { food_name: selectedValue, quantity: grams, unit: 'g', grams, calories: values.calories!, protein_g: values.protein_g!, carbohydrate_g: values.carbohydrate_g!, fat_g: values.fat_g!, fiber_g: values.fiber_g ?? 0, source: 'manual_estimate' }
+    return api.post('/nutrition/meals', { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [item] })
+  }, onSuccess: async () => { messageApi.success('Meal logged'); setOpen(false); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
   const remove = useMutation({ mutationFn: (mealId: number) => api.post('/nutrition/meals/delete', { meal_id: mealId }), onSuccess: async () => { messageApi.success('Meal permanently deleted.'); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
   const columns: ColumnsType<Meal> = [{ title: 'Time', dataIndex: 'eaten_at', render: value => dayjs(value).format('h:mm A') }, { title: 'Meal', dataIndex: 'meal_type' }, { title: 'Items', render: (_, meal) => meal.items.map((item, index) => <div key={`${item.food_cache_id ?? item.food_name}-${index}`}>{item.food_name} <Tag color={item.source === 'usda' ? 'green' : 'gold'}>{item.source === 'usda' ? 'USDA' : 'Estimated'}</Tag></div>) }, { title: 'Actions', render: (_, meal) => <Popconfirm title="Permanently delete this meal?" description="This cannot be undone." onConfirm={() => remove.mutate(meal.id)}><Button size="small" danger loading={remove.isPending && remove.variables === meal.id}>Delete</Button></Popconfirm> }]
   const nutrition = selected && [{ label: 'Calories', per100g: selected.calories_per_100g ?? 0 }, { label: 'Protein (g)', per100g: selected.protein_g_per_100g ?? 0 }, { label: 'Carbohydrates (g)', per100g: selected.carbohydrate_g_per_100g ?? 0 }, { label: 'Fat (g)', per100g: selected.fat_g_per_100g ?? 0 }].map(({ label, per100g }) => ({ key: label, label, children: `${per100g} per 100g \u00b7 ${(per100g * grams / 100).toFixed(1)} per portion` }))

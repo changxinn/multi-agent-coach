@@ -47,11 +47,13 @@ def test_food_compatibility_schema_migration_is_idempotent_and_seeds_only_raw_fo
 
     assert "CREATE TABLE IF NOT EXISTS nutrition_food_compatibility" in migration
     assert "REFERENCES nutrition_food_cache(id) ON DELETE CASCADE" in migration
-    assert "review_status" in migration and "known_allergens" in migration
+    assert "review_status" in migration
+    assert "known_allergens" in migration
     assert "certification" in migration
     assert "description ILIKE '%raw%'" in migration
     assert "input_fingerprint" in migration
-    assert "auto_classified" in migration and "review_required" in migration
+    assert "auto_classified" in migration
+    assert "review_required" in migration
     assert (
         "CREATE TABLE IF NOT EXISTS nutrition_food_compatibility_review_history"
         in migration

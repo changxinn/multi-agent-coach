@@ -111,6 +111,21 @@ def test_report_path_is_resolved_beneath_repository_owned_directory():
     assert parsed.report == command.REPORT_OUTPUT_DIRECTORY / "daily/run.json"
 
 
+def test_report_path_rejects_symlink_that_resolves_outside_report_directory(
+    monkeypatch, tmp_path
+):
+    command = load_command_module()
+    report_directory = tmp_path / "reports"
+    report_directory.mkdir()
+    (report_directory / "escaped").symlink_to(
+        tmp_path / "outside", target_is_directory=True
+    )
+    monkeypatch.setattr(command, "REPORT_OUTPUT_DIRECTORY", report_directory)
+
+    with pytest.raises(SystemExit):
+        command.parse_args(["--report", "escaped/report.json"])
+
+
 @pytest.mark.parametrize("report", ["", ".", "../report.json", "/tmp/report.json"])
 def test_report_path_rejects_absolute_and_traversal_paths(report):
     command = load_command_module()

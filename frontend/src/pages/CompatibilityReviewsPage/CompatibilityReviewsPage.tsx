@@ -58,7 +58,7 @@ function allSuitabilityValues(value: StrictSuitabilityValue) {
   }, {})
 }
 
-function ReviewWorkspace({ foodCacheId }: { foodCacheId: number }) {
+function ReviewWorkspace({ foodCacheId }: Readonly<{ foodCacheId: number }>) {
   const queryClient = useQueryClient()
   const [form] = Form.useForm<ReviewFormValues>()
   const [messageApi, contextHolder] = message.useMessage()
@@ -181,7 +181,7 @@ function ReviewWorkspace({ foodCacheId }: { foodCacheId: number }) {
       <Col xs={24} lg={14}>
         <div ref={reviewDecisionRef}><Card title="Review decision" loading={detail.isLoading}>
           <Alert type="info" showIcon title="Reviewer identity is recorded from your authenticated session." description="Do not include reviewer identity in review data; the server supplies it." style={{ marginBottom: 16 }} />
-          {saveFeedback && <Alert type={saveFeedback.type} showIcon title={saveFeedback.message} closable onClose={() => setSaveFeedback(null)} style={{ marginBottom: 16 }} />}
+          {saveFeedback && <Alert type={saveFeedback.type} showIcon title={saveFeedback.message} closable={{ onClose: () => setSaveFeedback(null) }} style={{ marginBottom: 16 }} />}
           <Form form={form} layout="vertical" onFinish={submit} disabled={detail.isLoading}>
             <Row gutter={16}>
               <Col xs={24} md={12}><Form.Item name="review_status" label="Decision" rules={[{ required: true }]}><Select options={reviewDecisions.map((value) => ({ value, label: humanize(value) }))} /></Form.Item></Col>

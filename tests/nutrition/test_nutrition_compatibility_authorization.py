@@ -34,8 +34,11 @@ def test_require_compatibility_admin_rejects_unconfigured_or_nonmatching_users()
         "nutrition.admin@example.com", settings("nutrition.admin@example.com")
     )
 
+    unconfigured_settings = settings("")
     with pytest.raises(HTTPException) as error:
-        require_nutrition_compatibility_admin("member@example.com", settings(""))
+        require_nutrition_compatibility_admin(
+            "member@example.com", unconfigured_settings
+        )
 
     assert error.value.status_code == 403
     assert error.value.detail == "Compatibility reviewer access is required"

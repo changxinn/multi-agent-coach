@@ -15,6 +15,9 @@ from sqlalchemy.ext.asyncio import create_async_engine
 # Permit direct invocation from the repository root on Windows and Unix shells.
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 REPORT_OUTPUT_DIRECTORY = REPOSITORY_ROOT / "reports" / "nutrition-compatibility"
+REPORT_PATH_ERROR = (
+    "--report must be a relative path beneath reports/nutrition-compatibility"
+)
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
@@ -33,16 +36,11 @@ def report_path(value: str) -> Path:
         or requested_path.is_absolute()
         or ".." in requested_path.parts
     ):
-        raise argparse.ArgumentTypeError(
-            "--report must be a relative path beneath reports/nutrition-compatibility"
-        )
-    output_directory = REPORT_OUTPUT_DIRECTORY.resolve()
-    resolved_path = (output_directory / requested_path).resolve()
-    if not resolved_path.is_relative_to(output_directory):
-        raise argparse.ArgumentTypeError(
-            "--report must be a relative path beneath reports/nutrition-compatibility"
-        )
-    return resolved_path
+        raise argparse.ArgumentTypeError(REPORT_PATH_ERROR)
+    try:
+        return validated_report_path(REPORT_OUTPUT_DIRECTORY / requested_path)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(REPORT_PATH_ERROR) from error
 
 
 def validated_report_path(report: Path) -> Path:
@@ -50,9 +48,7 @@ def validated_report_path(report: Path) -> Path:
     output_directory = REPORT_OUTPUT_DIRECTORY.resolve()
     resolved_path = report.resolve()
     if not resolved_path.is_relative_to(output_directory):
-        raise ValueError(
-            "--report must be a relative path beneath reports/nutrition-compatibility"
-        )
+        raise ValueError(REPORT_PATH_ERROR)
     return resolved_path
 
 
@@ -203,6 +199,7 @@ def main(argv: list[str] | None = None) -> int:
         output_path = validated_report_path(args.report)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path = validated_report_path(output_path)
+        # NOSONAR: validated_report_path constrains and revalidates this CLI path.
         output_path.write_text(encoded_report + "\n", encoding="utf-8")
     print(encoded_report)
     return 0

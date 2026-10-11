@@ -198,17 +198,15 @@ async def test_generate_meal_plan_requires_approved_compatibility_without_saved_
         return_value={"id": 41, "status": "draft"}
     )
 
+    request = MealPlanGenerateRequest(
+        user_id=7,
+        start_date="2026-09-22",
+        end_date="2026-09-22",
+        meal_types=["breakfast"],
+        profile={"allergies": [], "dietary_preferences": ["vegan"]},
+    )
     with pytest.raises(NutritionProfileIncompleteError, match="No approved foods"):
-        await service.generate_meal_plan(
-            7,
-            MealPlanGenerateRequest(
-                user_id=7,
-                start_date="2026-09-22",
-                end_date="2026-09-22",
-                meal_types=["breakfast"],
-                profile={"allergies": [], "dietary_preferences": ["vegan"]},
-            ),
-        )
+        await service.generate_meal_plan(7, request)
 
 
 @pytest.mark.asyncio
@@ -227,17 +225,15 @@ async def test_generate_meal_plan_rejects_unknown_allergens_with_saved_allergies
         }
     )
 
+    request = MealPlanGenerateRequest(
+        user_id=7,
+        start_date="2026-09-22",
+        end_date="2026-09-22",
+        meal_types=["breakfast"],
+        profile={"allergies": ["milk"]},
+    )
     with pytest.raises(NutritionProfileIncompleteError, match="No approved foods"):
-        await service.generate_meal_plan(
-            7,
-            MealPlanGenerateRequest(
-                user_id=7,
-                start_date="2026-09-22",
-                end_date="2026-09-22",
-                meal_types=["breakfast"],
-                profile={"allergies": ["milk"]},
-            ),
-        )
+        await service.generate_meal_plan(7, request)
 
 
 @pytest.mark.asyncio
