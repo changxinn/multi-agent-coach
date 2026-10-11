@@ -66,3 +66,36 @@ def test_strict_constraint_requires_an_explicit_suitable_status():
 
     assert meals[0]["safety_status"] == "blocked"
     assert "not approved for halal" in meals[0]["safety_warnings"][0]
+
+
+def test_missing_profile_requires_review_and_deduplicates_shared_warnings():
+    meals, warnings = assess_meal_plan_safety(
+        [meal(), meal()], None, {1: approved_metadata()}
+    )
+
+    assert [meal["safety_status"] for meal in meals] == [
+        "review_required",
+        "review_required",
+    ]
+    assert warnings == [
+        "Nutrition profile is missing; food safety requires review.",
+        "Nutrition profile is missing; meal safety requires review.",
+    ]
+
+
+def test_alcohol_eligible_food_is_blocked_even_when_compatibility_is_approved():
+    meals, warnings = assess_meal_plan_safety(
+        [meal()],
+        {"allergies": [], "dietary_restrictions": []},
+        {
+            1: {
+                **approved_metadata(),
+                "raw_response": {
+                    "foodNutrients": [{"name": "Alcohol, ethyl", "amount": "2"}]
+                },
+            }
+        },
+    )
+
+    assert meals[0]["safety_status"] == "blocked"
+    assert warnings == ["Oat bar: contains alcohol according to USDA nutrient data."]
