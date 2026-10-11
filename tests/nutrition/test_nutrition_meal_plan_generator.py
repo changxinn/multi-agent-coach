@@ -9,9 +9,11 @@ import pytest
 
 from services.nutrition_agent.app.config import Settings
 from services.nutrition_agent.app.meal_plan_generator import (
+    INSUFFICIENT_PRIMARY_VARIETY_ERROR,
     SYSTEM_PROMPT,
     MealPlanGenerationError,
     MealPlanLLMGenerator,
+    _submission_correction_reason,
 )
 from services.nutrition_agent.app.schemas import MealPlanGenerateRequest
 from services.nutrition_agent.app.service import NutritionService
@@ -33,6 +35,15 @@ def _completion(*calls):
         "tool_calls": [],
     }
     return completion
+
+
+def test_submission_correction_reason_identifies_insufficient_primary_variety():
+    assert (
+        _submission_correction_reason(
+            MealPlanGenerationError(INSUFFICIENT_PRIMARY_VARIETY_ERROR)
+        )
+        == "insufficient_primary_variety"
+    )
 
 
 def approved_metadata(*, allergens=(), strict_suitability=None):

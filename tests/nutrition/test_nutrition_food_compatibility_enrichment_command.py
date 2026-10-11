@@ -1,7 +1,7 @@
 import importlib.util
 from argparse import Namespace
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -103,6 +103,13 @@ def test_argument_validation_rejects_invalid_batch_size():
         command.parse_args(["--batch-size", "0"])
 
 
+def test_argument_validation_rejects_negative_resume_id():
+    command = load_command_module()
+
+    with pytest.raises(SystemExit):
+        command.parse_args(["--resume-after-id", "-1"])
+
+
 def test_report_path_is_resolved_beneath_repository_owned_directory():
     command = load_command_module()
 
@@ -168,3 +175,43 @@ def test_write_report_rejects_a_path_outside_the_owned_directory(monkeypatch, tm
 
     with pytest.raises(ValueError, match="relative path"):
         command.write_report(tmp_path / "outside-report.json", "{}")
+
+
+@pytest.mark.asyncio
+async def test_main_async_requires_database_url(monkeypatch):
+    command = load_command_module()
+    monkeypatch.setattr(command, "Settings", lambda: type("Settings", (), {"DATABASE_URL": ""})())
+
+    with pytest.raises(RuntimeError, match="NUTRITION_DATABASE_URL"):
+        await command.main_async(args())
+
+
+@pytest.mark.asyncio
+async def test_main_async_converts_postgres_url_and_disposes_engine(monkeypatch):
+    command = load_command_module()
+    engine = MagicMock()
+    engine.dispose = AsyncMock()
+    connection = AsyncMock()
+
+    class Begin:
+        async def __aenter__(self):
+            return connection
+
+        async def __aexit__(self, *_):
+            return False
+
+    engine.begin.return_value = Begin()
+    monkeypatch.setattr(
+        command,
+        "Settings",
+        lambda: type("Settings", (), {"DATABASE_URL": "postgresql://nutrition"})(),
+    )
+    create_engine = MagicMock(return_value=engine)
+    monkeypatch.setattr(command, "create_async_engine", create_engine)
+    monkeypatch.setattr(command, "enrich", AsyncMock(return_value={"summary": {}}))
+
+    assert await command.main_async(args()) == {"summary": {}}
+    create_engine.assert_called_once_with(
+        "postgresql+asyncpg://nutrition", pool_pre_ping=True
+    )
+    engine.dispose.assert_awaited_once_with()

@@ -70,6 +70,7 @@ def test_policy_normalises_scalar_aliases_and_nested_allergen_metadata():
         "milk",
         "tree_nuts",
     }
+    assert allergen_values(42) == set()
 
 
 def test_approved_review_requires_complete_known_evidence_backed_decision():

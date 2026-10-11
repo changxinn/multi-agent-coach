@@ -8,6 +8,7 @@ from app.config import get_settings
 from app.services.nutrition_agent_client import (
     NutritionAgentClient,
     NutritionAgentUnavailableError,
+    NutritionCompatibilityReviewError,
     NutritionMealPlanValidationError,
 )
 
@@ -428,3 +429,27 @@ async def test_unsupported_agent_operation_404_is_not_reported_as_missing_resour
         NutritionAgentUnavailableError, match="does not support operation"
     ):
         await NutritionAgentClient().get_nutrition_context(7, date(2026, 9, 22))
+
+
+@pytest.mark.asyncio
+async def test_compatibility_review_client_preserves_validation_details(monkeypatch):
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, url, *, headers, json):
+            return httpx.Response(
+                422,
+                json={"detail": "Evidence is required"},
+                request=httpx.Request("POST", url),
+            )
+
+    monkeypatch.setattr(
+        "app.services.nutrition_agent_client.httpx.AsyncClient", lambda **_: Client()
+    )
+
+    with pytest.raises(NutritionCompatibilityReviewError, match="Evidence is required"):
+        await NutritionAgentClient()._post("compatibility/review", {})
