@@ -194,8 +194,9 @@ def test_active_targets_agent_outage_returns_service_unavailable(nutrition_clien
     assert response.json() == {"detail": "Nutrition service is temporarily unavailable"}
 
 
-def test_profile_save_rejects_unsupported_dietary_fields(nutrition_client):
+def test_profile_save_accepts_and_forwards_dietary_fields(nutrition_client):
     client, service = nutrition_client
+    service.update_profile.return_value = {"user_id": 9}
 
     response = client.post(
         "/api/nutrition/profile/save",
@@ -203,10 +204,46 @@ def test_profile_save_rejects_unsupported_dietary_fields(nutrition_client):
             "sex_for_energy_equation": "female",
             "activity_level": "moderate",
             "nutrition_goal": "maintenance",
-            "allergies": [],
+            "allergies": ["milk"],
             "dietary_preferences": ["vegan"],
+            "dietary_restrictions": ["gluten_free"],
         },
     )
+
+    assert response.status_code == 200
+    service.update_profile.assert_awaited_once_with(
+        9,
+        {
+            "sex_for_energy_equation": "female",
+            "activity_level": "moderate",
+            "nutrition_goal": "maintenance",
+            "dietary_preferences": ["vegan"],
+            "dietary_restrictions": ["gluten_free"],
+            "allergies": ["milk"],
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("dietary_preferences", ["   "]),
+        ("dietary_restrictions", ["x" * 101]),
+        ("allergies", ["   "]),
+    ],
+)
+def test_profile_save_rejects_invalid_dietary_list_entries(
+    nutrition_client, field, value
+):
+    client, service = nutrition_client
+    payload = {
+        "sex_for_energy_equation": "female",
+        "activity_level": "moderate",
+        "nutrition_goal": "maintenance",
+        field: value,
+    }
+
+    response = client.post("/api/nutrition/profile/save", json=payload)
 
     assert response.status_code == 422
     service.update_profile.assert_not_awaited()

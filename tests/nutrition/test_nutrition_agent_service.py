@@ -10,6 +10,7 @@ from services.nutrition_agent.app.agent import (
     SYSTEM_PROMPT,
     TARGETS_UNAVAILABLE_RESPONSE,
     NutritionAgent,
+    format_display_dates,
 )
 from services.nutrition_agent.app.config import (
     REPOSITORY_ROOT,
@@ -18,6 +19,7 @@ from services.nutrition_agent.app.config import (
     settings,
 )
 from services.nutrition_agent.app.main import app, get_service, startup
+from services.nutrition_agent.app.service import NutritionNotFoundError
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +29,7 @@ def disable_migrations_for_http_tests(monkeypatch):
 
 
 def test_settings_load_repository_root_env_file_regardless_of_working_directory():
-    assert REPOSITORY_ROOT == Path(__file__).parents[1]
+    assert REPOSITORY_ROOT == Path(__file__).parents[2]
     assert Settings.model_config["env_file"] == REPOSITORY_ROOT / ".env"
 
 
@@ -80,6 +82,70 @@ def test_health_is_public_and_private_operations_require_token(monkeypatch):
         assert missing_token_response.status_code == 401
         assert wrong_token_response.status_code == 401
         assert ready_response.json()["status"] == "ready"
+
+
+def test_private_compatibility_review_endpoints_delegate_and_translate_errors(
+    monkeypatch,
+):
+    monkeypatch.setattr(settings, "INTERNAL_SERVICE_TOKEN", "test-token")
+    service = AsyncMock()
+    service.get_compatibility_review_queue.return_value = {
+        "items": [{"food_cache_id": 12}]
+    }
+    service.get_compatibility_review_detail.return_value = {"food_cache_id": 12}
+    service.get_compatibility_review_history.return_value = [{"id": 1}]
+    service.review_food_compatibility.return_value = {"review_status": "approved"}
+    app.dependency_overrides[get_service] = lambda: service
+    review = {
+        "food_cache_id": 12,
+        "review_status": "approved",
+        "allergen_status": "known",
+        "known_allergens": [],
+        "strict_suitability": {},
+        "evidence": {"source": "label"},
+        "confidence": "0.9",
+        "policy_version": "compatibility_review_v1",
+        "reviewer_user_id": 44,
+        "reviewer_email": "admin@example.com",
+    }
+    headers = {"X-Internal-Service-Token": "test-token"}
+    try:
+        with TestClient(app) as client:
+            assert client.post(
+                "/v1/nutrition/compatibility/review-queue", json={}, headers=headers
+            ).json() == {"items": [{"food_cache_id": 12}]}
+            assert client.post(
+                "/v1/nutrition/compatibility/review-detail",
+                json={"food_cache_id": 12},
+                headers=headers,
+            ).json() == {"food_cache_id": 12}
+            assert client.post(
+                "/v1/nutrition/compatibility/review-history",
+                json={"food_cache_id": 12},
+                headers=headers,
+            ).json() == {"items": [{"id": 1}]}
+            assert client.post(
+                "/v1/nutrition/compatibility/review", json=review, headers=headers
+            ).json() == {"review_status": "approved"}
+
+            service.get_compatibility_review_detail.side_effect = (
+                NutritionNotFoundError("missing")
+            )
+            missing = client.post(
+                "/v1/nutrition/compatibility/review-detail",
+                json={"food_cache_id": 12},
+                headers=headers,
+            )
+            assert missing.status_code == 404
+
+            service.review_food_compatibility.side_effect = ValueError("invalid review")
+            invalid = client.post(
+                "/v1/nutrition/compatibility/review", json=review, headers=headers
+            )
+            assert invalid.status_code == 422
+            assert invalid.json()["detail"] == "invalid review"
+    finally:
+        app.dependency_overrides.pop(get_service, None)
 
 
 def test_private_agent_calculation_matches_phase_one_contract(monkeypatch):
@@ -168,6 +234,37 @@ def test_nutrition_agent_uses_gpt5_completion_token_parameter(monkeypatch):
     openai_factory.assert_called_once_with(
         api_key="test-key", base_url="https://provider.example/v1"
     )
+
+
+def test_nutrition_agent_formats_iso_dates_for_chat_display():
+    assert format_display_dates("Logged on 2026-09-28.") == "Logged on 28 Sep 2026."
+    assert format_display_dates("Logged at 2026-09-28T10:47:48+08:00 (SGT).") == (
+        "Logged at 28 Sep 2026T10:47:48+08:00 (SGT)."
+    )
+    assert format_display_dates("Target: 2,026 kcal; invalid date: 2026-99-99.") == (
+        "Target: 2,026 kcal; invalid date: 2026-99-99."
+    )
+
+
+def test_nutrition_agent_formats_accepted_model_response_dates(monkeypatch):
+    completion = MagicMock()
+    completion.choices[0].message.content = "Your latest meal was on 2026-09-28."
+    openai_client = MagicMock()
+    openai_client.chat.completions.create.return_value = completion
+    monkeypatch.setattr(
+        "services.nutrition_agent.app.agent.OpenAI", lambda **_: openai_client
+    )
+    configured_settings = Settings(
+        NUTRITION_LLM_ENABLED=True, OPENAI_API_KEY="test-key"
+    )
+
+    response = NutritionAgent(configured_settings).respond(
+        messages=[{"role": "user", "content": "What is my latest meal log?"}],
+        user_profile={},
+        nutrition_context={"date": "2026-09-28"},
+    )
+
+    assert response == "Your latest meal was on 28 Sep 2026."
 
 
 @pytest.mark.parametrize(
@@ -306,6 +403,7 @@ def test_nutrition_agent_allows_read_only_target_advice(monkeypatch):
 
 def test_nutrition_agent_prompt_requires_consistent_target_availability_wording():
     assert "do not say there are no active targets" in SYSTEM_PROMPT
+    assert "DD MMM YYYY" in SYSTEM_PROMPT
 
 
 def test_nutrition_agent_logs_unverified_meal_log_claim_when_debugging_enabled(

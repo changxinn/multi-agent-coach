@@ -37,6 +37,7 @@ export default defineConfig(() => {
       environment: 'jsdom',
       setupFiles: ['./src/test/setup.ts'],
       testTimeout: 15_000,
+      fileParallelism: false,
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov'],

@@ -16,9 +16,13 @@ from app.api.schemas.auth import (
     RegisterRequest,
     TokenResponse,
 )
+from app.config import Settings, get_settings
 from app.db.database import get_db
 from app.db.repositories.user_repo import UserRepository
 from app.services.jwt_service import create_access_token, refresh_token, validate_token
+from app.services.nutrition_compatibility_authorization import (
+    is_nutrition_compatibility_admin,
+)
 from app.services.training_agent_client import (
     TrainingAgentClient,
     TrainingAgentUnavailableError,
@@ -29,6 +33,19 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 security = HTTPBearer()
+
+
+def authenticated_user_response(user, settings: Settings) -> dict:
+    """Build user data, deriving reviewer access from server configuration."""
+    return {
+        "id": user.id,
+        "email": user.email,
+        "name": user.name,
+        "user_image": None,
+        "is_nutrition_compatibility_admin": is_nutrition_compatibility_admin(
+            user.email, settings
+        ),
+    }
 
 
 def get_training_agent() -> TrainingAgentClient:
@@ -86,12 +103,7 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(
         access_token=token,
         token_type="bearer",
-        user={
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "user_image": None,
-        },
+        user=authenticated_user_response(user, get_settings()),
     )
 
 
@@ -142,12 +154,7 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     return TokenResponse(
         access_token=token,
         token_type="bearer",
-        user={
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "user_image": None,
-        },
+        user=authenticated_user_response(user, get_settings()),
     )
 
 
@@ -175,6 +182,9 @@ async def refresh_token_endpoint(
                 "email": payload["email"],
                 "name": payload["name"],
                 "user_image": payload.get("user_image"),
+                "is_nutrition_compatibility_admin": is_nutrition_compatibility_admin(
+                    payload["email"], get_settings()
+                ),
             },
         )
 
@@ -256,6 +266,9 @@ async def get_profile(
         "id": current_user["id"],
         "email": current_user["email"],
         "name": current_user["name"],
+        "is_nutrition_compatibility_admin": is_nutrition_compatibility_admin(
+            current_user["email"], get_settings()
+        ),
         "fitness_profile": profile,
     }
 
@@ -293,5 +306,8 @@ async def update_profile(
         "id": current_user["id"],
         "email": current_user["email"],
         "name": current_user["name"],
+        "is_nutrition_compatibility_admin": is_nutrition_compatibility_admin(
+            current_user["email"], get_settings()
+        ),
         "fitness_profile": profile,
     }

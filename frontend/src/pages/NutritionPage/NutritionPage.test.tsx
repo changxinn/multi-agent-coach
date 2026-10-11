@@ -137,4 +137,26 @@ describe('NutritionPage', () => {
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/adherence', expect.any(Object)))
     expect(screen.getByText('Last 7 days')).toBeTruthy()
   }, 30_000)
+
+  it('generates a meal-plan draft with an idempotency key and displays generation failures', async () => {
+    const originalCrypto = globalThis.crypto
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => 'meal-plan-key' } })
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meal-plans/generate'
+      ? Promise.reject(new Error('Generation unavailable'))
+      : defaultPost(endpoint))
+    renderPage()
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Plans' }))
+    const generateButtons = await screen.findAllByRole('button', { name: 'Generate meal plan' })
+    fireEvent.click(generateButtons[generateButtons.length - 1])
+    fireEvent.click(await screen.findByRole('button', { name: 'Generate draft' }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith(
+      '/nutrition/meal-plans/generate',
+      expect.objectContaining({ meal_types: ['breakfast', 'lunch', 'dinner'] }),
+      { headers: { 'Idempotency-Key': 'meal-plan-key' } },
+    ))
+    expect(await screen.findByText('Generation unavailable')).toBeTruthy()
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: originalCrypto })
+  }, 30_000)
 })

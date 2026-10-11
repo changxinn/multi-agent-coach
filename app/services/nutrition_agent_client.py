@@ -27,6 +27,10 @@ class NutritionMealPlanValidationError(Exception):
     """The Nutrition Agent rejected a meal-plan safety or lifecycle operation."""
 
 
+class NutritionCompatibilityReviewError(Exception):
+    """The Nutrition Agent rejected a compatibility review operation."""
+
+
 class NutritionAgentClient:
     """Forwards authenticated gateway operations; mutation calls are never retried."""
 
@@ -107,6 +111,8 @@ class NutritionAgentClient:
                 "meal-plans/generate",
             }:
                 raise NutritionMealPlanValidationError(detail)
+            if path.startswith("compatibility/"):
+                raise NutritionCompatibilityReviewError(detail)
             raise NutritionProfileIncompleteError(detail)
         if response.status_code == 503:
             raise NutritionFoodDataError(
@@ -184,6 +190,39 @@ class NutritionAgentClient:
 
     async def get_food_catalogue(self, user_id: int) -> list[dict[str, Any]]:
         return (await self._post("foods/catalogue", {"user_id": user_id}))["items"]
+
+    async def get_compatibility_review_queue(self, payload: Any) -> dict[str, Any]:
+        return await self._post(
+            "compatibility/review-queue", payload.model_dump(mode="json")
+        )
+
+    async def get_compatibility_review_detail(
+        self, food_cache_id: int
+    ) -> dict[str, Any]:
+        return await self._post(
+            "compatibility/review-detail", {"food_cache_id": food_cache_id}
+        )
+
+    async def get_compatibility_review_history(
+        self, food_cache_id: int
+    ) -> list[dict[str, Any]]:
+        return (
+            await self._post(
+                "compatibility/review-history", {"food_cache_id": food_cache_id}
+            )
+        )["items"]
+
+    async def review_food_compatibility(
+        self, payload: Any, *, reviewer_user_id: int, reviewer_email: str
+    ) -> dict[str, Any]:
+        return await self._post(
+            "compatibility/review",
+            {
+                **payload.model_dump(mode="json"),
+                "reviewer_user_id": reviewer_user_id,
+                "reviewer_email": reviewer_email,
+            },
+        )
 
     async def create_meal_plan(
         self,

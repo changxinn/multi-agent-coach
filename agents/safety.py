@@ -68,7 +68,8 @@ SECRET_PATTERNS = [
 ]
 PII_PATTERNS = [
     r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b",
-    r"\b(?:\+?\d[\d .()-]{7,}\d)\b",
+    # Exclude structured calendar dates that otherwise resemble phone numbers.
+    r"(?<!\w)(?!(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})(?!\w))(?:\+?\d[\d .()-]{7,}\d)(?!\w)",
     r"\b(?:\d[ -]*?){13,19}\b",  # payment-card-like sequence
 ]
 

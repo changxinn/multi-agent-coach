@@ -7,7 +7,12 @@ from agents.routing import (
     heuristic_route,
     parse_llm_agents,
 )
-from agents.safety import check_input_safety, check_output_safety, redact_sensitive_data
+from agents.safety import (
+    check_input_safety,
+    check_output_safety,
+    guard_output_messages,
+    redact_sensitive_data,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -116,6 +121,27 @@ def test_output_sensitive_data_is_redacted():
     decision = check_output_safety(text)
     assert decision.action == "redact"
     assert redact_sensitive_data(text) == "Contact [redacted] for help."
+
+
+def test_output_calendar_date_is_not_treated_as_sensitive_data():
+    text = "Logged at 10:47:48 on 2026-09-28 (SGT)."
+
+    decision = check_output_safety(text)
+
+    assert decision.action == "proceed"
+    assert redact_sensitive_data(text) == text
+    assert guard_output_messages([{"role": "assistant", "content": text}]) == [
+        {"role": "assistant", "content": text}
+    ]
+
+
+def test_output_phone_number_remains_sensitive_data():
+    text = "Call +65 9123 4567 for help."
+
+    decision = check_output_safety(text)
+
+    assert decision.action == "redact"
+    assert redact_sensitive_data(text) == "Call [redacted] for help."
 
 
 def test_unsafe_output_is_replaced():

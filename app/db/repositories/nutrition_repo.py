@@ -27,11 +27,6 @@ class NutritionRepository:
     async def upsert_profile(
         self, user_id: int, values: dict[str, Any]
     ) -> dict[str, Any]:
-        values = {
-            **values,
-            "dietary_preferences": [],
-            "dietary_restrictions": [],
-        }
         result = await self.db.execute(
             text("""
                 INSERT INTO systemdb.user_fitness_profiles (

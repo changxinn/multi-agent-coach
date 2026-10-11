@@ -16,6 +16,7 @@ export const PageIds = {
   Nutrition: 'nutrition',
   Training: 'training',
   MyProfile: 'my-profile',
+  CompatibilityReviews: 'compatibility-reviews',
 } as const
 
 export type PageId = typeof PageIds[keyof typeof PageIds]

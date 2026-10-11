@@ -1,5 +1,5 @@
 import { PageIds, Routes, Sections, type PageId, type RoutePath, type Section } from '@/lib/constants'
-import { Bot, CircleUser, ClipboardList, Dumbbell, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
+import { Bot, CircleUser, ClipboardCheck, ClipboardList, Dumbbell, LayoutDashboard, Salad, Table, type LucideIcon } from 'lucide-react'
 
 export const DEFAULT_ICON_SIZE = 20
 
@@ -60,6 +60,13 @@ export const routePages: RoutePage[] = [
     path: Routes.RecoveryTable,
     section: Sections.Review,
     icon: Table,
+  },
+  {
+    id: PageIds.CompatibilityReviews,
+    label: 'Compatibility Reviews',
+    path: Routes.CompatibilityReviews,
+    section: Sections.Review,
+    icon: ClipboardCheck,
   },
 ]
 

@@ -1,8 +1,10 @@
 """Deterministic safety assessment for persisted meal-plan content."""
 
-from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
+
+from .food_compatibility_policy import compatibility_failure_reason
+from .meal_plan_eligibility import is_eligible_for_meal_plan
 
 
 @dataclass(frozen=True)
@@ -17,7 +19,6 @@ def assess_meal_plan_safety(
     foods_by_id: dict[int, dict[str, Any]],
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Assign server-owned safety statuses without treating missing data as safe."""
-    allergies = _normalise_values(profile, "allergies")
     assessed_meals: list[dict[str, Any]] = []
     plan_warnings: list[str] = []
 
@@ -26,7 +27,7 @@ def assess_meal_plan_safety(
             "Nutrition profile is missing; food safety requires review."
         )
     for meal in planned_meals:
-        assessment = _assess_meal(meal, profile is not None, allergies, foods_by_id)
+        assessment = _assess_meal(meal, profile, foods_by_id)
         assessed_meals.append(
             {
                 **meal,
@@ -41,13 +42,12 @@ def assess_meal_plan_safety(
 
 def _assess_meal(
     meal: dict[str, Any],
-    has_profile: bool,
-    allergies: set[str],
+    profile: dict[str, Any] | None,
     foods_by_id: dict[int, dict[str, Any]],
 ) -> MealSafetyAssessment:
     warnings: list[str] = []
     blocked: list[str] = []
-    if not has_profile:
+    if profile is None:
         warnings.append("Nutrition profile is missing; meal safety requires review.")
     for item in meal["items"]:
         food_id = item.get("food_cache_id")
@@ -56,48 +56,14 @@ def _assess_meal(
         if food is None:
             warnings.append(f"{name}: no cached allergen metadata; review required.")
             continue
-        if food.get("allergen_status") != "known":
-            warnings.append(f"{name}: allergen metadata is unknown; review required.")
-            continue
-        matches = allergies & _normalise_allergen_data(food.get("allergen_data"))
-        if matches:
-            blocked.append(
-                f"{name}: conflicts with confirmed allergy {', '.join(sorted(matches))}."
-            )
+        reason = compatibility_failure_reason(food, profile)
+        if reason:
+            blocked.append(f"{name}: {reason}.")
+        elif not is_eligible_for_meal_plan(food):
+            blocked.append(f"{name}: contains alcohol according to USDA nutrient data.")
 
     if blocked:
         return MealSafetyAssessment("blocked", blocked + warnings)
     if warnings:
         return MealSafetyAssessment("review_required", warnings)
     return MealSafetyAssessment("safe", [])
-
-
-def _normalise_values(profile: dict[str, Any] | None, field: str) -> set[str]:
-    if not profile:
-        return set()
-    values = profile.get(field) or []
-    return {_normalise(value) for value in values if _normalise(value)}
-
-
-def _normalise_allergen_data(value: Any) -> set[str]:
-    return {
-        normalised
-        for text in _strings(value)
-        for normalised in (_normalise(text),)
-        if normalised
-    }
-
-
-def _strings(value: Any) -> Iterable[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for nested in value.values():
-            yield from _strings(nested)
-    elif isinstance(value, list):
-        for nested in value:
-            yield from _strings(nested)
-
-
-def _normalise(value: Any) -> str:
-    return " ".join(str(value).casefold().replace("_", " ").split())

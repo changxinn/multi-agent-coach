@@ -36,6 +36,7 @@ export interface AuthResponse {
     email: string
     name: string
     user_image: string | null
+    is_nutrition_compatibility_admin: boolean
   }
 }
 

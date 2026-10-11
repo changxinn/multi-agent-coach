@@ -230,14 +230,139 @@ class NutritionRepository:
         if not food_cache_ids:
             return {}
         statement = text("""
-            SELECT id, allergen_data, allergen_status
-            FROM nutrition_food_cache
-            WHERE id IN :food_cache_ids
+            SELECT f.id, f.raw_response,
+                   c.review_status, c.allergen_status,
+                   c.known_allergens, c.strict_suitability
+            FROM nutrition_food_cache f
+            LEFT JOIN nutrition_food_compatibility c ON c.food_cache_id = f.id
+            WHERE f.id IN :food_cache_ids
         """).bindparams(bindparam("food_cache_ids", expanding=True))
         result = await self.db.execute(
             statement, {"food_cache_ids": sorted(food_cache_ids)}
         )
         return {row["id"]: dict(row) for row in result.mappings().all()}
+
+    async def list_compatibility_review_queue(
+        self, statuses: list[str], query: str | None, offset: int, limit: int
+    ) -> dict[str, Any]:
+        search_query = query.strip() if query and query.strip() else None
+        search_predicate = (
+            "AND f.description ILIKE '%' || :query || '%'" if search_query else ""
+        )
+        count_statement = text(f"""
+            SELECT COUNT(*)
+            FROM nutrition_food_compatibility c
+            JOIN nutrition_food_cache f ON f.id = c.food_cache_id
+            WHERE c.review_status IN :statuses
+            {search_predicate}
+        """).bindparams(bindparam("statuses", expanding=True))
+        statement = text(f"""
+            SELECT f.id AS food_cache_id, f.provider, f.provider_food_id, f.description,
+                   f.raw_response, c.review_status, c.allergen_status, c.known_allergens,
+                   c.strict_suitability, c.evidence, c.confidence, c.classifier_version,
+                   c.policy_version, c.review_note, c.updated_at
+            FROM nutrition_food_compatibility c
+            JOIN nutrition_food_cache f ON f.id = c.food_cache_id
+            WHERE c.review_status IN :statuses
+            {search_predicate}
+            ORDER BY LOWER(f.description) ASC, f.id ASC
+            OFFSET :offset LIMIT :limit
+        """).bindparams(bindparam("statuses", expanding=True))
+        parameters: dict[str, Any] = {
+            "statuses": statuses,
+            "offset": offset,
+            "limit": limit,
+        }
+        if search_query:
+            parameters["query"] = search_query
+        total = (await self.db.execute(count_statement, parameters)).scalar_one()
+        result = await self.db.execute(statement, parameters)
+        rows = [dict(row) for row in result.mappings().all()]
+        return {"items": rows, "total": total, "offset": offset, "limit": limit}
+
+    async def get_compatibility_review_detail(
+        self, food_cache_id: int
+    ) -> dict[str, Any] | None:
+        result = await self.db.execute(
+            text("""
+            SELECT f.id AS food_cache_id, f.provider, f.provider_food_id, f.description,
+                   f.raw_response, c.review_status, c.allergen_status, c.known_allergens,
+                   c.strict_suitability, c.evidence, c.confidence, c.classifier_version,
+                   c.policy_version, c.review_note, c.reviewer_user_id, c.reviewer_email,
+                   c.reviewed_at, c.created_at, c.updated_at
+            FROM nutrition_food_compatibility c JOIN nutrition_food_cache f ON f.id = c.food_cache_id
+            WHERE c.food_cache_id = :food_cache_id
+        """),
+            {"food_cache_id": food_cache_id},
+        )
+        row = result.mappings().first()
+        return dict(row) if row else None
+
+    async def list_compatibility_review_history(
+        self, food_cache_id: int
+    ) -> list[dict[str, Any]]:
+        result = await self.db.execute(
+            text("""
+            SELECT id, food_cache_id, prior_review_status, result_review_status, metadata_snapshot,
+                   reviewer_user_id, reviewer_email, review_note, reviewed_at
+            FROM nutrition_food_compatibility_review_history WHERE food_cache_id = :food_cache_id
+            ORDER BY reviewed_at DESC, id DESC
+        """),
+            {"food_cache_id": food_cache_id},
+        )
+        return [dict(row) for row in result.mappings().all()]
+
+    async def review_food_compatibility(
+        self, payload: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        existing = await self.get_compatibility_review_detail(payload["food_cache_id"])
+        if existing is None:
+            return None
+        metadata = {
+            key: payload[key]
+            for key in (
+                "allergen_status",
+                "known_allergens",
+                "strict_suitability",
+                "evidence",
+                "confidence",
+                "classifier_version",
+                "policy_version",
+            )
+        }
+        await self.db.execute(
+            text("""
+            UPDATE nutrition_food_compatibility SET review_status = :review_status,
+                allergen_status = :allergen_status, known_allergens = CAST(:known_allergens AS jsonb),
+                strict_suitability = CAST(:strict_suitability AS jsonb), evidence = CAST(:evidence AS jsonb),
+                confidence = :confidence, classifier_version = :classifier_version, policy_version = :policy_version,
+                review_note = :review_note, reviewer_user_id = :reviewer_user_id,
+                reviewer_email = :reviewer_email, reviewed_by = :reviewer_email,
+                reviewed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+            WHERE food_cache_id = :food_cache_id
+        """),
+            {
+                **payload,
+                "known_allergens": json.dumps(payload["known_allergens"]),
+                "strict_suitability": json.dumps(payload["strict_suitability"]),
+                "evidence": json.dumps(payload["evidence"]),
+            },
+        )
+        await self.db.execute(
+            text("""
+            INSERT INTO nutrition_food_compatibility_review_history
+                (food_cache_id, prior_review_status, result_review_status, metadata_snapshot,
+                 reviewer_user_id, reviewer_email, review_note)
+            VALUES (:food_cache_id, :prior_review_status, :review_status, CAST(:metadata AS jsonb),
+                    :reviewer_user_id, :reviewer_email, :review_note)
+        """),
+            {
+                **payload,
+                "prior_review_status": existing["review_status"],
+                "metadata": json.dumps(metadata, default=str),
+            },
+        )
+        return await self.get_compatibility_review_detail(payload["food_cache_id"])
 
     async def get_target_snapshot(
         self, user_id: int, target_snapshot_id: int

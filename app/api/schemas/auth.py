@@ -81,4 +81,5 @@ class CurrentUserProfileResponse(BaseModel):
     id: int
     email: str
     name: str
+    is_nutrition_compatibility_admin: bool = False
     fitness_profile: FitnessProfileResponse

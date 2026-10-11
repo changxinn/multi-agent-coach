@@ -15,7 +15,7 @@ type Item = { food_name: string; quantity: number; unit: string; grams?: number;
 type Meal = { id: number; eaten_at: string; meal_type: string; notes?: string; items: Item[] }
 type Summary = { calories: number; protein_g: number; carbohydrate_g: number; fat_g: number; fiber_g: number; meal_count: number; calorie_adherence_pct?: number; protein_adherence_pct?: number; remaining: Record<string, number | null>; target?: { calorie_target_kcal: number; protein_target_g: number; carbohydrate_target_g: number; fat_target_g: number; fiber_target_g: number } }
 type ActiveTarget = NonNullable<Summary['target']>
-type Profile = { sex_for_energy_equation: string; activity_level: string; nutrition_goal: 'maintenance' | 'fat_loss' | 'muscle_gain' | 'performance'; allergies: string[] }
+type Profile = { sex_for_energy_equation: string; activity_level: string; nutrition_goal: 'maintenance' | 'fat_loss' | 'muscle_gain' | 'performance'; dietary_preferences: string[]; dietary_restrictions: string[]; allergies: string[] }
 type PlannedMeal = { id?: number; planned_date: string; meal_type: string; calorie_target_kcal: number; protein_target_g: number; carbohydrate_target_g: number; fat_target_g: number; fiber_target_g: number; items: Item[]; safety_status?: 'safe' | 'review_required' | 'blocked'; safety_warnings?: string[] }
 type MealPlan = { id: number; target_snapshot_id: number; start_date: string; end_date: string; version: number; status: 'draft' | 'active' | 'archived' | 'superseded'; generated_plan: Record<string, unknown>; safety_warnings: string[]; safety_review_acknowledged_at?: string | null; created_at: string; updated_at: string; planned_meals?: PlannedMeal[] }
 type MealPlanGenerateInput = { start_date: string; end_date: string; meal_types: string[] }
@@ -29,6 +29,36 @@ export const idempotencyKey = (): string => {
 const allergyOptions = [
   ['milk', 'Milk'], ['eggs', 'Eggs'], ['peanuts', 'Peanuts'], ['tree_nuts', 'Tree nuts'], ['soy', 'Soy'], ['wheat', 'Wheat'], ['fish', 'Fish'], ['shellfish', 'Shellfish'], ['sesame', 'Sesame'],
 ] as const
+const dietaryPreferenceOptions = [
+  ['vegetarian', 'Vegetarian'], ['vegan', 'Vegan'], ['pescatarian', 'Pescatarian'], ['mediterranean', 'Mediterranean'], ['plant_forward', 'Plant-forward'], ['high_protein', 'High-protein'], ['low_carb', 'Low-carb'], ['whole_food_focused', 'Whole-food focused'], ['spicy_food', 'Spicy food'], ['budget_friendly', 'Budget-friendly'], ['quick_prep_meals', 'Quick-prep meals'],
+] as const
+const dietaryRestrictionOptions = [
+  ['gluten_free', 'Gluten-free'], ['dairy_free', 'Dairy-free'], ['egg_free', 'Egg-free'], ['soy_free', 'Soy-free'], ['nut_free', 'Nut-free'], ['halal', 'Halal'], ['kosher', 'Kosher'], ['low_sodium', 'Low sodium'], ['low_fodmap', 'Low FODMAP'], ['no_pork', 'No pork'], ['no_beef', 'No beef'], ['alcohol_free', 'Alcohol-free'],
+] as const
+const profileOptionLabels = new Map<string, string>([
+  ...allergyOptions,
+  ...dietaryPreferenceOptions,
+  ...dietaryRestrictionOptions,
+])
+const targetLabels: Record<string, string> = {
+  id: 'Target ID',
+  bmr_kcal: 'BMR (kcal)',
+  tdee_kcal: 'TDEE (kcal)',
+  calorie_target_kcal: 'Target Calories (kcal)',
+  protein_target_g: 'Target Protein (g)',
+  carbohydrate_target_g: 'Target Carbohydrates (g)',
+  fat_target_g: 'Target Fat (g)',
+  fiber_target_g: 'Target Fiber (g)',
+  effective_from: 'Effective From',
+  effective_to: 'Effective To',
+  calculation_method: 'Calculation Method',
+}
+const targetFieldOrder = Object.keys(targetLabels)
+
+function ProfileTags({ values }: Readonly<{ values?: string[] }>) {
+  if (!values?.length) return <Text type="secondary">None saved</Text>
+  return <Space size={[4, 4]} wrap>{values.map(value => <Tag key={value}>{profileOptionLabels.get(value) ?? value}</Tag>)}</Space>
+}
 
 function TabIntroduction({ description, children }: Readonly<{ description: string; children: ReactNode }>) {
   return <Space orientation="vertical" size="large" style={{ width: '100%' }}><Text type="secondary">{description}</Text>{children}</Space>
@@ -36,12 +66,38 @@ function TabIntroduction({ description, children }: Readonly<{ description: stri
 
 function TodayTab() {
   const summary = useQuery({ queryKey: [...nutritionKey, 'summary', date()], queryFn: () => api.post<Summary>('/nutrition/daily-summary', { date: date() }) })
+  const activePlan = useQuery({ queryKey: [...nutritionKey, 'meal-plans', 'active', date()], queryFn: () => api.post<{ meal_plan: MealPlan | null }>('/nutrition/meal-plans/active', { date: date() }) })
+  const meals = useQuery({ queryKey: [...nutritionKey, 'meals', date()], queryFn: () => api.post<{ items: Meal[] }>('/nutrition/meals/list', { date: date() }) })
   if (summary.isError) return <Alert type="error" showIcon title={(summary.error as Error).message} />
   const data = summary.data
   const cards = [{ label: 'Calories', value: data?.calories, target: data?.target?.calorie_target_kcal, remaining: data?.remaining.calories }, { label: 'Protein (g)', value: data?.protein_g, target: data?.target?.protein_target_g, remaining: data?.remaining.protein_g }, { label: 'Carbs (g)', value: data?.carbohydrate_g, target: data?.target?.carbohydrate_target_g, remaining: data?.remaining.carbohydrate_g }, { label: 'Fat (g)', value: data?.fat_g, target: data?.target?.fat_target_g, remaining: data?.remaining.fat_g }]
+  const plannedMealTypes = [...new Set(activePlan.data?.meal_plan?.planned_meals?.filter(meal => meal.planned_date === date()).map(meal => meal.meal_type) || [])]
+  const loggedMealTypes = new Set(meals.data?.items.map(meal => meal.meal_type) || [])
+  const loggedPlannedMealCount = plannedMealTypes.filter(mealType => loggedMealTypes.has(mealType)).length
+  const mealLoggingAdherence = plannedMealTypes.length ? loggedPlannedMealCount / plannedMealTypes.length * 100 : 0
+  let mealLoggingContent: ReactNode
+  if (activePlan.isError || meals.isError) {
+    mealLoggingContent = <Alert type="warning" showIcon title="Meal logging adherence is unavailable" description="We could not load today’s active plan or meal log." />
+  } else if (!activePlan.data?.meal_plan) {
+    mealLoggingContent = <Text type="secondary">No active meal plan covers today, so meal logging adherence is unavailable.</Text>
+  } else if (!plannedMealTypes.length) {
+    mealLoggingContent = <Text type="secondary">Your active meal plan has no planned meal slots for today.</Text>
+  } else {
+    mealLoggingContent = <Space orientation="vertical" style={{ width: '100%' }}>
+      <Text>{loggedPlannedMealCount} of {plannedMealTypes.length} planned meal types logged</Text>
+      <Progress percent={mealLoggingAdherence} format={percent => `${Math.round(percent || 0)}%`} />
+      <Space size={[4, 4]} wrap>{plannedMealTypes.map(mealType => {
+        const logged = loggedMealTypes.has(mealType)
+        return <Tag color={logged ? 'green' : 'default'} key={mealType}>{mealType.charAt(0).toUpperCase() + mealType.slice(1)} — {logged ? 'Logged' : 'Not logged'}</Tag>
+      })}</Space>
+    </Space>
+  }
   return <Space orientation="vertical" size="large" style={{ width: '100%' }}>
     <Row gutter={[16, 16]}>{cards.map(card => <Col xs={24} sm={12} lg={6} key={card.label}><Card loading={summary.isLoading}><Statistic title={card.label} value={card.value ?? 0} suffix={card.target ? ` / ${card.target}` : ''} /><Text type="secondary">Remaining: {card.remaining ?? 'Set targets'}</Text></Card></Col>)}</Row>
     <Card title="Today’s adherence" loading={summary.isLoading}><Row gutter={24}><Col span={12}><Text>Calories</Text><Progress percent={Math.min(Number(data?.calorie_adherence_pct ?? 0), 100)} /></Col><Col span={12}><Text>Protein</Text><Progress percent={Math.min(Number(data?.protein_adherence_pct ?? 0), 100)} /></Col></Row><Divider /><Text type="secondary">{data?.meal_count ?? 0} meal(s) logged today. Values above 100% mean the target was exceeded.</Text></Card>
+    <Card title="Meal logging adherence" loading={activePlan.isLoading || meals.isLoading}>
+      {mealLoggingContent}
+    </Card>
   </Space>
 }
 function MealLogTab() {
@@ -54,10 +110,16 @@ function MealLogTab() {
     client.invalidateQueries({ queryKey: nutritionKey }),
     client.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
   ])
-  const save = useMutation({ mutationFn: (values: MealForm) => { const grams = values.grams; if (!selectedValue) throw new Error('Select a catalogue food or enter a manual food name.'); const item: Item = selected ? { food_name: selected.description, quantity: grams, unit: 'g', grams, calories: Number(selected.calories_per_100g) * grams / 100, protein_g: Number(selected.protein_g_per_100g) * grams / 100, carbohydrate_g: Number(selected.carbohydrate_g_per_100g) * grams / 100, fat_g: Number(selected.fat_g_per_100g) * grams / 100, fiber_g: Number(selected.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: selected.id } : { food_name: selectedValue, quantity: grams, unit: 'g', grams, calories: values.calories!, protein_g: values.protein_g!, carbohydrate_g: values.carbohydrate_g!, fat_g: values.fat_g!, fiber_g: values.fiber_g ?? 0, source: 'manual_estimate' }; return api.post('/nutrition/meals', { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [item] }) }, onSuccess: async () => { messageApi.success('Meal logged'); setOpen(false); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
+  const save = useMutation({ mutationFn: (values: MealForm) => {
+    const grams = values.grams
+    if (!grams) throw new Error('Enter a quantity in grams.')
+    if (!selectedValue) throw new Error('Select a catalogue food or enter a manual food name.')
+    const item: Item = selected ? { food_name: selected.description, quantity: grams, unit: 'g', grams, calories: (selected.calories_per_100g ?? 0) * grams / 100, protein_g: (selected.protein_g_per_100g ?? 0) * grams / 100, carbohydrate_g: (selected.carbohydrate_g_per_100g ?? 0) * grams / 100, fat_g: (selected.fat_g_per_100g ?? 0) * grams / 100, fiber_g: (selected.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: selected.id } : { food_name: selectedValue, quantity: grams, unit: 'g', grams, calories: values.calories!, protein_g: values.protein_g!, carbohydrate_g: values.carbohydrate_g!, fat_g: values.fat_g!, fiber_g: values.fiber_g ?? 0, source: 'manual_estimate' }
+    return api.post('/nutrition/meals', { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [item] })
+  }, onSuccess: async () => { messageApi.success('Meal logged'); setOpen(false); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
   const remove = useMutation({ mutationFn: (mealId: number) => api.post('/nutrition/meals/delete', { meal_id: mealId }), onSuccess: async () => { messageApi.success('Meal permanently deleted.'); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
   const columns: ColumnsType<Meal> = [{ title: 'Time', dataIndex: 'eaten_at', render: value => dayjs(value).format('h:mm A') }, { title: 'Meal', dataIndex: 'meal_type' }, { title: 'Items', render: (_, meal) => meal.items.map((item, index) => <div key={`${item.food_cache_id ?? item.food_name}-${index}`}>{item.food_name} <Tag color={item.source === 'usda' ? 'green' : 'gold'}>{item.source === 'usda' ? 'USDA' : 'Estimated'}</Tag></div>) }, { title: 'Actions', render: (_, meal) => <Popconfirm title="Permanently delete this meal?" description="This cannot be undone." onConfirm={() => remove.mutate(meal.id)}><Button size="small" danger loading={remove.isPending && remove.variables === meal.id}>Delete</Button></Popconfirm> }]
-  const nutrition = selected && [{ label: 'Calories', per100g: Number(selected.calories_per_100g) }, { label: 'Protein (g)', per100g: Number(selected.protein_g_per_100g) }, { label: 'Carbohydrates (g)', per100g: Number(selected.carbohydrate_g_per_100g) }, { label: 'Fat (g)', per100g: Number(selected.fat_g_per_100g) }].map(({ label, per100g }) => ({ key: label, label, children: `${per100g} per 100g \u00b7 ${(per100g * grams / 100).toFixed(1)} per portion` }))
+  const nutrition = selected && [{ label: 'Calories', per100g: selected.calories_per_100g ?? 0 }, { label: 'Protein (g)', per100g: selected.protein_g_per_100g ?? 0 }, { label: 'Carbohydrates (g)', per100g: selected.carbohydrate_g_per_100g ?? 0 }, { label: 'Fat (g)', per100g: selected.fat_g_per_100g ?? 0 }].map(({ label, per100g }) => ({ key: label, label, children: `${per100g} per 100g \u00b7 ${(per100g * grams / 100).toFixed(1)} per portion` }))
   return (
     <>
       <Space style={{ marginBottom: 16 }}><Button type="primary" onClick={() => { form.resetFields(); setCatalogueSession(session => session + 1); setOpen(true) }}>Log meal</Button><Button onClick={() => meals.refetch()}>Refresh</Button></Space>
@@ -69,6 +131,7 @@ function MealLogTab() {
         <Form form={form} layout="vertical" initialValues={{ meal_type: 'lunch', grams: 100 }} onFinish={save.mutate}>
           <Form.Item name="meal_type" label="Meal" rules={[{ required: true }]}><Select options={['breakfast', 'lunch', 'dinner', 'snack'].map(value => ({ value }))} /></Form.Item>
           <Form.Item name="food" label="Food" rules={[{ required: true, message: 'Select a USDA food or type a manual food name' }]}><Select mode="tags" maxCount={1} showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())} loading={catalogue.isFetching} options={(catalogue.data?.items ?? []).map(food => ({ value: food.provider_food_id, label: food.description }))} placeholder="Search local USDA catalogue or type a manual food" /></Form.Item>
+          <Form.Item name="grams" label="Quantity (g)" rules={[{ required: true, message: 'Enter the quantity in grams' }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
           {selected && <Descriptions size="small" title="Verified USDA nutrients" items={nutrition ?? []} />}
           {isManual && <>
             <Alert type="warning" showIcon title="Manual estimate: enter every macro explicitly. Zero is accepted when intentional." style={{ margin: '16px 0' }} />
@@ -82,7 +145,56 @@ function MealLogTab() {
 }
 
 function ProfileTab() {
-  const client = useQueryClient(); const [form] = Form.useForm(); const [messageApi, holder] = message.useMessage(); const profile = useQuery({ queryKey: [...nutritionKey, 'profile'], queryFn: () => api.post<Profile>('/nutrition/profile/get', {}) }); const targets = useQuery({ queryKey: [...nutritionKey, 'targets'], queryFn: () => api.post<Partial<ActiveTarget>>('/nutrition/targets/active', {}) }); const save = useMutation({ mutationFn: (values: Profile) => api.post('/nutrition/profile/save', values), onSuccess: async () => { messageApi.success('Profile saved. Review and apply new targets separately.'); await client.invalidateQueries({ queryKey: nutritionKey }) }, onError: (e: Error) => messageApi.error(e.message) }); const apply = useMutation({ mutationFn: () => api.post('/nutrition/targets/calculate', { confirm_apply: true }), onSuccess: async () => { messageApi.success('Targets applied'); await client.invalidateQueries({ queryKey: nutritionKey }) }, onError: (e: Error) => messageApi.error(e.message.includes('Missing required fitness profile data') ? <>Complete your age, weight, and height in <a href={Routes.MyProfile}>My Profile</a> before applying targets.</> : e.message) }); const hasActiveTarget = Boolean(targets.data && Object.keys(targets.data).length); useEffect(() => { if (profile.data) form.setFieldsValue(profile.data) }, [form, profile.data]); return <>{holder}{profile.isError && <Alert type="error" title={(profile.error as Error).message} />}{targets.isError && <Alert type="error" showIcon title="Unable to load active targets" description={(targets.error as Error).message} style={{ marginBottom: 16 }} />}{targets.data && !hasActiveTarget && <Alert type="info" showIcon title="No active nutrition targets" description="Complete your profile and calculate and apply targets to start tracking your nutrition goals." style={{ marginBottom: 16 }} />}{hasActiveTarget && <Card title="Active targets" style={{ marginBottom: 16 }}><Descriptions items={Object.entries(targets.data ?? {}).filter(([, value]) => typeof value === 'number').map(([label, value]) => ({ key: label, label, children: value }))} /></Card>}<Card title="Profile & targets" loading={profile.isLoading}><Form form={form} layout="vertical" onFinish={save.mutate}><Row gutter={16}><Col span={8}><Form.Item name="sex_for_energy_equation" label="Sex for energy equation" rules={[{ required: true }]}><Select options={[{ value: 'female', label: 'Female' }, { value: 'male', label: 'Male' }]} /></Form.Item></Col><Col span={8}><Form.Item name="activity_level" label="Activity level" rules={[{ required: true }]}><Select options={[{ value: 'sedentary', label: 'Sedentary' }, { value: 'light', label: 'Light activity' }, { value: 'moderate', label: 'Moderate activity' }, { value: 'very_active', label: 'Very active' }, { value: 'extra_active', label: 'Extra active' }]} /></Form.Item></Col><Col span={8}><Form.Item name="nutrition_goal" label="Goal" rules={[{ required: true }]}><Select options={[{ value: 'maintenance', label: 'Maintenance' }, { value: 'fat_loss', label: 'Lose weight' }, { value: 'muscle_gain', label: 'Gain muscle' }, { value: 'performance', label: 'Performance' }]} /></Form.Item></Col></Row><Form.Item name="allergies" label="Allergies"><Select mode="multiple" options={allergyOptions.map(([value, label]) => ({ value, label }))} /></Form.Item><Space><Button type="primary" htmlType="submit" loading={save.isPending}>Save profile</Button><Button onClick={() => apply.mutate()} loading={apply.isPending}>Calculate & apply targets</Button></Space></Form></Card></> }
+  const client = useQueryClient()
+  const [form] = Form.useForm<Profile>()
+  const [messageApi, holder] = message.useMessage()
+  const profile = useQuery({ queryKey: [...nutritionKey, 'profile'], queryFn: () => api.post<Profile>('/nutrition/profile/get', {}) })
+  const targets = useQuery({ queryKey: [...nutritionKey, 'targets'], queryFn: () => api.post<Partial<ActiveTarget>>('/nutrition/targets/active', {}) })
+  const save = useMutation({ mutationFn: (values: Profile) => api.post('/nutrition/profile/save', values), onSuccess: async () => { messageApi.success('Profile saved. Review and apply new targets separately.'); await client.invalidateQueries({ queryKey: nutritionKey }) }, onError: (e: Error) => messageApi.error(e.message) })
+  const apply = useMutation({ mutationFn: () => api.post('/nutrition/targets/calculate', { confirm_apply: true }), onSuccess: async () => { messageApi.success('Targets applied'); await client.invalidateQueries({ queryKey: nutritionKey }) }, onError: (e: Error) => messageApi.error(e.message.includes('Missing required fitness profile data') ? <>Complete your age, weight, and height in <a href={Routes.MyProfile}>My Profile</a> before applying targets.</> : e.message) })
+  const hasActiveTarget = Boolean(targets.data && Object.keys(targets.data).length)
+
+  useEffect(() => {
+    if (profile.data) form.setFieldsValue({
+      ...profile.data,
+      dietary_preferences: profile.data.dietary_preferences ?? [],
+      dietary_restrictions: profile.data.dietary_restrictions ?? [],
+      allergies: profile.data.allergies ?? [],
+    })
+  }, [form, profile.data])
+
+  return <>
+    {holder}
+    {profile.isError && <Alert type="error" title={(profile.error as Error).message} />}
+    {targets.isError && <Alert type="error" showIcon title="Unable to load active targets" description={(targets.error as Error).message} style={{ marginBottom: 16 }} />}
+    {targets.data && !hasActiveTarget && <Alert type="info" showIcon title="No active nutrition targets" description="Complete your profile and calculate and apply targets to start tracking your nutrition goals." style={{ marginBottom: 16 }} />}
+    {hasActiveTarget && <Card title="Active targets" style={{ marginBottom: 16 }}>
+      <Descriptions column={{ xs: 1, sm: 2 }} items={targetFieldOrder.flatMap(key => {
+        const value = targets.data?.[key as keyof ActiveTarget]
+        return value == null ? [] : [{ key, label: targetLabels[key], children: String(value) }]
+      })} />
+      <Divider>Saved dietary profile</Divider>
+      <Descriptions column={1} items={[
+        { key: 'dietary_preferences', label: 'Dietary Preferences', children: <ProfileTags values={profile.data?.dietary_preferences} /> },
+        { key: 'dietary_restrictions', label: 'Dietary Restrictions', children: <ProfileTags values={profile.data?.dietary_restrictions} /> },
+        { key: 'allergies', label: 'Allergies', children: <ProfileTags values={profile.data?.allergies} /> },
+      ]} />
+    </Card>}
+    <Card title="Profile & targets" loading={profile.isLoading}>
+      <Form form={form} layout="vertical" onFinish={save.mutate}>
+        <Row gutter={16}>
+          <Col span={8}><Form.Item name="sex_for_energy_equation" label="Sex for energy equation" rules={[{ required: true }]}><Select options={[{ value: 'female', label: 'Female' }, { value: 'male', label: 'Male' }]} /></Form.Item></Col>
+          <Col span={8}><Form.Item name="activity_level" label="Activity level" rules={[{ required: true }]}><Select options={[{ value: 'sedentary', label: 'Sedentary' }, { value: 'light', label: 'Light activity' }, { value: 'moderate', label: 'Moderate activity' }, { value: 'very_active', label: 'Very active' }, { value: 'extra_active', label: 'Extra active' }]} /></Form.Item></Col>
+          <Col span={8}><Form.Item name="nutrition_goal" label="Goal" rules={[{ required: true }]}><Select options={[{ value: 'maintenance', label: 'Maintenance' }, { value: 'fat_loss', label: 'Lose weight' }, { value: 'muscle_gain', label: 'Gain muscle' }, { value: 'performance', label: 'Performance' }]} /></Form.Item></Col>
+        </Row>
+        <Form.Item name="dietary_preferences" label="Dietary preferences" extra="Choose one or more options, or press Enter to add your own."><Select mode="tags" options={dietaryPreferenceOptions.map(([value, label]) => ({ value, label }))} placeholder="Choose or add preferences" /></Form.Item>
+        <Form.Item name="dietary_restrictions" label="Dietary restrictions" extra="Choose one or more options, or press Enter to add your own."><Select mode="tags" options={dietaryRestrictionOptions.map(([value, label]) => ({ value, label }))} placeholder="Choose or add restrictions" /></Form.Item>
+        <Form.Item name="allergies" label="Allergies"><Select mode="multiple" options={allergyOptions.map(([value, label]) => ({ value, label }))} /></Form.Item>
+        <Space><Button type="primary" htmlType="submit" loading={save.isPending}>Save profile</Button><Button onClick={() => apply.mutate()} loading={apply.isPending}>Calculate & apply targets</Button></Space>
+      </Form>
+    </Card>
+  </>
+}
 const statusColor: Record<MealPlan['status'], string> = { draft: 'gold', active: 'green', archived: 'default', superseded: 'blue' }
 const safetyColor: Record<NonNullable<PlannedMeal['safety_status']>, string> = { safe: 'green', review_required: 'gold', blocked: 'red' }
 

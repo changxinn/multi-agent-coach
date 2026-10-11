@@ -20,6 +20,7 @@ type UserProfile = {
   id: number
   email: string
   name: string
+  is_nutrition_compatibility_admin: boolean
   fitness_profile: FitnessProfile
 }
 

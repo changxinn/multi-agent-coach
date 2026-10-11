@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # Disabled by default so development-only credentials are never seeded implicitly.
     SEED_DEMO_USERS: bool = False
+    # A single explicit compatibility reviewer; empty means no user is authorized.
+    NUTRITION_COMPATIBILITY_ADMIN_EMAIL: str = ""
 
     # ===========================================
     # JWT Configuration

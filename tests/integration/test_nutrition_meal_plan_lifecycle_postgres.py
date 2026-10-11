@@ -104,7 +104,7 @@ async def test_confirm_supersedes_overlaps_but_retains_non_overlapping_active_pl
 
 
 @pytest.mark.asyncio
-async def test_confirmation_rechecks_persisted_allergen_data_and_leaves_draft(
+async def test_confirmation_rechecks_persisted_compatibility_and_leaves_draft(
     postgres_session_factory,
 ):
     async with postgres_session_factory() as session:
@@ -114,12 +114,24 @@ async def test_confirmation_rechecks_persisted_allergen_data_and_leaves_draft(
             await session.execute(
                 text("""
             INSERT INTO nutrition_food_cache (
-                provider, provider_food_id, description, allergen_data, allergen_status, raw_response
-            ) VALUES ('test', :provider_food_id, 'Oats', '{"contains": []}', 'known', '{}') RETURNING id
+                provider, provider_food_id, description, raw_response
+            ) VALUES ('test', :provider_food_id, 'Oats', '{}') RETURNING id
         """),
                 {"provider_food_id": f"meal-plan-safety-oats-{uuid4()}"},
             )
         ).scalar_one()
+        await session.execute(
+            text("""
+            INSERT INTO nutrition_food_compatibility (
+                food_cache_id, review_status, allergen_status, known_allergens,
+                strict_suitability, evidence, reviewed_by, reviewed_at
+            ) VALUES (
+                :food_id, 'approved', 'known', '[]'::jsonb, '{}'::jsonb,
+                '{"source":"integration test"}'::jsonb, 'integration_test', CURRENT_TIMESTAMP
+            )
+            """),
+            {"food_id": food_id},
+        )
         await session.commit()
         draft = await create_draft(
             session,
@@ -127,7 +139,11 @@ async def test_confirmation_rechecks_persisted_allergen_data_and_leaves_draft(
         )
         await session.execute(
             text(
-                'UPDATE nutrition_food_cache SET allergen_data = \'{"contains": ["milk"]}\' WHERE id = :id'
+                """
+                UPDATE nutrition_food_compatibility
+                SET known_allergens = '["milk"]'::jsonb, updated_at = CURRENT_TIMESTAMP
+                WHERE food_cache_id = :id
+                """
             ),
             {"id": food_id},
         )

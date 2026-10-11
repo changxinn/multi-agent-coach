@@ -57,7 +57,7 @@ async def test_browse_food_catalogue_binds_non_empty_search_parameter():
 
 def test_foundation_catalogue_seed_is_complete_and_idempotent():
     migration = (
-        Path(__file__).parents[1]
+        Path(__file__).parents[2]
         / "services/nutrition_agent/app/db/migrations/002_seed_nutrition_foundation_food_cache.sql"
     ).read_text(encoding="utf-8")
 
@@ -69,7 +69,7 @@ def test_foundation_catalogue_seed_is_complete_and_idempotent():
 
 def test_imported_food_cache_seeds_are_batched_and_idempotent():
     migration_dir = (
-        Path(__file__).parents[1] / "services/nutrition_agent/app/db/migrations"
+        Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"
     )
     seeds = [
         migration_dir / "003_seed_nutrition_food_cache.sql",
