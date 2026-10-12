@@ -173,3 +173,63 @@ def test_deploy_stops_when_stack_lookup_is_not_authorized(tmp_path: Path):
         in result.stderr
     )
     assert "--change-set-type" not in calls
+
+
+def test_deploy_refuses_an_update_that_replaces_the_application_alb(tmp_path: Path):
+    calls = tmp_path / "aws-calls"
+    aws = tmp_path / "aws"
+    aws.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\\n' "$*" >> "$AWS_CALLS"
+case "$2" in
+  validate-template|create-change-set)
+    exit 0
+    ;;
+  describe-stacks)
+    echo UPDATE_COMPLETE
+    ;;
+  wait)
+    [[ "$3" == change-set-create-complete ]] && exit 0
+    exit 74
+    ;;
+  describe-change-set)
+    if [[ "$*" == *"length(@)"* ]]; then
+      echo 1
+    else
+      echo '[]'
+    fi
+    ;;
+  execute-change-set)
+    echo 'The replacement guard did not stop execution' >&2
+    exit 75
+    ;;
+  *)
+    echo "Unexpected AWS command: $*" >&2
+    exit 76
+    ;;
+esac
+"""
+    )
+    aws.chmod(0o755)
+    environment = {
+        **os.environ,
+        "PATH": f"{tmp_path}:{os.environ['PATH']}",
+        "AWS_CALLS": str(calls),
+        "AWS_REGION": "ap-southeast-1",
+        "STACK_NAME": "macoach-staging-v2",
+        "TEMPLATE_FILE": "infrastructure/cloudformation/staging-v2.yaml",
+        "PARAMETER_OVERRIDES": "ParameterKey=ProjectName,ParameterValue=macoach",
+    }
+
+    result = subprocess.run(
+        ["bash", str(SCRIPT)],
+        capture_output=True,
+        check=False,
+        text=True,
+        env=environment,
+    )
+
+    assert result.returncode == 1
+    assert "it would replace Alb" in result.stderr
+    assert "execute-change-set" not in calls.read_text()

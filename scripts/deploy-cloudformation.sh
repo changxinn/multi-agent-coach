@@ -51,7 +51,7 @@ set +e
 aws cloudformation wait change-set-create-complete --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name"
 wait_status=$?
 set -e
-if [[ $wait_status -ne 0 ]]; then
+if [ "$wait_status" -ne 0 ]; then
   change_set_details=$(aws cloudformation describe-change-set \
     --region "$AWS_REGION" \
     --stack-name "$STACK_NAME" \
@@ -70,7 +70,21 @@ if [[ $wait_status -ne 0 ]]; then
   exit "$wait_status"
 fi
 
-aws cloudformation describe-change-set --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name" --query 'Changes[].ResourceChange.[Action,LogicalResourceId,ResourceType]' --output table
+aws cloudformation describe-change-set --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name" --query 'Changes[].ResourceChange.[Action,LogicalResourceId,ResourceType,Replacement]' --output table
+
+if [[ $change_set_type == UPDATE ]]; then
+  alb_replacement=$(aws cloudformation describe-change-set \
+    --region "$AWS_REGION" \
+    --stack-name "$STACK_NAME" \
+    --change-set-name "$change_set_name" \
+    --query "Changes[?ResourceChange.LogicalResourceId=='Alb' && ResourceChange.Replacement=='True'] | length(@)" \
+    --output text)
+  if [[ $alb_replacement != 0 ]]; then
+    printf 'Refusing to execute change set %s: it would replace Alb. Existing target groups cannot be attached to both the current and replacement load balancers.\n' "$change_set_name" >&2
+    exit 1
+  fi
+fi
+
 aws cloudformation execute-change-set --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name"
 aws cloudformation wait "$stack_waiter" --region "$AWS_REGION" --stack-name "$STACK_NAME"
 aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK_NAME" --query 'Stacks[0].Outputs' --output table
