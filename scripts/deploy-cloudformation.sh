@@ -72,6 +72,13 @@ fi
 
 aws cloudformation describe-change-set --region "$AWS_REGION" --stack-name "$STACK_NAME" --change-set-name "$change_set_name" --query 'Changes[].ResourceChange.[Action,LogicalResourceId,ResourceType,Replacement]' --output table
 
+aws cloudformation describe-change-set \
+  --region "$AWS_REGION" \
+  --stack-name "$STACK_NAME" \
+  --change-set-name "$change_set_name" \
+  --query "Changes[?ResourceChange.LogicalResourceId=='Alb'].ResourceChange.Details" \
+  --output json
+
 if [[ $change_set_type == UPDATE ]]; then
   alb_replacement=$(aws cloudformation describe-change-set \
     --region "$AWS_REGION" \
