@@ -2,8 +2,9 @@
 
 import asyncio
 
-from app.config import settings
 from app.repository import RecoveryRepository
+
+from app.config import settings
 
 
 async def migrate() -> None:
