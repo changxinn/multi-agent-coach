@@ -105,6 +105,7 @@ app.include_router(training.router, prefix="/api", tags=["Training"])
 
 
 # Health check endpoint
+@app.get("/api/health", tags=["Health"])
 @app.get("/health", tags=["Health"])
 async def health_check():
     """Health check endpoint."""
