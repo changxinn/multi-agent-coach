@@ -98,11 +98,12 @@ def connect(master: dict[str, object], endpoint: str):
 
 
 def runtime_database_url(service: ServiceDatabase, password: str, endpoint: str) -> str:
-    """Build an asyncpg-compatible TLS URL for a service database."""
+    """Build a TLS URL using the service's database driver's query parameter."""
     encoded_password = quote(password, safe="")
+    tls_parameter = "sslmode" if service.name == "recovery" else "ssl"
     return (
         f"{service.scheme}://{service.role}:{encoded_password}@{endpoint}:5432/"
-        f"{service.database}?ssl=require"
+        f"{service.database}?{tls_parameter}=require"
     )
 
 

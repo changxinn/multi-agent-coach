@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, date, datetime, timedelta
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import asyncpg
 
@@ -25,6 +26,19 @@ class RecoveryRepository:
         database_url = self.settings.DATABASE_URL.replace(
             "postgresql+asyncpg://", "postgresql://"
         )
+        # Direct asyncpg DSNs use sslmode, unlike SQLAlchemy's ssl argument.
+        # Accept secrets written by older bootstrap images without sending ssl
+        # to PostgreSQL as a runtime parameter.
+        parts = urlsplit(database_url)
+        query = parse_qsl(parts.query, keep_blank_values=True)
+        if any(key == "ssl" for key, _ in query):
+            has_sslmode = any(key == "sslmode" for key, _ in query)
+            query = [
+                ("sslmode" if key == "ssl" else key, value)
+                for key, value in query
+                if key != "ssl" or not has_sslmode
+            ]
+            database_url = urlunsplit(parts._replace(query=urlencode(query)))
         self.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
         # await self.ensure_schema()
 
