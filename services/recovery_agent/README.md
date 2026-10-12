@@ -33,6 +33,21 @@ Or run it with Docker Compose:
 docker compose up --build recovery-agent
 ```
 
+Compose waits for `recovery-db` to be healthy, runs the one-off
+`recovery-migrate` service (`python -m app.migrate`), and starts the agent only
+after the migration succeeds. The migration creates missing recovery tables
+and indexes without deleting existing data. Schema creation in
+`RecoveryRepository.connect()` remains disabled; AWS ECS deployments continue
+to use their separate migration task before starting the service.
+
+To explicitly rerun the migration against an existing Compose database:
+
+```sh
+docker compose run --rm recovery-migrate
+```
+
+Do not remove database volumes to repair missing tables.
+
 ## Example request
 
 The user must already exist in the main API database (the seeded admin user has ID `1`).

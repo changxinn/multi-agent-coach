@@ -12,6 +12,57 @@ IMPORTED_FOOD_CACHE_SEEDS = {
     "004_seed_nutrition_food_cache.sql": ("usda", "2705967"),
     "005_seed_nutrition_food_cache.sql": ("usda", "170007"),
 }
+DOLLAR_QUOTE_PATTERN = re.compile(r"\$(?:[A-Za-z_]\w*)?\$")
+
+
+def _consume_block_comment(content: str, index: int, statement: list[str]) -> int:
+    """Skip a nested block comment while retaining its line structure."""
+    depth = 1
+    index += 2
+    while index < len(content) and depth:
+        if content.startswith("/*", index):
+            depth += 1
+            index += 2
+        elif content.startswith("*/", index):
+            depth -= 1
+            index += 2
+        else:
+            if content[index] == "\n":
+                statement.append("\n")
+            index += 1
+    return index
+
+
+def _consume_single_quote(content: str, index: int, statement: list[str]) -> int:
+    """Copy a single-quoted literal, including SQL and backslash escapes."""
+    statement.append("'")
+    index += 1
+    while index < len(content):
+        character = content[index]
+        statement.append(character)
+        if character == "'" and index + 1 < len(content) and content[index + 1] == "'":
+            statement.append("'")
+            index += 2
+        elif character == "\\" and index + 1 < len(content):
+            statement.append(content[index + 1])
+            index += 2
+        elif character == "'":
+            return index + 1
+        else:
+            index += 1
+    return index
+
+
+def _consume_dollar_quote(
+    content: str, index: int, delimiter: str, statement: list[str]
+) -> int:
+    """Copy a dollar-quoted PostgreSQL body as a single scanner state."""
+    end = content.find(delimiter, index + len(delimiter))
+    if end == -1:
+        statement.append(content[index:])
+        return len(content)
+    statement.append(content[index : end + len(delimiter)])
+    return end + len(delimiter)
 
 
 def split_sql_statements(content: str) -> list[str]:
@@ -24,51 +75,10 @@ def split_sql_statements(content: str) -> list[str]:
     """
     statements: list[str] = []
     statement: list[str] = []
-    in_single_quote = False
-    dollar_quote_delimiter: str | None = None
-    block_comment_depth = 0
     index = 0
 
     while index < len(content):
         character = content[index]
-
-        if block_comment_depth:
-            if content.startswith("/*", index):
-                block_comment_depth += 1
-                index += 2
-                continue
-            if content.startswith("*/", index):
-                block_comment_depth -= 1
-                index += 2
-                continue
-            if character == "\n":
-                statement.append(character)
-            index += 1
-            continue
-
-        if dollar_quote_delimiter:
-            if content.startswith(dollar_quote_delimiter, index):
-                statement.append(dollar_quote_delimiter)
-                index += len(dollar_quote_delimiter)
-                dollar_quote_delimiter = None
-                continue
-            statement.append(character)
-            index += 1
-            continue
-
-        if in_single_quote:
-            statement.append(character)
-            if (
-                character == "'"
-                and index + 1 < len(content)
-                and content[index + 1] == "'"
-            ) or (character == "\\" and index + 1 < len(content)):
-                statement.append(content[index + 1])
-                index += 1
-            elif character == "'":
-                in_single_quote = not in_single_quote
-            index += 1
-            continue
 
         if content.startswith("--", index):
             newline_index = content.find("\n", index)
@@ -78,18 +88,17 @@ def split_sql_statements(content: str) -> list[str]:
             index = newline_index + 1
             continue
         if content.startswith("/*", index):
-            block_comment_depth = 1
-            index += 2
+            index = _consume_block_comment(content, index, statement)
             continue
         if character == "'":
-            statement.append(character)
-            in_single_quote = True
+            index = _consume_single_quote(content, index, statement)
+            continue
         elif character == "$":
-            dollar_quote = re.match(r"\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$", content[index:])
+            dollar_quote = DOLLAR_QUOTE_PATTERN.match(content, index)
             if dollar_quote:
-                dollar_quote_delimiter = dollar_quote.group()
-                statement.append(dollar_quote_delimiter)
-                index += len(dollar_quote_delimiter)
+                index = _consume_dollar_quote(
+                    content, index, dollar_quote.group(), statement
+                )
                 continue
             statement.append(character)
         elif character == ";":

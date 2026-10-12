@@ -4,7 +4,14 @@ set -euo pipefail
 : "${AWS_REGION:?AWS_REGION is required}"
 : "${STACK_NAME:?STACK_NAME is required}"
 
-output() { aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue | [0]" --output text; }
+output() {
+  local output_key=$1
+  [[ $output_key =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || {
+    echo "Invalid CloudFormation output key: $output_key" >&2
+    return 1
+  }
+  aws cloudformation describe-stacks --region "$AWS_REGION" --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='$output_key'].OutputValue | [0]" --output text
+}
 cluster=$(output ClusterName)
 subnets=$(output PrivateSubnetIds)
 security_group=$(output TaskSecurityGroupId)

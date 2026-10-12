@@ -23,8 +23,15 @@ type MealPlanGenerateInput = { start_date: string; end_date: string; meal_types:
 const date = () => dayjs().format('YYYY-MM-DD')
 const nutritionKey = ['nutrition'] as const
 export const idempotencyKey = (): string => {
-  if (!globalThis.crypto?.randomUUID) throw new Error('Secure random UUID generation is unavailable in this browser.')
-  return globalThis.crypto.randomUUID()
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  if (!globalThis.crypto?.getRandomValues) throw new Error('Secure random UUID generation is unavailable in this browser.')
+
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16))
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 const allergyOptions = [
   ['milk', 'Milk'], ['eggs', 'Eggs'], ['peanuts', 'Peanuts'], ['tree_nuts', 'Tree nuts'], ['soy', 'Soy'], ['wheat', 'Wheat'], ['fish', 'Fish'], ['shellfish', 'Shellfish'], ['sesame', 'Sesame'],
@@ -101,42 +108,48 @@ function TodayTab() {
   </Space>
 }
 function MealLogTab() {
-  type MealForm = { meal_type: string; food: string[]; grams: number; notes?: string; calories?: number; protein_g?: number; carbohydrate_g?: number; fat_g?: number; fiber_g?: number }
-  const client = useQueryClient(); const [form] = Form.useForm<MealForm>(); const [open, setOpen] = useState(false); const [catalogueSession, setCatalogueSession] = useState(0); const [messageApi, holder] = message.useMessage()
+  type MealForm = { meal_type: string; food: string; grams: number; notes?: string }
+  const client = useQueryClient(); const [form] = Form.useForm<MealForm>(); const [open, setOpen] = useState(false); const [editingMeal, setEditingMeal] = useState<Meal | null>(null); const [catalogueSession, setCatalogueSession] = useState(0); const [messageApi, holder] = message.useMessage()
   const meals = useQuery({ queryKey: [...nutritionKey, 'meals', date()], queryFn: () => api.post<{ items: Meal[] }>('/nutrition/meals/list', { date: date() }) })
   const catalogue = useQuery({ queryKey: [...nutritionKey, 'foods', 'catalogue', catalogueSession], queryFn: () => api.post<{ items: Food[] }>('/nutrition/foods/catalogue', {}), enabled: open, staleTime: Infinity })
-  const selectedValue = Form.useWatch('food', form)?.[0]; const grams = Form.useWatch('grams', form) ?? 0; const selected = catalogue.data?.items.find(food => food.provider_food_id === selectedValue); const isManual = Boolean(selectedValue) && !selected
+  const selectedValue = Form.useWatch('food', form); const grams = Form.useWatch('grams', form) ?? 0; const selected = catalogue.data?.items.find(food => food.provider_food_id === selectedValue)
   const invalidateNutritionAndDashboard = () => Promise.all([
     client.invalidateQueries({ queryKey: nutritionKey }),
     client.invalidateQueries({ queryKey: dailyCommandCenterQueryKey }),
   ])
+  useEffect(() => {
+    if (!editingMeal || !catalogue.data) return
+    const item = editingMeal.items[0]
+    const food = catalogue.data.items.find(candidate => candidate.id === item.food_cache_id)
+    if (food) form.setFieldValue('food', food.provider_food_id)
+  }, [catalogue.data, editingMeal, form])
+  const itemFor = (food: Food, grams: number): Item => ({ food_name: food.description, quantity: grams, unit: 'g', grams, calories: (food.calories_per_100g ?? 0) * grams / 100, protein_g: (food.protein_g_per_100g ?? 0) * grams / 100, carbohydrate_g: (food.carbohydrate_g_per_100g ?? 0) * grams / 100, fat_g: (food.fat_g_per_100g ?? 0) * grams / 100, fiber_g: (food.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: food.id })
   const save = useMutation({ mutationFn: (values: MealForm) => {
     const grams = values.grams
     if (!grams) throw new Error('Enter a quantity in grams.')
-    if (!selectedValue) throw new Error('Select a catalogue food or enter a manual food name.')
-    const item: Item = selected ? { food_name: selected.description, quantity: grams, unit: 'g', grams, calories: (selected.calories_per_100g ?? 0) * grams / 100, protein_g: (selected.protein_g_per_100g ?? 0) * grams / 100, carbohydrate_g: (selected.carbohydrate_g_per_100g ?? 0) * grams / 100, fat_g: (selected.fat_g_per_100g ?? 0) * grams / 100, fiber_g: (selected.fiber_g_per_100g ?? 0) * grams / 100, source: 'usda', food_cache_id: selected.id } : { food_name: selectedValue, quantity: grams, unit: 'g', grams, calories: values.calories!, protein_g: values.protein_g!, carbohydrate_g: values.carbohydrate_g!, fat_g: values.fat_g!, fiber_g: values.fiber_g ?? 0, source: 'manual_estimate' }
-    return api.post('/nutrition/meals', { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [item] })
-  }, onSuccess: async () => { messageApi.success('Meal logged'); setOpen(false); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
+    if (!selected) throw new Error('Select a USDA catalogue food.')
+    const payload = { eaten_at: new Date().toISOString(), meal_type: values.meal_type, notes: values.notes, items: [itemFor(selected, grams)] }
+    return editingMeal ? api.post('/nutrition/meals/replace', { meal_id: editingMeal.id, ...payload }) : api.post('/nutrition/meals', payload)
+  }, onSuccess: async () => { messageApi.success(editingMeal ? 'Meal updated' : 'Meal logged'); setOpen(false); setEditingMeal(null); form.resetFields(); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
   const remove = useMutation({ mutationFn: (mealId: number) => api.post('/nutrition/meals/delete', { meal_id: mealId }), onSuccess: async () => { messageApi.success('Meal permanently deleted.'); await invalidateNutritionAndDashboard() }, onError: (error: Error) => messageApi.error(error.message) })
-  const columns: ColumnsType<Meal> = [{ title: 'Time', dataIndex: 'eaten_at', render: value => dayjs(value).format('h:mm A') }, { title: 'Meal', dataIndex: 'meal_type' }, { title: 'Items', render: (_, meal) => meal.items.map((item, index) => <div key={`${item.food_cache_id ?? item.food_name}-${index}`}>{item.food_name} <Tag color={item.source === 'usda' ? 'green' : 'gold'}>{item.source === 'usda' ? 'USDA' : 'Estimated'}</Tag></div>) }, { title: 'Actions', render: (_, meal) => <Popconfirm title="Permanently delete this meal?" description="This cannot be undone." onConfirm={() => remove.mutate(meal.id)}><Button size="small" danger loading={remove.isPending && remove.variables === meal.id}>Delete</Button></Popconfirm> }]
-  const nutrition = selected && [{ label: 'Calories', per100g: selected.calories_per_100g ?? 0 }, { label: 'Protein (g)', per100g: selected.protein_g_per_100g ?? 0 }, { label: 'Carbohydrates (g)', per100g: selected.carbohydrate_g_per_100g ?? 0 }, { label: 'Fat (g)', per100g: selected.fat_g_per_100g ?? 0 }].map(({ label, per100g }) => ({ key: label, label, children: `${per100g} per 100g \u00b7 ${(per100g * grams / 100).toFixed(1)} per portion` }))
+  const openCreate = () => { setEditingMeal(null); form.resetFields(); setCatalogueSession(session => session + 1); setOpen(true) }
+  const openEdit = (meal: Meal) => { const item = meal.items[0]; setEditingMeal(meal); form.setFieldsValue({ meal_type: meal.meal_type, grams: item.grams ?? item.quantity, notes: meal.notes }); setCatalogueSession(session => session + 1); setOpen(true) }
+  const canEdit = (meal: Meal) => meal.items.length === 1 && meal.items[0].source === 'usda' && Boolean(meal.items[0].food_cache_id)
+  const columns: ColumnsType<Meal> = [{ title: 'Time', dataIndex: 'eaten_at', render: value => dayjs(value).format('h:mm A') }, { title: 'Meal', dataIndex: 'meal_type' }, { title: 'Items', render: (_, meal) => meal.items.map((item, index) => <div key={`${item.food_cache_id ?? item.food_name}-${index}`}>{item.food_name} <Tag color={item.source === 'usda' ? 'green' : 'gold'}>{item.source === 'usda' ? 'USDA' : 'Estimated'}</Tag></div>) }, { title: 'Actions', render: (_, meal) => <Space><Button size="small" disabled={!canEdit(meal)} title={canEdit(meal) ? undefined : 'Only single USDA catalogue items can be edited.'} onClick={() => openEdit(meal)}>Edit</Button><Popconfirm title="Permanently delete this meal?" description="This cannot be undone." onConfirm={() => remove.mutate(meal.id)}><Button size="small" danger loading={remove.isPending && remove.variables === meal.id}>Delete</Button></Popconfirm></Space> }]
+  const nutrition = selected && [{ label: 'Calories', per100g: selected.calories_per_100g ?? 0 }, { label: 'Protein (g)', per100g: selected.protein_g_per_100g ?? 0 }, { label: 'Carbohydrates (g)', per100g: selected.carbohydrate_g_per_100g ?? 0 }, { label: 'Fat (g)', per100g: selected.fat_g_per_100g ?? 0 }, { label: 'Fiber (g)', per100g: selected.fiber_g_per_100g ?? 0 }].map(({ label, per100g }) => ({ key: label, label, children: `${per100g} per 100g \u00b7 ${(per100g * grams / 100).toFixed(1)} per portion` }))
   return (
     <>
-      <Space style={{ marginBottom: 16 }}><Button type="primary" onClick={() => { form.resetFields(); setCatalogueSession(session => session + 1); setOpen(true) }}>Log meal</Button><Button onClick={() => meals.refetch()}>Refresh</Button></Space>
+      <Space style={{ marginBottom: 16 }}><Button type="primary" onClick={openCreate}>Log meal</Button><Button onClick={() => meals.refetch()}>Refresh</Button></Space>
       {holder}{meals.isError && <Alert type="error" showIcon title={(meals.error as Error).message} style={{ marginBottom: 16 }} />}
       <Table rowKey="id" loading={meals.isLoading} columns={columns} dataSource={meals.data?.items ?? []} locale={{ emptyText: 'No meals logged today.' }} pagination={false} />
-      <Modal title="Confirm meal log" open={open} onCancel={() => setOpen(false)} onOk={() => form.submit()} okText="Confirm and log" confirmLoading={save.isPending} forceRender>
-        <Alert type="info" showIcon title="Choose a USDA food or enter a manual food with explicit nutrient values." style={{ marginBottom: 16 }} />
-        {catalogue.isError && <Alert type="warning" showIcon title="The local USDA catalogue could not be loaded. You can still enter a manual food." style={{ marginBottom: 16 }} />}
+      <Modal title={editingMeal ? 'Edit meal log' : 'Confirm meal log'} open={open} onCancel={() => { setOpen(false); setEditingMeal(null); form.resetFields() }} onOk={() => form.submit()} okText={editingMeal ? 'Save changes' : 'Confirm and log'} confirmLoading={save.isPending} forceRender>
+        <Alert type="info" showIcon title={editingMeal ? 'Update one USDA food and its quantity. Saving records the current time as the last update.' : 'Choose one USDA food and its quantity to log a meal.'} style={{ marginBottom: 16 }} />
+        {catalogue.isError && <Alert type="warning" showIcon title="The local USDA catalogue could not be loaded, so meals cannot be logged." style={{ marginBottom: 16 }} />}
         <Form form={form} layout="vertical" initialValues={{ meal_type: 'lunch', grams: 100 }} onFinish={save.mutate}>
           <Form.Item name="meal_type" label="Meal" rules={[{ required: true }]}><Select options={['breakfast', 'lunch', 'dinner', 'snack'].map(value => ({ value }))} /></Form.Item>
-          <Form.Item name="food" label="Food" rules={[{ required: true, message: 'Select a USDA food or type a manual food name' }]}><Select mode="tags" maxCount={1} showSearch filterOption={(input, option) => String(option?.label ?? '').toLowerCase().includes(input.toLowerCase())} loading={catalogue.isFetching} options={(catalogue.data?.items ?? []).map(food => ({ value: food.provider_food_id, label: food.description }))} placeholder="Search local USDA catalogue or type a manual food" /></Form.Item>
+          <Form.Item name="food" label="Food" rules={[{ required: true, message: 'Select a USDA food' }]}><Select showSearch allowClear optionFilterProp="label" loading={catalogue.isFetching} options={(catalogue.data?.items ?? []).map(food => ({ value: food.provider_food_id, label: food.description }))} placeholder="Search the local USDA catalogue" /></Form.Item>
           <Form.Item name="grams" label="Quantity (g)" rules={[{ required: true, message: 'Enter the quantity in grams' }]}><InputNumber min={1} style={{ width: '100%' }} /></Form.Item>
-          {selected && <Descriptions size="small" title="Verified USDA nutrients" items={nutrition ?? []} />}
-          {isManual && <>
-            <Alert type="warning" showIcon title="Manual estimate: enter every macro explicitly. Zero is accepted when intentional." style={{ margin: '16px 0' }} />
-            <Row gutter={16}>{(['calories', 'protein_g', 'carbohydrate_g', 'fat_g'] as const).map(name => <Col span={12} key={name}><Form.Item name={name} label={{ calories: 'Calories', protein_g: 'Protein (g)', carbohydrate_g: 'Carbohydrates (g)', fat_g: 'Fat (g)' }[name]} rules={[{ required: true, message: 'This value is required' }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>)}<Col span={12}><Form.Item name="fiber_g" label="Fiber (g)"><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col></Row>
-          </>}
+          {selected && <Descriptions column={1} size="small" title="Verified USDA nutrients" items={nutrition ?? []} />}
           <Form.Item name="notes" label="Notes"><Input /></Form.Item>
         </Form>
       </Modal>

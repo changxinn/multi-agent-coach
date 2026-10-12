@@ -341,6 +341,7 @@ Resources:
       BucketEncryption: { ServerSideEncryptionConfiguration: [{ ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 } }] }
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
       OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerEnforced }] }
+      VersioningConfiguration: { Status: Enabled }
       LifecycleConfiguration: { Rules: [{ Id: ExpireAlbAccessLogs, Status: Enabled, ExpirationInDays: 90 }] }
   AlbAccessLogBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -353,6 +354,12 @@ Resources:
             Principal: { Service: logdelivery.elasticloadbalancing.amazonaws.com }
             Action: s3:PutObject
             Resource: !Sub '${AlbAccessLogBucket.Arn}/alb/AWSLogs/${AWS::AccountId}/*'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt AlbAccessLogBucket.Arn, !Sub '${AlbAccessLogBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': false } }
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties: { Scheme: internet-facing, Subnets: [!Ref PublicSubnetA, !Ref PublicSubnetB], SecurityGroups: [!Ref AlbSecurityGroup], LoadBalancerAttributes: [{ Key: access_logs.s3.enabled, Value: 'true' }, { Key: access_logs.s3.bucket, Value: !Ref AlbAccessLogBucket }, { Key: access_logs.s3.prefix, Value: alb }] }
@@ -426,6 +433,7 @@ Resources:
   Alerts:
     Type: AWS::SNS::Topic
     Properties:
+      KmsMasterKeyId: alias/aws/sns
       Subscription: !If [HasAlertEmail, [{ Endpoint: !Ref AlertEmail, Protocol: email }], !Ref AWS::NoValue]
 
 Outputs:

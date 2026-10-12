@@ -235,6 +235,31 @@ def test_v2_alb_writes_access_logs_to_a_private_retained_bucket():
         "Service": "logdelivery.elasticloadbalancing.amazonaws.com"
     }
     assert statement["Action"] == "s3:PutObject"
+    deny_statement = resources["AlbAccessLogBucketPolicy"]["Properties"][
+        "PolicyDocument"
+    ]["Statement"][1]
+    assert deny_statement["Condition"] == {"Bool": {"aws:SecureTransport": False}}
+    assert bucket["VersioningConfiguration"]["Status"] == "Enabled"
+
+
+def test_frontend_buckets_enforce_https_and_retain_access_log_versions():
+    resources = _frontend_template()["Resources"]
+
+    assert resources["AccessLogBucket"]["Properties"]["VersioningConfiguration"] == {
+        "Status": "Enabled"
+    }
+    for policy_name, bucket_name in (
+        ("FrontendBucketPolicy", "FrontendBucket"),
+        ("AccessLogBucketPolicy", "AccessLogBucket"),
+    ):
+        statements = resources[policy_name]["Properties"]["PolicyDocument"]["Statement"]
+        deny_statement = next(
+            statement
+            for statement in statements
+            if statement.get("Sid") == "DenyInsecureTransport"
+        )
+        assert deny_statement["Condition"] == {"Bool": {"aws:SecureTransport": False}}
+        assert {"GetAtt": f"{bucket_name}.Arn"} in deny_statement["Resource"]
 
 
 def test_legacy_staging_alb_writes_access_logs_to_a_private_retained_bucket():
@@ -258,6 +283,17 @@ def test_legacy_staging_alb_writes_access_logs_to_a_private_retained_bucket():
         "Service": "logdelivery.elasticloadbalancing.amazonaws.com"
     }
     assert statement["Action"] == "s3:PutObject"
+    deny_statement = resources["AlbAccessLogBucketPolicy"]["Properties"][
+        "PolicyDocument"
+    ]["Statement"][1]
+    assert deny_statement["Condition"] == {"Bool": {"aws:SecureTransport": False}}
+    assert bucket["VersioningConfiguration"]["Status"] == "Enabled"
+
+
+def test_legacy_alert_topic_uses_aws_managed_sns_encryption():
+    alerts = _legacy_staging_template()["Resources"]["Alerts"]
+
+    assert alerts["Properties"]["KmsMasterKeyId"] == "alias/aws/sns"
 
 
 def test_v2_frontend_is_an_ecs_service_and_alb_routes_api_by_path():

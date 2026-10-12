@@ -123,6 +123,23 @@ services:
   # ===========================================
   # Recovery Agent Microservice
   # ===========================================
+  recovery-migrate:
+    build:
+      context: ./services/recovery_agent
+      dockerfile: Dockerfile
+    environment:
+      - RECOVERY_DATABASE_URL=postgresql://${RECOVERY_DB_USER:-recovery_agent}:${RECOVERY_DB_PASSWORD:?RECOVERY_DB_PASSWORD must be set}@recovery-db:5432/recoverydb
+      - RECOVERY_DATABASE_SCHEMA=recovery
+    command: ["python", "-m", "app.migrate"]
+    healthcheck:
+      disable: true
+    depends_on:
+      recovery-db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - app-network
+
   recovery-agent:
     build:
       context: ./services/recovery_agent
@@ -134,6 +151,8 @@ services:
       - RECOVERY_DATABASE_SCHEMA=recovery
       - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN:-local-dev-recovery-token}
     depends_on:
+      recovery-migrate:
+        condition: service_completed_successfully
       recovery-db:
         condition: service_healthy
     restart: unless-stopped

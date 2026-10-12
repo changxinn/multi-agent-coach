@@ -29,6 +29,8 @@ async def recovery_repository():
     # A configured but broken database must fail CI, not silently skip.
     await repo.connect()
     try:
+        # Match deployment's explicit migration step, not application startup.
+        await repo.ensure_schema()
         yield repo
     finally:
         await repo._pool.execute(f'DROP SCHEMA "{schema}" CASCADE')
@@ -93,6 +95,7 @@ async def test_copy_is_repeatable_preserves_ids_and_rolls_back_conflicts(
     )
     await source_repo.connect()
     try:
+        await source_repo.ensure_schema()
         sleep = await source_repo.create_sleep_log(
             SleepLogCreate(user_id=42, duration_minutes=480, quality=4)
         )
@@ -159,6 +162,7 @@ async def test_copy_rolls_back_earlier_table_inserts_on_later_conflict(
     )
     await source_repo.connect()
     try:
+        await source_repo.ensure_schema()
         await source_repo.create_sleep_log(
             SleepLogCreate(user_id=42, duration_minutes=480, quality=4)
         )

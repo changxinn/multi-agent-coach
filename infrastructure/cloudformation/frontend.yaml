@@ -31,6 +31,7 @@ Resources:
       PublicAccessBlockConfiguration: { BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true }
       OwnershipControls: { Rules: [{ ObjectOwnership: BucketOwnerPreferred }] }
       AccessControl: LogDeliveryWrite
+      VersioningConfiguration: { Status: Enabled }
       LifecycleConfiguration:
         Rules:
           - Id: ExpireAccessLogs
@@ -95,6 +96,25 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub '${FrontendBucket.Arn}/*'
             Condition: { StringEquals: { 'AWS:SourceArn': !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${Distribution}' } }
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt FrontendBucket.Arn, !Sub '${FrontendBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': false } }
+  AccessLogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref AccessLogBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt AccessLogBucket.Arn, !Sub '${AccessLogBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': false } }
 
 Outputs:
   FrontendBucketName: { Value: !Ref FrontendBucket }

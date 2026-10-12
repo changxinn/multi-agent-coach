@@ -214,6 +214,14 @@ def test_split_sql_statements_preserves_semicolons_in_dollar_quoted_bodies():
     ]
 
 
+def test_split_sql_statements_supports_unicode_word_characters_in_dollar_tags():
+    statements = split_sql_statements(
+        "DO $tag_é$ BEGIN PERFORM 1; END; $tag_é$; SELECT 1;"
+    )
+
+    assert statements == ["DO $tag_é$ BEGIN PERFORM 1; END; $tag_é$;", "SELECT 1;"]
+
+
 def test_all_nutrition_migrations_split_into_executable_statements():
     migration_dir = (
         Path(__file__).parents[2] / "services/nutrition_agent/app/db/migrations"

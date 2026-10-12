@@ -47,6 +47,7 @@ Resources:
       BucketEncryption: {ServerSideEncryptionConfiguration: [{ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}}]}
       PublicAccessBlockConfiguration: {BlockPublicAcls: true, BlockPublicPolicy: true, IgnorePublicAcls: true, RestrictPublicBuckets: true}
       OwnershipControls: {Rules: [{ObjectOwnership: BucketOwnerEnforced}]}
+      VersioningConfiguration: {Status: Enabled}
       LifecycleConfiguration: {Rules: [{Id: ExpireAlbAccessLogs, Status: Enabled, ExpirationInDays: 90}]}
   AlbAccessLogBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -59,6 +60,12 @@ Resources:
             Principal: {Service: logdelivery.elasticloadbalancing.amazonaws.com}
             Action: s3:PutObject
             Resource: !Sub '${AlbAccessLogBucket.Arn}/alb/AWSLogs/${AWS::AccountId}/*'
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt AlbAccessLogBucket.Arn, !Sub '${AlbAccessLogBucket.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': false}}
   TaskSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: ECS tasks, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 8000, ToPort: 8000, SourceSecurityGroupId: !Ref AlbSg}, {IpProtocol: tcp, FromPort: 5174, ToPort: 5174, SourceSecurityGroupId: !Ref AlbSg}]}}
   TaskSgInternalIngress: {Type: AWS::EC2::SecurityGroupIngress, Properties: {GroupId: !Ref TaskSg, IpProtocol: tcp, FromPort: 8001, ToPort: 8005, SourceSecurityGroupId: !Ref TaskSg}}
   DbSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: PostgreSQL, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 5432, ToPort: 5432, SourceSecurityGroupId: !Ref TaskSg}]}}

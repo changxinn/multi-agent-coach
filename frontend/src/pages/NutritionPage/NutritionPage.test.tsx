@@ -46,6 +46,13 @@ describe('NutritionPage', () => {
     const originalCrypto = globalThis.crypto
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => 'secure-id' } })
     expect(idempotencyKey()).toBe('secure-id')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.set(Array.from({ length: 16 }, (_, index) => index))
+        return bytes
+      },
+    } })
+    expect(idempotencyKey()).toBe('00010203-0405-4607-8809-0a0b0c0d0e0f')
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined })
     expect(() => idempotencyKey()).toThrow('Secure random UUID generation is unavailable')
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: originalCrypto })
@@ -98,6 +105,44 @@ describe('NutritionPage', () => {
 
     expect(await screen.findByText('Confirm meal log')).toBeTruthy()
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/foods/catalogue', {}))
+  })
+
+  it('presents a single USDA food selector', async () => {
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/foods/catalogue'
+      ? Promise.resolve({ items: [{ provider_food_id: 'oats-1', description: 'Rolled oats', calories_per_100g: 389, protein_g_per_100g: 17, carbohydrate_g_per_100g: 66, fat_g_per_100g: 7, fiber_g_per_100g: 11 }] })
+      : defaultPost(endpoint))
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Log meal' }))
+    const foodSelect = await screen.findByRole('combobox', { name: 'Food' })
+    fireEvent.mouseDown(foodSelect)
+    expect(await screen.findByRole('option', { name: 'Rolled oats' })).toBeTruthy()
+    expect(screen.queryByText(/manual food/i)).toBeNull()
+  })
+
+  it('edits a single USDA meal and records the update time', async () => {
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meals/list'
+      ? Promise.resolve({ items: [{ id: 7, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'breakfast', notes: 'Original note', items: [{ food_name: 'Rolled oats', quantity: 100, grams: 100, unit: 'g', calories: 389, protein_g: 17, carbohydrate_g: 66, fat_g: 7, fiber_g: 11, source: 'usda', food_cache_id: 4 }] }] })
+      : endpoint === '/nutrition/foods/catalogue'
+        ? Promise.resolve({ items: [{ id: 4, provider_food_id: 'oats-1', description: 'Rolled oats', calories_per_100g: 389, protein_g_per_100g: 17, carbohydrate_g_per_100g: 66, fat_g_per_100g: 7, fiber_g_per_100g: 11 }] })
+        : defaultPost(endpoint))
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+
+    expect(await screen.findByText('Edit meal log')).toBeTruthy()
+    expect(screen.getByDisplayValue('100')).toBeTruthy()
+    expect(screen.getByDisplayValue('Original note')).toBeTruthy()
+    expect(await screen.findByText('Verified USDA nutrients')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/replace', expect.objectContaining({
+      meal_id: 7,
+      meal_type: 'breakfast',
+      notes: 'Original note',
+      eaten_at: expect.any(String),
+      items: [expect.objectContaining({ food_name: 'Rolled oats', grams: 100, source: 'usda', food_cache_id: 4 })],
+    })))
   })
 
   it('shows populated active targets and opens the meal-plan generator', async () => {

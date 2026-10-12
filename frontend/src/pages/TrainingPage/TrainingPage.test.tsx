@@ -29,6 +29,13 @@ describe('TrainingPage', () => {
     const originalCrypto = globalThis.crypto
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: { randomUUID: () => 'secure-id' } })
     expect(idempotencyKey()).toBe('secure-id')
+    Object.defineProperty(globalThis, 'crypto', { configurable: true, value: {
+      getRandomValues: (bytes: Uint8Array) => {
+        bytes.set(Array.from({ length: 16 }, (_, index) => index))
+        return bytes
+      },
+    } })
+    expect(idempotencyKey()).toBe('00010203-0405-4607-8809-0a0b0c0d0e0f')
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: undefined })
     expect(() => idempotencyKey()).toThrow('Secure random UUID generation is unavailable')
     Object.defineProperty(globalThis, 'crypto', { configurable: true, value: originalCrypto })

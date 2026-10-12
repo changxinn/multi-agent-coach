@@ -51,6 +51,15 @@ def test_workflow_deploys_only_after_ci_succeeds_on_the_tested_revision():
     assert "ref: ${{ env.DEPLOY_REF }}" in workflow
 
 
+def test_workflow_never_deploys_a_fork_workflow_run_with_aws_oidc():
+    workflow = WORKFLOW.read_text()
+
+    assert (
+        "github.event.workflow_run.head_repository.full_name == github.repository"
+        in workflow
+    )
+
+
 def test_workflow_reports_update_failures_in_stack_diagnostics():
     workflow = WORKFLOW.read_text()
 
