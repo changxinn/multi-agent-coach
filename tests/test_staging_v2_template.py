@@ -190,6 +190,15 @@ def test_frontend_and_cloudfront_access_logs_are_private_and_retained():
     }
 
 
+def test_v2_alb_preserves_explicit_type_and_waits_for_access_log_permissions():
+    alb = _template()["Resources"]["Alb"]
+
+    # Removing this replacement-sensitive property can replace an existing ALB,
+    # even though application is also the default for newly created resources.
+    assert alb["Properties"]["Type"] == "application"
+    assert alb["DependsOn"] == "AlbAccessLogBucketPolicy"
+
+
 def test_v2_alb_writes_access_logs_to_a_private_retained_bucket():
     resources = _template()["Resources"]
     bucket = resources["AlbAccessLogBucket"]["Properties"]
