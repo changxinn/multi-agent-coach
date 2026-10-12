@@ -49,7 +49,7 @@ export function DashboardPage() {
         <Title level={2}>
           Welcome back, {user?.name}!
         </Title>
-        <Text className="!text-lg" type="secondary">Your daily coaching overview across training, nutrition, and recovery.</Text>
+        <Text className="!text-lg" type="secondary">Your daily coaching overview across Training, Nutrition, and Recovery.</Text>
       </div>
 
       <DailySummaryCard />
