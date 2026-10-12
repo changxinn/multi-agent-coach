@@ -8,6 +8,7 @@ COPY services/nutrition_agent/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/nutrition_agent/app /service/app
+COPY app/db/migration_runner.py /service/app/migration_runner.py
 
 USER appuser
 

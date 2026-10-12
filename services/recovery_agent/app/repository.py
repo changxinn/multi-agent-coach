@@ -26,7 +26,7 @@ class RecoveryRepository:
             "postgresql+asyncpg://", "postgresql://"
         )
         self.pool = await asyncpg.create_pool(database_url, min_size=1, max_size=5)
-        await self.ensure_schema()
+        # await self.ensure_schema()
 
     async def close(self) -> None:
         if self.pool:

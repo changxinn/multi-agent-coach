@@ -5,6 +5,7 @@ RUN adduser --disabled-password --gecos '' appuser
 COPY services/training_agent/requirements.lock .
 RUN pip install --no-cache-dir --only-binary=:all: --require-hashes -r requirements.lock
 COPY services/training_agent/app /service/app
+COPY app/db/migration_runner.py /service/app/migration_runner.py
 USER appuser
 EXPOSE 8005
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

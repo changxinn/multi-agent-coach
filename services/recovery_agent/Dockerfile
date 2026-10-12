@@ -4,10 +4,11 @@ WORKDIR /service
 
 RUN adduser --disabled-password --gecos '' appuser
 
-COPY requirements.txt .
+COPY services/recovery_agent/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
+COPY services/recovery_agent/app ./app
+COPY ../../app/db/migration_runner.py ./app/migration_runner.py
 
 USER appuser
 
