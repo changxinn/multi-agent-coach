@@ -4,7 +4,7 @@ import bcrypt
 import pytest
 
 from app.config import Settings
-from app.db.demo_seed import DEMO_PASSWORD, DEMO_USERS, seed_demo_users
+from app.db.demo_seed import DEMO_USERS, seed_demo_users
 from app.db.models import User
 
 
@@ -14,6 +14,7 @@ def settings(*, seed_demo_users: bool) -> Settings:
         DATABASE_URL="postgresql+asyncpg://user:password@localhost/test",
         OPENAI_API_KEY="",
         SEED_DEMO_USERS=seed_demo_users,
+        DEMO_USER_PASSWORD="SecretTestPassword123!",
         NUTRITION_COMPATIBILITY_ADMIN_EMAIL="nutrition.admin@example.com",
     )
 
@@ -26,6 +27,17 @@ async def test_seed_demo_users_is_disabled_by_default():
 
     db.commit.assert_not_awaited()
     db.execute.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("password", ["", "x" * 73])
+async def test_enabled_seeding_requires_a_valid_secret_password(password):
+    config = settings(seed_demo_users=True)
+    config.DEMO_USER_PASSWORD = password
+    db = AsyncMock()
+    with pytest.raises(RuntimeError, match="DEMO_USER_PASSWORD"):
+        await seed_demo_users(db, config)
+    db.commit.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -50,7 +62,7 @@ async def test_seed_demo_users_creates_users_with_distinct_profiles(monkeypatch)
     assert repository.get_by_email.await_args_list[2].args == (DEMO_USERS[2].email,)
     first_created = repository.create_user.await_args_list[0].kwargs
     assert first_created["email"] == DEMO_USERS[0].email
-    assert bcrypt.checkpw(DEMO_PASSWORD.encode(), first_created["password"].encode())
+    assert bcrypt.checkpw(b"SecretTestPassword123!", first_created["password"].encode())
     assert repository.update_fitness_profile.await_args_list[0].kwargs == {
         "user_id": 1,
         "fitness_goal": "build strength",

@@ -6,6 +6,7 @@ Loads environment variables from .env file and validates them.
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -27,6 +28,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     # Disabled by default so development-only credentials are never seeded implicitly.
     SEED_DEMO_USERS: bool = False
+    DEMO_USER_PASSWORD: str = Field(default="", repr=False)
     # A single explicit compatibility reviewer; empty means no user is authorized.
     NUTRITION_COMPATIBILITY_ADMIN_EMAIL: str = ""
 

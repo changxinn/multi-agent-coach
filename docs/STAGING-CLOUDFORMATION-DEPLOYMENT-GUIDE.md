@@ -4,6 +4,40 @@
 
 ## Staging v2 deployment sequence
 
+### Staging demo accounts
+
+Create a repository GitHub Actions secret named `STAGING_DEMO_PASSWORD` before
+running the deployment workflow. Use a strong password (at most 72 UTF-8 bytes).
+The workflow passes it only to the one-off API migration task as an ECS container
+environment override named `DEMO_USER_PASSWORD`. It is not stored in the
+CloudFormation template or task definition. The API migration task
+creates `alex.demo@example.com`, `sam.demo@example.com`, and
+`nutrition.admin@example.com` after migrations succeed. API services do not
+receive the password or enable startup seeding. The latter account is the
+configured nutrition compatibility reviewer, not a general administrator.
+
+No additional AWS secret or demo-specific IAM permission is required: the
+workflow uses its existing ECS task-launch permissions. The helper uses an
+owner-only temporary JSON file, deletes it afterward, and does not log the
+password or include it in CLI arguments. **The plaintext override is visible to
+authorized AWS users in ECS task metadata and potentially CloudTrail records.**
+GitHub log masking does not protect those records; accept this tradeoff only
+for staging. A GitHub secret alone cannot hide a value from AWS when AWS runs
+the code that consumes it.
+
+Existing accounts, passwords, and profiles are never overwritten: changing the
+GitHub secret does not rotate passwords of existing accounts. Disabling seeding
+does not delete them. Manual/local seeding now also requires
+`DEMO_USER_PASSWORD`; there is no hard-coded password fallback. Never publish
+the secret in a Vite variable or frontend bundle. The Quick Login page's legacy
+password autofill is not the staging password; enter the configured password
+manually. Use these accounts only for staging and avoid real user data.
+
+Outside the workflow, demo seeding remains opt-in using environment variables
+`SEED_DEMO_USERS=true` and `STAGING_DEMO_PASSWORD` for the migration launch script.
+If the previous Secrets Manager approach was already deployed, its dedicated
+secret is not deleted by this change; remove it separately if no longer needed.
+
 The v2 workflow uses pre-provisioned ECR repositories, builds digest-pinned
 images (including `database-bootstrap`), and creates the v2 foundation with
 `DeployServices=false`.

@@ -1,4 +1,4 @@
-"""Opt-in local demo-user seeding."""
+"""Opt-in demo-user seeding with an explicitly supplied password."""
 
 import logging
 from dataclasses import dataclass
@@ -10,8 +10,6 @@ from app.config import Settings
 from app.db.repositories.user_repo import UserRepository
 
 logger = logging.getLogger(__name__)
-
-DEMO_PASSWORD = "DemoPass123!"
 
 
 @dataclass(frozen=True)
@@ -59,9 +57,12 @@ DEMO_USERS = (
 
 
 async def seed_demo_users(db: AsyncSession, settings: Settings) -> None:
-    """Create local demo users once, without changing existing user data."""
+    """Create demo users once, without changing existing user data."""
     if not settings.SEED_DEMO_USERS:
         return
+    password = settings.DEMO_USER_PASSWORD
+    if not password or len(password.encode("utf-8")) > 72:
+        raise RuntimeError("DEMO_USER_PASSWORD must contain 1 to 72 UTF-8 bytes")
 
     user_repo = UserRepository(db)
     created_emails: list[str] = []
@@ -72,7 +73,7 @@ async def seed_demo_users(db: AsyncSession, settings: Settings) -> None:
                 continue
 
             password_hash = bcrypt.hashpw(
-                DEMO_PASSWORD.encode("utf-8"), bcrypt.gensalt(rounds=12)
+                password.encode("utf-8"), bcrypt.gensalt(rounds=12)
             ).decode("utf-8")
             user = await user_repo.create_user(
                 email=demo_user.email,

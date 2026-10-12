@@ -162,6 +162,8 @@ jobs:
       - name: Run ordered ECS migrations
         env:
           STACK_NAME: ${{ env.APPLICATION_STACK_NAME }}
+          SEED_DEMO_USERS: 'true'
+          STAGING_DEMO_PASSWORD: ${{ secrets.STAGING_DEMO_PASSWORD }}
         run: bash scripts/run-ecs-migrations.sh
 
       - name: Deploy ECS services

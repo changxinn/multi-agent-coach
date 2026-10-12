@@ -71,7 +71,7 @@ export function QuickLoginPage() {
           </div>
           <div className="mt-4 border-t border-gray-200 pt-3">
             <Text type="secondary" className="text-xs">
-              Local demo accounts (Docker Compose):
+              Demo accounts:
             </Text>
             <div className="mt-2 flex flex-wrap gap-2">
               {demoAccounts.map((account) => (

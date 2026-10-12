@@ -144,11 +144,26 @@ def test_v2_configures_the_compatibility_reviewer_only_for_the_api():
 def test_v2_api_migration_injects_required_application_settings():
     api_migration_secrets = _secrets(_template()["Resources"]["ApiMigration"])
 
-    assert {secret["Name"] for secret in api_migration_secrets} >= {
+    assert {secret["Name"] for secret in api_migration_secrets if "Name" in secret} >= {
         "DATABASE_URL",
         "JWT_SECRET_KEY",
         "OPENAI_API_KEY",
     }
+
+
+def test_demo_password_is_not_stored_in_cloudformation_or_service_tasks():
+    template = _template()
+    resources = template["Resources"]
+    assert "SeedDemoUsers" not in template["Parameters"]
+    assert "DemoPasswordSecretArn" not in template["Parameters"]
+    assert "DemoPasswordReadPolicy" not in resources
+    assert _environment(resources["ApiMigration"]) == []
+    assert all(
+        item["Name"] != "SEED_DEMO_USERS" for item in _environment(resources["ApiTask"])
+    )
+    assert all(
+        item["Name"] != "DEMO_USER_PASSWORD" for item in _secrets(resources["ApiTask"])
+    )
 
 
 def test_frontend_forwards_api_query_strings_without_caching_them():
