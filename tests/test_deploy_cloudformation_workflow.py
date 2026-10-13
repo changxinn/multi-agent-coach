@@ -5,6 +5,30 @@ from pathlib import Path
 WORKFLOW = Path(__file__).parents[1] / ".github/workflows/deploy-cloudformation.yml"
 
 
+def test_workflow_passes_https_variables_to_both_stack_updates():
+    import yaml
+
+    workflow = yaml.safe_load(WORKFLOW.read_text())
+    steps = workflow["jobs"]["deploy"]["steps"]
+    updates = [
+        step
+        for step in steps
+        if step.get("run") == "bash scripts/deploy-cloudformation.sh"
+    ]
+    assert len(updates) == 2
+    for step in updates:
+        overrides = step["env"]["PARAMETER_OVERRIDES"]
+        assert (
+            "ParameterKey=ApplicationDomainName,ParameterValue=${{ vars.APPLICATION_DOMAIN_NAME }}"
+            in overrides
+        )
+        assert (
+            "ParameterKey=AlbCertificateArn,ParameterValue=${{ vars.ALB_CERTIFICATE_ARN }}"
+            in overrides
+        )
+    assert any(step["name"] == "Validate HTTPS repository variables" for step in steps)
+
+
 def test_workflow_reuses_preprovisioned_ecr_repositories():
     workflow = WORKFLOW.read_text()
 

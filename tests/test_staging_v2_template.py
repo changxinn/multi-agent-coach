@@ -309,7 +309,7 @@ def test_v2_frontend_is_an_ecs_service_and_alb_routes_api_by_path():
             "HealthCheckPath": "/",
         }.items()
     )
-    assert resources["Listener"]["Properties"]["DefaultActions"] == [
+    assert resources["HttpsListener"]["Properties"]["DefaultActions"] == [
         {"Type": "forward", "TargetGroupArn": {"Ref": "FrontendTarget"}}
     ]
     assert resources["ApiListenerRule"]["Properties"]["Conditions"] == [
@@ -323,8 +323,59 @@ def test_v2_frontend_is_an_ecs_service_and_alb_routes_api_by_path():
         }
     ]
     assert template["Outputs"]["FrontendUrl"]["Value"] == {
-        "Sub": "http://${Alb.DNSName}"
+        "Sub": "https://${ApplicationDomainName}"
     }
     assert template["Outputs"]["ApiHealthUrl"]["Value"] == {
-        "Sub": "http://${Alb.DNSName}/api/health"
+        "Sub": "https://${ApplicationDomainName}/api/health"
     }
+
+
+def test_v2_https_terminates_at_alb_and_http_cannot_bypass_redirect():
+    template = _template()
+    resources = template["Resources"]
+    https = resources["HttpsListener"]["Properties"]
+    assert https["LoadBalancerArn"] == {"Ref": "Alb"}
+    assert https["Port"] == 443
+    assert https["Protocol"] == "HTTPS"
+    assert https["SslPolicy"] == "ELBSecurityPolicy-TLS13-1-2-2021-06"
+    assert https["Certificates"] == [{"CertificateArn": {"Ref": "AlbCertificateArn"}}]
+    assert resources["ApiListenerRule"]["Properties"]["ListenerArn"] == {
+        "Ref": "HttpsListener"
+    }
+    assert resources["Listener"]["DependsOn"] == "ApiListenerRule"
+    assert resources["Listener"]["Properties"]["DefaultActions"] == [
+        {
+            "Type": "redirect",
+            "RedirectConfig": {
+                "Protocol": "HTTPS",
+                "Port": "443",
+                "Host": {"Ref": "ApplicationDomainName"},
+                "Path": "/#{path}",
+                "Query": "#{query}",
+                "StatusCode": "HTTP_301",
+            },
+        }
+    ]
+    for resource in resources.values():
+        if resource["Type"] == "AWS::ElasticLoadBalancingV2::ListenerRule":
+            assert resource["Properties"]["ListenerArn"] != {"Ref": "Listener"}
+    ingress = resources["AlbSg"]["Properties"]["SecurityGroupIngress"]
+    assert {rule["FromPort"] for rule in ingress} == {80, 443}
+    for target in ("FrontendTarget", "ApiTarget"):
+        assert resources[target]["Properties"]["Protocol"] == "HTTP"
+
+
+def test_v2_https_parameters_reject_urls_and_empty_certificates():
+    import re
+
+    parameters = _template()["Parameters"]
+    domain_pattern = parameters["ApplicationDomainName"]["AllowedPattern"]
+    assert re.fullmatch(domain_pattern, "app.mafitnesscoach.website")
+    for invalid in ("", "https://app.mafitnesscoach.website", "app.example.com/api"):
+        assert not re.fullmatch(domain_pattern, invalid)
+    certificate_pattern = parameters["AlbCertificateArn"]["AllowedPattern"]
+    assert re.fullmatch(
+        certificate_pattern,
+        "arn:aws:acm:ap-southeast-1:758248541054:certificate/3847778d-c077-48c5-85a1-16586b495eab",
+    )
+    assert not re.fullmatch(certificate_pattern, "")

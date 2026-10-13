@@ -4,6 +4,48 @@
 
 ## Staging v2 deployment sequence
 
+### HTTPS prerequisites and rollout
+
+Configure these GitHub Actions repository variables before deployment:
+
+- `APPLICATION_DOMAIN_NAME=app.mafitnesscoach.website` (hostname only).
+- `ALB_CERTIFICATE_ARN`: the ARN of an **Issued** ACM certificate covering that
+  hostname in `ap-southeast-1`.
+
+Keep the ACM validation CNAME in DNS for automatic renewal, and point the `app`
+CNAME to the existing ALB DNS name. Both workflow stack updates pass the HTTPS
+parameters. For local deployment, include `ApplicationDomainName` and
+`AlbCertificateArn` in `PARAMETER_OVERRIDES`; the generic deployment script does
+not read GitHub repository variables automatically.
+
+The template terminates TLS at the existing ALB on port 443 using TLS 1.2/1.3.
+Frontend and API target groups retain private HTTP on ports 5174 and 8000.
+The HTTPS listener forwards `/api` and `/api/*` to the API, and other paths to
+the frontend. Port 80 redirects to the configured HTTPS hostname, preserving
+paths and query strings. Stack outputs and smoke checks use HTTPS directly.
+The image build already sets `VITE_API_BASE_URL=/api` for same-origin requests.
+
+Before executing an authorized deployment, review the CloudFormation change
+set for replacements, especially `Alb` and database resources. The deployment
+script prints the change set and then **automatically executes it**; it is not
+a manual approval gate. Do not run it merely to preview changes. Also note that
+the normal workflow first sets `DeployServices=false`; this is not a
+zero-downtime, listener-only migration for an already running stack.
+
+This template enables HTTPS and enforces redirects in the same stack update;
+the HTTP listener depends on the HTTPS API rule to order the switch. It does
+not provide a separate live verification pause. If a staged rollout is
+required, first use a separately reviewed intermediate template that adds
+HTTPS while retaining existing HTTP forwarding, verify HTTPS, then apply the
+final redirect configuration. Do not enable HSTS until HTTPS is verified.
+
+After deployment, verify `https://app.mafitnesscoach.website` and
+`https://app.mafitnesscoach.website/api/health`, confirm HTTP requests redirect
+to HTTPS with their path/query intact, and test login through the HTTPS site.
+In browser DevTools, confirm `window.isSecureContext === true` and that the
+insecure-origin COOP warning is gone. Use the custom hostname, not the ALB DNS
+name, for HTTPS certificate verification.
+
 ### Staging demo accounts
 
 Create a repository GitHub Actions secret named `STAGING_DEMO_PASSWORD` before

@@ -3,6 +3,14 @@ Description: Clean cost-aware staging v2. Deploy as a new stack; do not replace 
 Parameters:
   ProjectName: {Type: String, Default: macoach}
   Environment: {Type: String, Default: staging, AllowedValues: [staging]}
+  ApplicationDomainName:
+    Type: String
+    Description: Public application hostname only, without a scheme or path.
+    AllowedPattern: '^(?=.{1,253}$)([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,63}$'
+  AlbCertificateArn:
+    Type: String
+    Description: ARN of an issued ACM certificate covering ApplicationDomainName in this stack region.
+    AllowedPattern: '^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[a-f0-9-]{36}$'
   FrontendImage: {Type: String}
   ApiImage: {Type: String}
   RecoveryAgentImage: {Type: String}
@@ -38,7 +46,7 @@ Resources:
   PrivateRoute: {Type: AWS::EC2::Route, Properties: {RouteTableId: !Ref PrivateRoutes, DestinationCidrBlock: 0.0.0.0/0, NatGatewayId: !Ref Nat}}
   PrivateAssociationA: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PrivateA, RouteTableId: !Ref PrivateRoutes}}
   PrivateAssociationB: {Type: AWS::EC2::SubnetRouteTableAssociation, Properties: {SubnetId: !Ref PrivateB, RouteTableId: !Ref PrivateRoutes}}
-  AlbSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: public ALB, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}]}}
+  AlbSg: {Type: AWS::EC2::SecurityGroup, Properties: {GroupDescription: public ALB, VpcId: !Ref Vpc, SecurityGroupIngress: [{IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}, {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}]}}
   AlbAccessLogBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
@@ -112,8 +120,32 @@ Resources:
   Alb: {Type: AWS::ElasticLoadBalancingV2::LoadBalancer, DependsOn: AlbAccessLogBucketPolicy, Properties: {Scheme: internet-facing, Type: application, Subnets: [!Ref PublicA, !Ref PublicB], SecurityGroups: [!Ref AlbSg], LoadBalancerAttributes: [{Key: access_logs.s3.enabled, Value: 'true'}, {Key: access_logs.s3.bucket, Value: !Ref AlbAccessLogBucket}, {Key: access_logs.s3.prefix, Value: alb}]}}
   ApiTarget: {Type: AWS::ElasticLoadBalancingV2::TargetGroup, Properties: {VpcId: !Ref Vpc, Protocol: HTTP, Port: 8000, TargetType: ip, HealthCheckPath: /health}}
   FrontendTarget: {Type: AWS::ElasticLoadBalancingV2::TargetGroup, Properties: {VpcId: !Ref Vpc, Protocol: HTTP, Port: 5174, TargetType: ip, HealthCheckPath: /}}
-  Listener: {Type: AWS::ElasticLoadBalancingV2::Listener, Properties: {LoadBalancerArn: !Ref Alb, Port: 80, Protocol: HTTP, DefaultActions: [{Type: forward, TargetGroupArn: !Ref FrontendTarget}]}}
-  ApiListenerRule: {Type: AWS::ElasticLoadBalancingV2::ListenerRule, Properties: {ListenerArn: !Ref Listener, Priority: 10, Conditions: [{Field: path-pattern, Values: ['/api', '/api/*']}], Actions: [{Type: forward, TargetGroupArn: !Ref ApiTarget}]}}
+  HttpsListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates: [{CertificateArn: !Ref AlbCertificateArn}]
+      DefaultActions: [{Type: forward, TargetGroupArn: !Ref FrontendTarget}]
+  Listener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn: ApiListenerRule
+    Properties:
+      LoadBalancerArn: !Ref Alb
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: redirect
+          RedirectConfig:
+            Protocol: HTTPS
+            Port: '443'
+            Host: !Ref ApplicationDomainName
+            Path: '/#{path}'
+            Query: '#{query}'
+            StatusCode: HTTP_301
+  ApiListenerRule: {Type: AWS::ElasticLoadBalancingV2::ListenerRule, Properties: {ListenerArn: !Ref HttpsListener, Priority: 10, Conditions: [{Field: path-pattern, Values: ['/api', '/api/*']}], Actions: [{Type: forward, TargetGroupArn: !Ref ApiTarget}]}}
   BootstrapTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt BootstrapExecutionRole.Arn, TaskRoleArn: !GetAtt BootstrapRole.Arn, ContainerDefinitions: [{Name: bootstrap, Image: !Ref DatabaseBootstrapImage, Essential: true, Environment: [{Name: AWS_REGION, Value: !Ref AWS::Region}, {Name: DATABASE_ENDPOINT, Value: !GetAtt Database.Endpoint.Address}, {Name: MASTER_SECRET_ARN, Value: !GetAtt Database.MasterUserSecret.SecretArn}, {Name: APPLICATION_SECRET_ARN, Value: !Ref ApplicationSecretArn}, {Name: RECOVERY_SECRET_ARN, Value: !Ref RecoverySecretArn}, {Name: NUTRITION_SECRET_ARN, Value: !Ref NutritionSecretArn}, {Name: TRAINING_SECRET_ARN, Value: !Ref TrainingSecretArn}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: bootstrap}}}]}}
   ApiTask: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '512', Memory: '1024', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: api, Image: !Ref ApiImage, PortMappings: [{ContainerPort: 8000}], Environment: [{Name: REDIS_URL, Value: !Sub 'rediss://:{{resolve:secretsmanager:${RedisAuthTokenSecretArn}:SecretString:password}}@${Redis.PrimaryEndPoint.Address}:${Redis.PrimaryEndPoint.Port}/0'}, {Name: NUTRITION_COMPATIBILITY_ADMIN_EMAIL, Value: nutrition.admin@example.com}, {Name: USE_RECOVERY_AGENT_SERVICE, Value: 'true'}, {Name: RECOVERY_AGENT_URL, Value: !Sub 'http://recovery.${Environment}.v2.macoach.local:8001'}, {Name: USE_HEAD_COACH_SERVICE, Value: 'true'}, {Name: HEAD_COACH_URL, Value: !Sub 'http://head-coach.${Environment}.v2.macoach.local:8002'}, {Name: USE_SUMMARIZER_SERVICE, Value: 'true'}, {Name: SUMMARIZER_URL, Value: !Sub 'http://summarizer.${Environment}.v2.macoach.local:8003'}, {Name: USE_NUTRITION_AGENT_SERVICE, Value: 'true'}, {Name: NUTRITION_AGENT_URL, Value: !Sub 'http://nutrition.${Environment}.v2.macoach.local:8004'}, {Name: USE_TRAINING_AGENT_SERVICE, Value: 'true'}, {Name: TRAINING_AGENT_URL, Value: !Sub 'http://training.${Environment}.v2.macoach.local:8005'}], Secrets: [{Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::'}, {Name: JWT_SECRET_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:JWT_SECRET_KEY::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}, {Name: INTERNAL_SERVICE_TOKEN, ValueFrom: !Sub '${ApplicationSecretArn}:INTERNAL_SERVICE_TOKEN::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: api}}}]}}
   ApiMigration: {Type: AWS::ECS::TaskDefinition, Properties: {RequiresCompatibilities: [FARGATE], NetworkMode: awsvpc, Cpu: '256', Memory: '512', ExecutionRoleArn: !GetAtt ApplicationExecutionRole.Arn, TaskRoleArn: !GetAtt RuntimeRole.Arn, ContainerDefinitions: [{Name: api-migrate, Image: !Ref ApiImage, Command: [python, -m, app.db.migrate], Secrets: [{Name: DATABASE_URL, ValueFrom: !Sub '${ApplicationSecretArn}:DATABASE_URL::'}, {Name: JWT_SECRET_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:JWT_SECRET_KEY::'}, {Name: OPENAI_API_KEY, ValueFrom: !Sub '${ApplicationSecretArn}:OPENAI_API_KEY::'}], LogConfiguration: {LogDriver: awslogs, Options: {awslogs-group: !Ref Logs, awslogs-region: !Ref AWS::Region, awslogs-stream-prefix: migrations}}}]}}
@@ -135,8 +167,8 @@ Resources:
   SummarizerService: {Type: AWS::ECS::Service, Condition: ShouldDeployServices, Properties: {Cluster: !Ref Cluster, TaskDefinition: !Ref SummarizerTask, DesiredCount: 1, LaunchType: FARGATE, ServiceRegistries: [{RegistryArn: !GetAtt SummarizerDiscovery.Arn}], NetworkConfiguration: {AwsvpcConfiguration: {AssignPublicIp: DISABLED, SecurityGroups: [!Ref TaskSg], Subnets: [!Ref PrivateA, !Ref PrivateB]}}}}
 Outputs:
   LoadBalancerDnsName: {Value: !GetAtt Alb.DNSName}
-  FrontendUrl: {Value: !Sub 'http://${Alb.DNSName}'}
-  ApiHealthUrl: {Value: !Sub 'http://${Alb.DNSName}/api/health'}
+  FrontendUrl: {Value: !Sub 'https://${ApplicationDomainName}'}
+  ApiHealthUrl: {Value: !Sub 'https://${ApplicationDomainName}/api/health'}
   ClusterName: {Value: !Ref Cluster}
   PrivateSubnetIds: {Value: !Join [',', [!Ref PrivateA, !Ref PrivateB]]}
   TaskSecurityGroupId: {Value: !Ref TaskSg}

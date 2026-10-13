@@ -48,6 +48,22 @@ jobs:
       
           echo "AWS_DEPLOY_ROLE_ARN is configured."
 
+      - name: Validate HTTPS repository variables
+        shell: bash
+        env:
+          APPLICATION_DOMAIN_NAME: ${{ vars.APPLICATION_DOMAIN_NAME }}
+          ALB_CERTIFICATE_ARN: ${{ vars.ALB_CERTIFICATE_ARN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$APPLICATION_DOMAIN_NAME" || "$APPLICATION_DOMAIN_NAME" == *://* || "$APPLICATION_DOMAIN_NAME" == */* ]]; then
+            echo "::error::APPLICATION_DOMAIN_NAME must be a hostname only, without a scheme or path."
+            exit 1
+          fi
+          if [[ ! "$ALB_CERTIFICATE_ARN" =~ ^arn:aws:acm:${AWS_REGION}:[0-9]{12}:certificate/[a-f0-9-]{36}$ ]]; then
+            echo "::error::ALB_CERTIFICATE_ARN must be an ACM certificate ARN in $AWS_REGION."
+            exit 1
+          fi
+
       - name: Display safe GitHub OIDC claims for diagnosis
         shell: bash
         run: |
@@ -129,6 +145,8 @@ jobs:
           PARAMETER_OVERRIDES: >-
             ParameterKey=ProjectName,ParameterValue=${{ env.PROJECT_NAME }}
             ParameterKey=Environment,ParameterValue=${{ env.ENVIRONMENT }}
+            ParameterKey=ApplicationDomainName,ParameterValue=${{ vars.APPLICATION_DOMAIN_NAME }}
+            ParameterKey=AlbCertificateArn,ParameterValue=${{ vars.ALB_CERTIFICATE_ARN }}
             ParameterKey=FrontendImage,ParameterValue=${{ steps.images.outputs.FRONTEND_IMAGE }}
             ParameterKey=ApiImage,ParameterValue=${{ steps.images.outputs.API_IMAGE }}
             ParameterKey=RecoveryAgentImage,ParameterValue=${{ steps.images.outputs.RECOVERY_AGENT_IMAGE }}
@@ -174,6 +192,8 @@ jobs:
           PARAMETER_OVERRIDES: >-
             ParameterKey=ProjectName,ParameterValue=${{ env.PROJECT_NAME }}
             ParameterKey=Environment,ParameterValue=${{ env.ENVIRONMENT }}
+            ParameterKey=ApplicationDomainName,ParameterValue=${{ vars.APPLICATION_DOMAIN_NAME }}
+            ParameterKey=AlbCertificateArn,ParameterValue=${{ vars.ALB_CERTIFICATE_ARN }}
             ParameterKey=FrontendImage,ParameterValue=${{ steps.images.outputs.FRONTEND_IMAGE }}
             ParameterKey=ApiImage,ParameterValue=${{ steps.images.outputs.API_IMAGE }}
             ParameterKey=RecoveryAgentImage,ParameterValue=${{ steps.images.outputs.RECOVERY_AGENT_IMAGE }}
