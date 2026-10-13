@@ -1,5 +1,9 @@
-import { cleanup } from '@testing-library/react'
+import { cleanup, configure } from '@testing-library/react'
 import { afterEach } from 'vitest'
+
+// Ant Design rendering and chained queries can exceed the default one-second
+// wait on CI, especially with coverage instrumentation enabled.
+configure({ asyncUtilTimeout: 5000 })
 
 afterEach(() => {
   cleanup()

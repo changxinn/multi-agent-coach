@@ -62,7 +62,7 @@ class MealInput(BaseModel):
     eaten_at: datetime
     meal_type: Literal["breakfast", "lunch", "dinner", "snack"]
     notes: str | None = Field(default=None, max_length=2000)
-    items: list[MealItemInput] = Field(min_length=1)
+    items: list[MealItemInput] = Field(min_length=1, max_length=1)
 
 
 class EmptyNutritionRequest(BaseModel):

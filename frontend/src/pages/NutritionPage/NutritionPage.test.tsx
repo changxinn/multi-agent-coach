@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { idempotencyKey, NutritionPage } from './NutritionPage'
+import { NutritionPage } from './NutritionPage'
+import { idempotencyKey } from '@/lib/idempotencyKey'
 
 const { post } = vi.hoisted(() => ({ post: vi.fn() }))
 
@@ -120,7 +121,7 @@ describe('NutritionPage', () => {
     expect(screen.queryByText(/manual food/i)).toBeNull()
   })
 
-  it('edits a single USDA meal and records the update time', async () => {
+  it('edits a single USDA meal and preserves the original meal time', async () => {
     post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meals/list'
       ? Promise.resolve({ items: [{ id: 7, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'breakfast', notes: 'Original note', items: [{ food_name: 'Rolled oats', quantity: 100, grams: 100, unit: 'g', calories: 389, protein_g: 17, carbohydrate_g: 66, fat_g: 7, fiber_g: 11, source: 'usda', food_cache_id: 4 }] }] })
       : endpoint === '/nutrition/foods/catalogue'
@@ -133,16 +134,67 @@ describe('NutritionPage', () => {
     expect(await screen.findByText('Edit meal log')).toBeTruthy()
     expect(screen.getByDisplayValue('100')).toBeTruthy()
     expect(screen.getByDisplayValue('Original note')).toBeTruthy()
-    expect(await screen.findByText('Verified USDA nutrients')).toBeTruthy()
+    expect(screen.getByText('Rolled oats (existing food)')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
     await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/replace', expect.objectContaining({
       meal_id: 7,
       meal_type: 'breakfast',
       notes: 'Original note',
-      eaten_at: expect.any(String),
+      eaten_at: '2026-10-01T08:00:00.000Z',
       items: [expect.objectContaining({ food_name: 'Rolled oats', grams: 100, source: 'usda', food_cache_id: 4 })],
     })))
+  })
+
+  it.each(['meal_plan', 'manual_estimate', 'usda'])('edits %s food without a catalogue reference', async source => {
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meals/list'
+      ? Promise.resolve({ items: [{ id: 8, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'lunch', notes: 'Original', items: [{ food_name: 'Rice', quantity: 1, unit: 'serving', grams: 150, calories: 200, protein_g: 4, carbohydrate_g: 40, fat_g: 2, fiber_g: 1, source }] }] })
+      : defaultPost(endpoint))
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    expect(await screen.findByText('Rice (existing food)')).toBeTruthy()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Quantity (serving)' }), { target: { value: '2' } })
+    fireEvent.change(screen.getByDisplayValue('Original'), { target: { value: 'Updated' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/replace', expect.objectContaining({
+      meal_id: 8, eaten_at: '2026-10-01T08:00:00.000Z', notes: 'Updated',
+      items: [expect.objectContaining({ food_name: 'Rice', quantity: 2, unit: 'serving', grams: 300, calories: 400, protein_g: 8, carbohydrate_g: 80, fat_g: 4, fiber_g: 2, source })],
+    })))
+    expect(post.mock.calls.some(([endpoint]) => endpoint === '/nutrition/foods/catalogue')).toBe(true)
+  })
+
+  it('replaces a serving-based meal-plan food with a USDA food in grams', async () => {
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meals/list'
+      ? Promise.resolve({ items: [{ id: 9, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'lunch', notes: 'Keep note', items: [{ food_name: 'Rice', quantity: 1, unit: 'serving', grams: 150, calories: 200, source: 'meal_plan' }] }] })
+      : endpoint === '/nutrition/foods/catalogue'
+        ? Promise.resolve({ items: [{ id: 4, provider_food_id: 'oats-1', description: 'Rolled oats', calories_per_100g: 400, protein_g_per_100g: 10, carbohydrate_g_per_100g: 60, fat_g_per_100g: 8, fiber_g_per_100g: 4 }] })
+        : defaultPost(endpoint))
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    fireEvent.mouseDown(await screen.findByRole('combobox', { name: 'Food' }))
+    fireEvent.click(await screen.findByText('Rolled oats'))
+    expect((await screen.findByRole('spinbutton', { name: 'Quantity (g)' })).getAttribute('value')).toBe('150')
+    expect(await screen.findByText('Verified USDA nutrients')).toBeTruthy()
+    fireEvent.change(screen.getByRole('spinbutton', { name: 'Quantity (g)' }), { target: { value: '200' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/replace', {
+      meal_id: 9, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'lunch', notes: 'Keep note',
+      items: [{ food_name: 'Rolled oats', quantity: 200, unit: 'g', grams: 200, calories: 800, protein_g: 20, carbohydrate_g: 120, fat_g: 16, fiber_g: 8, source: 'usda', food_cache_id: 4 }],
+    }))
+  }, 30_000)
+
+  it('keeps the original food editable when the catalogue fails', async () => {
+    post.mockImplementation((endpoint: string) => endpoint === '/nutrition/meals/list'
+      ? Promise.resolve({ items: [{ id: 10, eaten_at: '2026-10-01T08:00:00.000Z', meal_type: 'lunch', items: [{ food_name: 'Rice', quantity: 100, unit: 'g', calories: 200, source: 'manual_estimate' }] }] })
+      : endpoint === '/nutrition/foods/catalogue' ? Promise.reject(new Error('Catalogue unavailable')) : defaultPost(endpoint))
+    renderPage()
+    fireEvent.click(screen.getByRole('tab', { name: 'Meal Log' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit' }))
+    expect(await screen.findByText(/You can still update the existing food/)).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
+    await waitFor(() => expect(post).toHaveBeenCalledWith('/nutrition/meals/replace', expect.objectContaining({ meal_id: 10, items: [expect.objectContaining({ food_name: 'Rice', source: 'manual_estimate', quantity: 100 })] })))
   })
 
   it('shows populated active targets and opens the meal-plan generator', async () => {

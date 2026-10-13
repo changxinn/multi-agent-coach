@@ -133,7 +133,7 @@ class MealRequest(UserRequest):
     eaten_at: datetime
     meal_type: Literal["breakfast", "lunch", "dinner", "snack"]
     notes: str | None = Field(default=None, max_length=2000)
-    items: list[MealItem] = Field(min_length=1)
+    items: list[MealItem] = Field(min_length=1, max_length=1)
 
 
 class ReplaceMealRequest(MealRequest):

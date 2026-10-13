@@ -133,11 +133,14 @@ async def test_exercise_guidance_llm_success_and_safe_failure(monkeypatch):
     monkeypatch.setattr(module.settings, "OPENAI_API_KEY", "key")
     model = Mock()
     model.invoke.return_value = Mock(content="Keep your ribs down.")
-    monkeypatch.setattr(module, "ChatOpenAI", lambda **_: model)
+    constructor = Mock(return_value=model)
+    monkeypatch.setattr(module, "ChatOpenAI", constructor)
     assert (
         await TrainingService._generate_exercise_guidance("squat")
         == "Keep your ribs down."
     )
+    assert constructor.call_args.kwargs["max_retries"] == 0
+    assert constructor.call_args.kwargs["timeout"] == 30
     model.invoke.return_value = Mock(content="system prompt")
     assert (
         await TrainingService._generate_exercise_guidance("squat")
@@ -169,5 +172,41 @@ async def test_daily_recommendation_reuse_llm_json_and_program_list(monkeypatch)
     monkeypatch.setattr(module.settings, "OPENAI_API_KEY", "key")
     model = Mock()
     model.invoke.return_value = Mock(content='{"days": [], "target_rpe": "7"}')
-    monkeypatch.setattr(module, "ChatOpenAI", lambda **_: model)
+    constructor = Mock(return_value=model)
+    monkeypatch.setattr(module, "ChatOpenAI", constructor)
     assert TrainingService._llm_json("prompt", {}, "green")["target_rpe"] == "7"
+    assert constructor.call_args.kwargs["max_retries"] == 0
+    assert constructor.call_args.kwargs["timeout"] == 45
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "content,stage,error_type",
+    [
+        ("not json", "llm_response", "JSONDecodeError"),
+        ('{"days": [], "target_rpe": "7"}', "program_structure", "ValueError"),
+        ('{"days": [{}], "target_rpe": 7}', "program_structure", "ValueError"),
+    ],
+)
+async def test_invalid_model_program_persists_safe_fallback(
+    monkeypatch, caplog, content, stage, error_type
+):
+    monkeypatch.setattr(module.settings, "OPENAI_API_KEY", "key")
+    model = Mock()
+    model.invoke.return_value = Mock(content=content)
+    monkeypatch.setattr(module, "ChatOpenAI", Mock(return_value=model))
+    db = Mock()
+    db.execute = AsyncMock(
+        side_effect=[
+            result(scalar=0),
+            result(one={"id": 1, "version": 1, "created_at": "now"}),
+        ]
+    )
+    service = TrainingService(db)
+    service.context = AsyncMock(return_value={"profile": {"fitness_goal": "strength"}})
+    response = await service.generate_program(1, "amber")
+    assert response["generation_source"] == "deterministic_fallback"
+    assert response["program"]["target_rpe"] == "6-7"
+    assert response["program"]["days"]
+    assert f"stage={stage} error_type={error_type}" in caplog.text
+    assert db.execute.await_count == 2

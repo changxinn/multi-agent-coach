@@ -83,6 +83,7 @@ class Settings(BaseSettings):
     USE_TRAINING_AGENT_SERVICE: bool = False
     TRAINING_AGENT_URL: str = "http://localhost:8005"
     TRAINING_AGENT_TIMEOUT_SECONDS: float = 20.0
+    TRAINING_AGENT_GENERATION_TIMEOUT_SECONDS: float = 90.0
     INTERNAL_SERVICE_TOKEN: str = ""
 
     # USDA FoodData Central is the initial food-data provider.

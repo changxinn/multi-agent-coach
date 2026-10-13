@@ -19,6 +19,8 @@ async def test_daily_workout_uses_private_authenticated_contract(monkeypatch):
     captured = {}
 
     class Response:
+        status_code = 200
+
         def raise_for_status(self):
             return None
 
@@ -127,3 +129,79 @@ def test_respond_maps_http_failures(monkeypatch):
     client = TrainingAgentClient()
     with pytest.raises(TrainingAgentUnavailableError, match="temporarily unavailable"):
         client.respond(1, [], {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "operation,expected_timeout",
+    [
+        ("programs/generate", 90),
+        ("programs/adapt", 90),
+        ("daily-workout", 90),
+        ("exercises/search", 90),
+        ("exercises/lookup", 20),
+        ("programs/list", 20),
+        ("context", 20),
+        ("preferences/get", 20),
+    ],
+)
+async def test_operation_timeout_budgets(monkeypatch, operation, expected_timeout):
+    import httpx
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "INTERNAL_SERVICE_TOKEN", "token")
+    monkeypatch.setattr(settings, "TRAINING_AGENT_TIMEOUT_SECONDS", 20)
+    monkeypatch.setattr(settings, "TRAINING_AGENT_GENERATION_TIMEOUT_SECONDS", 90)
+    captured = {}
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+        async def post(self, url, **kwargs):
+            return httpx.Response(
+                200, json={"ok": True}, request=httpx.Request("POST", url)
+            )
+
+    def make_client(**kwargs):
+        captured.update(kwargs)
+        return Client()
+
+    monkeypatch.setattr(
+        "app.services.training_agent_client.httpx.AsyncClient", make_client
+    )
+    assert await TrainingAgentClient()._post(operation, {"user_id": 1}) == {"ok": True}
+    assert captured["timeout"].read == expected_timeout
+    assert captured["timeout"].connect == 2
+
+
+@pytest.mark.asyncio
+async def test_generation_timeout_is_logged_and_not_retried(monkeypatch, caplog):
+    import httpx
+
+    monkeypatch.setattr(get_settings(), "INTERNAL_SERVICE_TOKEN", "token")
+    post = AsyncMock(
+        side_effect=httpx.ReadTimeout("private payload must not be logged")
+    )
+
+    class Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_):
+            return False
+
+    client = Client()
+    client.post = post
+    monkeypatch.setattr(
+        "app.services.training_agent_client.httpx.AsyncClient", lambda **_: client
+    )
+    with pytest.raises(TrainingAgentUnavailableError, match="check saved programs"):
+        await TrainingAgentClient().generate_program(1, "green")
+    post.assert_awaited_once()
+    assert "operation=programs/generate error_type=ReadTimeout" in caplog.text
+    assert "elapsed_seconds=" in caplog.text
+    assert "private payload" not in caplog.text

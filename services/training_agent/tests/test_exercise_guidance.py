@@ -6,6 +6,22 @@ from services.training_agent.app import service as module
 from services.training_agent.app.service import SAFE_GUIDANCE_FALLBACK, TrainingService
 
 
+def test_exercise_guidance_prompt_requests_readable_markdown():
+    prompt = module.EXERCISE_GUIDANCE_PROMPT
+    assert "Markdown" in prompt
+    for heading in (
+        "Setup",
+        "Technique cues",
+        "Common mistakes",
+        "Easier variation",
+        "Safety",
+    ):
+        assert heading in prompt
+    assert "blank lines" in prompt
+    assert "HTML, images, or links" in prompt
+    assert "stop for pain or worsening symptoms" in prompt
+
+
 @pytest.mark.asyncio
 async def test_catalogued_exercise_guidance_does_not_call_llm(monkeypatch):
     db = Mock()

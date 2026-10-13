@@ -1,12 +1,24 @@
 """Authenticated gateway client for the Training Agent private service."""
 
+import logging
 from datetime import date
+from time import perf_counter
 from typing import Any
 
 import httpx
 from fastapi.encoders import jsonable_encoder
 
 from app.config import get_settings
+
+logger = logging.getLogger(__name__)
+GENERATION_OPERATIONS = frozenset(
+    {
+        "programs/generate",
+        "programs/adapt",
+        "daily-workout",
+        "exercises/search",
+    }
+)
 
 
 class TrainingAgentUnavailableError(RuntimeError):
@@ -20,11 +32,20 @@ class TrainingAgentClient:
         settings = get_settings()
         if not settings.INTERNAL_SERVICE_TOKEN:
             raise TrainingAgentUnavailableError("Training service is not configured")
+        timeout_seconds = (
+            settings.TRAINING_AGENT_GENERATION_TIMEOUT_SECONDS
+            if path in GENERATION_OPERATIONS
+            else settings.TRAINING_AGENT_TIMEOUT_SECONDS
+        )
+        started_at = perf_counter()
+        logger.info(
+            "Training Agent request started operation=%s timeout_seconds=%.1f",
+            path,
+            timeout_seconds,
+        )
         try:
             async with httpx.AsyncClient(
-                timeout=httpx.Timeout(
-                    settings.TRAINING_AGENT_TIMEOUT_SECONDS, connect=2.0
-                )
+                timeout=httpx.Timeout(timeout_seconds, connect=2.0)
             ) as client:
                 response = await client.post(
                     f"{settings.TRAINING_AGENT_URL.rstrip('/')}/v1/training/{path}",
@@ -39,10 +60,25 @@ class TrainingAgentClient:
                     json=jsonable_encoder(payload),
                 )
             response.raise_for_status()
+            logger.info(
+                "Training Agent request completed operation=%s status_code=%d elapsed_seconds=%.3f",
+                path,
+                response.status_code,
+                perf_counter() - started_at,
+            )
             return response.json()
         except httpx.HTTPError as error:
+            logger.warning(
+                "Training Agent request failed operation=%s error_type=%s elapsed_seconds=%.3f",
+                path,
+                type(error).__name__,
+                perf_counter() - started_at,
+            )
             raise TrainingAgentUnavailableError(
-                "Training service is temporarily unavailable"
+                "Training service request timed out; check saved programs before trying again"
+                if isinstance(error, httpx.TimeoutException)
+                and path.startswith("programs/")
+                else "Training service is temporarily unavailable"
             ) from error
 
     def respond(
