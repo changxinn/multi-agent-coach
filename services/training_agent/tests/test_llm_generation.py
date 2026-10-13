@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from unittest.mock import AsyncMock, Mock
 
@@ -9,7 +10,8 @@ from services.training_agent.app.service import TrainingService
 
 
 @pytest.mark.asyncio
-async def test_daily_workout_uses_llm_when_recovery_permits(monkeypatch):
+async def test_daily_workout_uses_llm_when_recovery_permits(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     db = Mock()
     existing = Mock()
     existing.mappings.return_value.first.return_value = None
@@ -47,10 +49,12 @@ async def test_daily_workout_uses_llm_when_recovery_permits(monkeypatch):
     )
 
     assert result["generation_source"] == "llm"
+    assert "generation_source=llm outcome=database_write_completed" in caplog.text
 
 
 @pytest.mark.asyncio
-async def test_red_recovery_bypasses_llm(monkeypatch):
+async def test_red_recovery_bypasses_llm(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     db = Mock()
     existing = Mock()
     existing.mappings.return_value.first.return_value = None
@@ -77,3 +81,5 @@ async def test_red_recovery_bypasses_llm(monkeypatch):
     )
 
     assert result["generation_source"] == "recovery_safety_gate"
+    assert "generation_source=recovery_safety_gate" in caplog.text
+    assert "Training generation failed" not in caplog.text

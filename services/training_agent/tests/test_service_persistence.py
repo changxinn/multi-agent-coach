@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -88,7 +89,8 @@ async def test_workout_progress_context_and_lists():
 
 
 @pytest.mark.asyncio
-async def test_daily_workout_and_program_fallbacks_persist(monkeypatch):
+async def test_daily_workout_and_program_fallbacks_persist(monkeypatch, caplog):
+    caplog.set_level(logging.INFO, logger="uvicorn.error")
     db = Mock()
     db.execute = AsyncMock(
         side_effect=[
@@ -121,9 +123,19 @@ async def test_daily_workout_and_program_fallbacks_persist(monkeypatch):
         DailyWorkoutRequest(user_id=1, date=date(2026, 1, 1), recovery_status="amber")
     )
     assert daily["generation_source"] == "deterministic_fallback"
+    assert (
+        "generation_source=deterministic_fallback outcome=database_write_completed"
+        in caplog.text
+    )
+    caplog.clear()
     program = await service.generate_program(1, "amber", "fatigue")
     assert program["generation_source"] == "deterministic_fallback"
     assert program["program"]["target_rpe"] == "6-7"
+    assert "operation=program_adaptation" in caplog.text
+    assert (
+        "generation_source=deterministic_fallback outcome=database_write_completed"
+        in caplog.text
+    )
     with pytest.raises(ValueError, match="does not permit"):
         await service.generate_program(1, "red")
 
@@ -183,7 +195,7 @@ async def test_daily_recommendation_reuse_llm_json_and_program_list(monkeypatch)
 @pytest.mark.parametrize(
     "content,stage,error_type",
     [
-        ("not json", "llm_response", "JSONDecodeError"),
+        ("not json", "json_parsing", "JSONDecodeError"),
         ('{"days": [], "target_rpe": "7"}', "program_structure", "ValueError"),
         ('{"days": [{}], "target_rpe": 7}', "program_structure", "ValueError"),
     ],

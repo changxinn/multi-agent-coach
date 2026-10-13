@@ -379,3 +379,24 @@ def test_v2_https_parameters_reject_urls_and_empty_certificates():
         "arn:aws:acm:ap-southeast-1:758248541054:certificate/3847778d-c077-48c5-85a1-16586b495eab",
     )
     assert not re.fullmatch(certificate_pattern, "")
+
+
+def test_training_task_injects_openai_key_from_application_secret():
+    resources = _template()["Resources"]
+    secrets = _secrets(resources["TrainingTask"])
+    assert next(item for item in secrets if item["Name"] == "OPENAI_API_KEY") == {
+        "Name": "OPENAI_API_KEY",
+        "ValueFrom": {"Sub": "${ApplicationSecretArn}:OPENAI_API_KEY::"},
+    }
+    policies = resources["TrainingExecutionRole"]["Properties"]["Policies"]
+    assert any(
+        statement["Effect"] == "Allow"
+        and statement["Action"] == "secretsmanager:GetSecretValue"
+        and {"Ref": "ApplicationSecretArn"} in statement["Resource"]
+        for policy in policies
+        for statement in policy["PolicyDocument"]["Statement"]
+    )
+    assert all(
+        item["Name"] != "OPENAI_API_KEY"
+        for item in _environment(resources["TrainingTask"])
+    )
